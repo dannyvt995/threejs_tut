@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Helu</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+
+</head>
+
+<style>
+    body {
+        background-color: #fff;
+        color: #444;
+        margin: 0;
+        padding: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    a {
+        color: #08f;
+    }
+
+    .tools {
+        display: flex;
+        margin: 0 auto;
+        position: fixed;
+        left: 50%;
+    }
+</style>
+
+<body>
+
+    <div class="tools">
+        <button id="stop_delta">Stop delta</button>
+        <button id="lock_camera">Lock camera</button>
+    </div>
+    <script type="importmap">
+		{
+			"imports": {
+				"three": "./three.module.js",
+				"three/addons/": "./jsm/"
+			}
+		}
+	</script>
+    <script id="heightmapFragmentShader" type="x-shader/x-fragment">
+
+        #include <common>
+
+        uniform vec2 mousePos;
+        uniform float mouseSize;
+        uniform float viscosityConstant;
+        uniform float heightCompensation;
+
+        void main()	{
+
+            vec2 cellSize = 1.0 / resolution.xy;
+
+            vec2 uv = gl_FragCoord.xy * cellSize;
+
+            // heightmapValue.x == height from previous frame
+            // heightmapValue.y == height from penultimate frame
+            // heightmapValue.z, heightmapValue.w not used
+            vec4 heightmapValue = texture2D( heightmap, uv );
+
+            // Get neighbours
+            vec4 north = texture2D( heightmap, uv + vec2( 0.0, cellSize.y ) );
+            vec4 south = texture2D( heightmap, uv + vec2( 0.0, - cellSize.y ) );
+            vec4 east = texture2D( heightmap, uv + vec2( cellSize.x, 0.0 ) );
+            vec4 west = texture2D( heightmap, uv + vec2( - cellSize.x, 0.0 ) );
+
+            // https://web.archive.org/web/20080618181901/http://freespace.virgin.net/hugo.elias/graphics/x_water.htm
+
+            float newHeight = ( ( north.x + south.x + east.x + west.x ) * 0.5 - heightmapValue.y ) * viscosityConstant;
+
+            // Mouse influence
+            float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y ) ) * PI / mouseSize, 0.0, PI );
+            newHeight += ( cos( mousePhase ) + 1.0 ) * 0.28;
+
+            heightmapValue.y = heightmapValue.x;
+            heightmapValue.x = newHeight;
+      
+            gl_FragColor = heightmapValue * 1. + 0. * vec4(1.);
+
+        }
+
+    </script>
+
+ 
+    <script type="module">
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/DRACOLoader.js';
+        import { ColladaLoader } from 'three/addons/ColladaLoader.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
+        import { Reflector } from 'three/addons/Reflector.js'
+        import { SimplexNoise } from 'three/addons/SimplexNoise.js';
+
+
+        const snoiseglsl = `vec3 mod289(vec3 x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 mod289(vec4 x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 permute(vec4 x) {
+     return mod289(((x*34.0)+1.0)*x);
+}
+
+vec4 taylorInvSqrt(vec4 r)
+{
+  return 1.79284291400159 - 0.85373472095314 * r;
+}
+
+float snoise(vec3 v)
+  {
+  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+// First corner
+  vec3 i  = floor(v + dot(v, C.yyy) );
+  vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+// Other corners
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min( g.xyz, l.zxy );
+  vec3 i2 = max( g.xyz, l.zxy );
+
+  //   x0 = x0 - 0.0 + 0.0 * C.xxx;
+  //   x1 = x0 - i1  + 1.0 * C.xxx;
+  //   x2 = x0 - i2  + 2.0 * C.xxx;
+  //   x3 = x0 - 1.0 + 3.0 * C.xxx;
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+  vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
+
+// Permutations
+  i = mod289(i);
+  vec4 p = permute( permute( permute(
+             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+// Gradients: 7x7 points over a square, mapped onto an octahedron.
+// The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)
+  float n_ = 0.142857142857; // 1.0/7.0
+  vec3  ns = n_ * D.wyz - D.xzx;
+
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
+
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+  vec4 x = x_ *ns.x + ns.yyyy;
+  vec4 y = y_ *ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+
+  vec4 b0 = vec4( x.xy, y.xy );
+  vec4 b1 = vec4( x.zw, y.zw );
+
+  //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
+  //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+  vec3 p0 = vec3(a0.xy,h.x);
+  vec3 p1 = vec3(a0.zw,h.y);
+  vec3 p2 = vec3(a1.xy,h.z);
+  vec3 p3 = vec3(a1.zw,h.w);
+
+//Normalise gradients
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+  p0 *= norm.x;
+  p1 *= norm.y;
+  p2 *= norm.z;
+  p3 *= norm.w;
+
+// Mix final noise value
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+                                dot(p2,x2), dot(p3,x3) ) );
+  }`
+
+
+        const loaderAlone = new GLTFLoader();
+        const gltfhelo = await loaderAlone.loadAsync('./dragon.gltf');
+
+        let meshShowTexture1, meshShowTexture2, renderTarget, model, stats, gui, guiStatsEl, mixer, mixer1, sampler, meshSamplerInstanced, pointsSkin;
+        let camera, controls, scene, scene2, renderer, cameraO
+
+        let saveMat, saveGeo, dataColection, materialPoint
+        let time = 0
+        let textureFBO, textureFBOSnap, pointsCustom, sphereCheck
+
+        let ARRAYPOSMODEL
+        let COUNTPOINT
+        let SIZEVAT = new THREE.Vector2()
+        let lastTime = 0;
+        //new
+        let dataDragonAnim, skinnedMesh
+        const clock = new THREE.Clock();
+        //AABB
+        let aabb = new THREE.Box3();
+        let vertex = new THREE.Vector3();
+        let temp = new THREE.Vector3();
+        let skinned = new THREE.Vector3();
+        let skinIndices = new THREE.Vector4();
+        let skinWeights = new THREE.Vector4();
+        let boneMatrix = new THREE.Matrix4();
+        let sendVar, mirrorFront1
+        //gpgpu
+        let geometryPointGPU, materialPointGPU, gpuCompute, texturePositionVariable, controls2
+        let positionUniforms, velocityUniforms
+        const UPSIZE_ = 3
+        const WIDTHGPGPU = 154 * UPSIZE_; // dư ra 1 ít
+        let lastTimeFixed = 0
+        let previousFrame = 0
+        let countLoopSnap = 0
+        const totalFrame = 95
+        const offset = 300
+        const pointEachFrame = 200
+        const speedModel = 1
+        let arrayFrameOffset = []
+
+
+        //minnor
+        const reflectorPlane = new THREE.Plane();
+        const normal = new THREE.Vector3();
+        const reflectorWorldPosition = new THREE.Vector3();
+        const cameraWorldPosition = new THREE.Vector3();
+        const rotationMatrix = new THREE.Matrix4();
+        const lookAtPosition = new THREE.Vector3(0, 0, - 1);
+        const clipPlane = new THREE.Vector4();
+        const clipBias = 0.
+        const view = new THREE.Vector3();
+        const target = new THREE.Vector3();
+        const q = new THREE.Vector4();
+
+        const textureMatrix = new THREE.Matrix4();
+
+
+
+        let textureResultVariable, resultUniforms, cameraVitrualForMinor
+        const renderTarget_ForMinor = new THREE.WebGLRenderTarget(window.innerWidth/2, window.innerHeight/2, { samples: 4, type: THREE.HalfFloatType });
+        let toggleDeltaUpdate = true;
+        let toggleCameraUpdate = true;
+        const delta_toggle = document.getElementById("stop_delta");
+        const camera_toggle = document.getElementById("lock_camera");
+        
+        //WATER
+        // Texture width for simulation
+        const WIDTH = 180;
+
+        // Water size in system units
+        const BOUNDS = 20;
+        const BOUNDS_HALF = BOUNDS * 0.5;
+        const raycaster = new THREE.Raycaster();
+        let mouseMoved = false;
+        const mouseCoords = new THREE.Vector2();
+        let waterMesh;
+        let meshRay;
+        let heightmapVariable;
+        let waterUniforms;
+        let smoothShader;
+        let readWaterLevelShader;
+        let readWaterLevelRenderTarget;
+        let readWaterLevelImage;
+        const waterNormal = new THREE.Vector3();
+
+        const NUM_SPHERES = 5;
+        const spheres = [];
+        let spheresEnabled = true;
+        const yAxisForMinorAndRay = -2.2
+        const simplex = new SimplexNoise();
+
+        let save_projectionMatrix_minor =  new THREE.Matrix4()
+
+        let vertexShaderPointGPU = `
+            precision mediump float;
+
+            uniform float uTime; 
+
+            varying vec2 vUv;
+            varying vec4 vPos;
+            varying vec2 vuvID;
+            uniform sampler2D uTexturePosition;
+                uniform sampler2D uTexSnapCPU;
+                uniform sampler2D VATDragon;
+            uniform float WIDTHGPGPU;
+            uniform sampler2D  uTextureResult;
+           // attribute vec2 position;
+            attribute vec2 reference;
+            uniform vec2 uSizeVAT;
+            float PI = 3.141592653589793238;
+
+            void main() {
+               //vUv = uv;
+                vUv = reference;
+
+                float x = mod(float(gl_VertexID), WIDTHGPGPU);
+                float y = floor(float(gl_VertexID) / WIDTHGPGPU);
+                vec2 uvID = vec2(x / WIDTHGPGPU, y / (WIDTHGPGPU/1.));
+
+                vec4 pos = texture(uTexturePosition, uvID).xyzw;
+
+                vec4 posSnap = texture(uTexSnapCPU, uvID).xyzw;
+                vec4 posOnlyDra = texture(VATDragon, vec2(uvID.x,1.-uvID.y)).xyzw;
+
+    
+                
+                vec4 mvPosition = modelViewMatrix * vec4(  pos.xyz , 1.);
+             
+               
+                gl_Position = projectionMatrix * mvPosition;
+                gl_PointSize = 2.;
+
+                vuvID = uvID;
+                vPos = pos;
+            }
+            `;
+        let fragmentShaderPointGPU = `
+                    //precision mediump float;
+                    varying vec4 vPos;
+                    varying vec2 vUv;
+                    varying vec2 vuvID;
+
+                    float sdCircle( vec2 p, float r )
+                    {
+                        return length(p) - r;
+                    }
+
+                    void main() {
+                        vec4 rls = vec4(1.);
+           
+                        rls *= vec4(vPos.xyz * 2.,1.);
+                        gl_FragColor = rls;
+             
+                        float aa = sdCircle(vUv,.1);
+                        vec4 rlrl = vec4(vec3(aa),1.);
+
+                        if(vUv.y < .5) {
+                             gl_FragColor = vec4(vec3(1.,1.,1.),0.07);
+                        }else{
+                             gl_FragColor = vec4(vPos.xyz,.3);
+                            }
+                
+                    }
+
+            `;
+        let simulationFragPoint = `
+            precision mediump float;
+            uniform float uTime;
+              uniform float uTimeFixed;
+            
+               uniform sampler2D VATDragonSnap;
+            uniform sampler2D uTexturePosition;
+            uniform sampler2D VATDragon;
+            float PI = 3.141592653589793238;
+	        float rand( vec2 co ){
+				return fract( sin( dot( co.xy, vec2(12.9898,78.233) ) ) * 43758.5453 );
+			}
+                float random(float seed) {
+                    return fract(sin(seed) * 43758.5453123);
+                }
+
+            vec4 updatePosDragonAnim(float time_Fixed, float index,vec4 pos, vec2 uv, vec3 uvMap, float PICK_UVY_TEXTURE, vec4 posDragonAnim,bool isMain) {
+              
+               vec4 posDragonAnimNew = vec4(0.);
+           
+                if (uv.y > uvMap.x && uv.y < uvMap.y ) {
+
+                    // Biến đổi tuyến tính uv.y từ khoảng [uvMap.x, uvMap.y] sang khoảng [PICK_UVY_TEXTURE, 1.0]
+                    float newY = PICK_UVY_TEXTURE + (uv.y - uvMap.x) * (1.0 - PICK_UVY_TEXTURE) / (uvMap.y - uvMap.x);
+
+                    // Tạo giá trị ngẫu nhiên cho newY trong khoảng [PICK_UVY_TEXTURE, 1.0]
+                    float randomSeed = dot(uv, vec2(12.9898, 78.233)) + posDragonAnim.z * 43758.5453123;
+                    float randomValue = random(randomSeed);
+
+                    // Kết hợp newY và giá trị ngẫu nhiên để tạo ra newUV
+                    newY = mix(newY, 1.0, randomValue);
+                    vec2 newUV = vec2(uv.x, newY);
+
+                    // Lấy giá trị texture từ VATDragon tại vị trí newUV
+                    posDragonAnimNew = texture2D(VATDragon, newUV);
+
+                    // Điều chỉnh giá trị z của posDragonAnimNew nếu isMain là false
+                    float endZ = -5.;
+                    if (isMain == false) {
+                        posDragonAnimNew.z -= (1.) * index;
+                    }
+
+                    // Cộng giá trị mới vào posDragonAnim và chia đôi
+                
+                    //if(index == 5. || index == 2.) 
+
+                    posDragonAnim += posDragonAnimNew;
+                   // posDragonAnim.w = 0.;
+                }
+                    
+                return posDragonAnim.xyzw;
+            }
+
+            vec3 updatePosNoise(vec2 uv, vec2 uvMap, vec4 posDragonAnim) {
+                  if (uv.y > uvMap.x && uv.y < uvMap.y) {
+                        vec4 posDragonAnimNew = vec4(0.);
+
+                        float randomValueX = random(uv.x);
+                        float randomValueY = random(uv.y);
+                         float randomValueZ = random(uv.y-uv.x);
+                         posDragonAnimNew.xyz += vec3(randomValueX,randomValueY,randomValueZ);
+                       //   posDragonAnimNew.xyz += snoise(normalize(vec3(randomValueX * uTime, randomValueY * uTime, randomValueZ* uTime) * 2.));
+                        return posDragonAnimNew.xyz;
+                  }
+                    return posDragonAnim.xyz;
+            }
+
+
+            ${snoiseglsl}
+            vec3 snoiseVec3( vec3 x ){
+
+            float s  = snoise(vec3( x ));
+                float s1 = snoise(vec3( x.y - 19.1 , x.z + 33.4 , x.x + 47.2 ));
+                float s2 = snoise(vec3( x.z + 74.2 , x.x - 124.5 , x.y + 99.4 ));
+                vec3 c = vec3( s , s1 , s2 );
+                return c;
+
+                }
+
+
+                vec3 curlNoise( vec3 p ){
+                
+                const float e = .1;
+                vec3 dx = vec3( e   , 0.0 , 0.0 );
+                vec3 dy = vec3( 0.0 , e   , 0.0 );
+                vec3 dz = vec3( 0.0 , 0.0 , e   );
+
+                vec3 p_x0 = snoiseVec3( p - dx );
+                vec3 p_x1 = snoiseVec3( p + dx );
+                vec3 p_y0 = snoiseVec3( p - dy );
+                vec3 p_y1 = snoiseVec3( p + dy );
+                vec3 p_z0 = snoiseVec3( p - dz );
+                vec3 p_z1 = snoiseVec3( p + dz );
+
+                float x = p_y1.z - p_y0.z - p_z1.y + p_z0.y;
+                float y = p_z1.x - p_z0.x - p_x1.z + p_x0.z;
+                float z = p_x1.y - p_x0.y - p_y1.x + p_y0.x;
+
+                const float divisor = 1.0 / ( 2.0 * e );
+                return normalize( vec3( x , y , z ) * divisor );
+
+                }
+
+            vec4 NoiseSphere(vec4 outRls,vec2 uv,float time) {
+                float zToSphere = uv.y-uv.x;
+
+                outRls.xyzw = vec4(curlNoise(vec3(rand(uv),uv.y,atan(uv.y,uv.x)) + time / 5.),0.3636);
+                outRls.y += 3.5;
+                return outRls;
+            } 
+            
+            void main()	{
+                vec2 uv = gl_FragCoord.xy / resolution.xy;
+                vec4 tmpPos = texture2D( uTexturePosition, uv ); // get current positions from texture 
+                vec4 pos = tmpPos.xyzw; // here is where we are getting the position of the partciles from inside the fragment shader instead of the vertex shader
+                vec4 posDragonAnim = texture2D( VATDragonSnap, uv );
+                vec4 posDragonOrigin = texture2D( VATDragon, vec2(uv.x,1.-uv.y) );
+                vec4 save = vec4(1.);
+          
+        
+                // các đoạn uv này sẽ chứa point sim
+                // nên chuyển thành uniform
+                // point of dragon
+                    float timeFixed = 0.;
+                float PICK_UVY_TEXTURE = 0.55;
+         
+                // add = mắt
+                const int COUNTFRAME = 9;
+                float sizeCustom = 0.05;
+                float sizeXPick = 0.691;
+                vec3 uvMaps[COUNTFRAME] = vec3[COUNTFRAME](
+                    vec3(0.85, 0.85 + sizeCustom, 0.),
+                    vec3(0.80, 0.80 + sizeCustom, 0.),
+                    vec3(0.75, 0.75 + sizeCustom, 0.),
+                    vec3(0.70, 0.70 + sizeCustom, 0.),
+                    vec3(0.65, 0.65 + sizeCustom, 0.),
+                    vec3(0.60, 0.60 + sizeCustom, 0.),
+                    vec3(0.55, 0.55 + sizeCustom, 0.),
+                    vec3(0.50, 0.50 + sizeCustom, 0.),
+                    vec3(0.45, 0.45 + sizeCustom, 0.)
+                );
+
+                bool toggle = true;
+            
+                // Cập nhật posDragonAnim cho uvMap
+
+                
+           
+                vec4 rlsrls = vec4(0.,0.,0.,1.);
+                if (uv.y < 0.6) {
+            
+                    for (int i = 0; i < COUNTFRAME; i++) {
+                        if (mod(uTimeFixed, 1.0) == 0.0) {
+                     
+                    }else{
+                   
+                    }
+                            uvMaps[i].xy -= vec2(0.3);
+                          //   rlsrls += updatePosDragonAnim(timeFixed,float(i) + 1.,pos, uv, uvMaps[i], PICK_UVY_TEXTURE, posDragonAnim, false); 
+                        }
+                }
+       
+             // if(uv.y <.6 ) posDragonAnim.z -= uTime/5.;
+
+
+                vec4 outRls = posDragonAnim + posDragonOrigin * 1.;
+                outRls.w = posDragonAnim.w;
+                vec4 outRls1 = vec4(1.);
+                vec4 outRls2 = vec4(1.);
+                // cho tí background particel
+                if(uv.y < .6 && uv.y > .58) {
+                    outRls2 += NoiseSphere(outRls,uv,uTime);
+                }else if(uv.y < .54 && uv.y > .50) {
+                    // outRls2.x -= 7.;
+
+                    // outRls2.z -= fract(uTime  + uv.x) ;
+                    // if(outRls2.z < -1.) {
+                    //     outRls2.z = 2.;
+                    // }
+                    // outRls2.x -= rand(uv) * 20. - 17.;
+                    
+                    // outRls2.y -= rand(vec2(uv.x,1.-uv.y)) * 10. - 7.;
+                    // outRls2.z -= rand(vec2(uv.y,1.-uv.x)) * 20. - 10.;
+                    // outRls2 += NoiseSphere(outRls,uv,uTime/5.);
+                }else{
+                }
+
+                gl_FragColor = outRls + outRls2;
+             
+            }
+
+            `;
+
+        let simulationFragResult = `
+                uniform sampler2D uTexturePosition;
+                uniform sampler2D VATDragonPrev;
+                uniform float uTime;
+                uniform float uTimeFixed;
+                void main() {
+                    vec2 uv = gl_FragCoord.xy / resolution.xy;
+                    vec4 posDragonAnimPrev = texture2D( uTexturePosition, uv );
+                    vec4 pos = posDragonAnimPrev;
+                    if (mod(uTimeFixed, 1.0) == 0.0) {
+                     
+                    }else{
+                        if(uv.y < .2) {
+                            pos = vec4(vec3(1.,0.,0.),1.);
+                        }
+                    }
+                    if(uv.y > .5) {
+                       
+                    }
+                 gl_FragColor = pos;
+                }
+            `
+
+        //water
+
+        function initWater() {
+
+            // Chỉ cần 1 ray để check , get ref from minor , shader height by texture
+            const geometryRay = new THREE.PlaneGeometry(BOUNDS, BOUNDS, 1, 1);
+            meshRay = new THREE.Mesh(geometryRay, new THREE.MeshBasicMaterial({ color: "red", visible: false }));
+            meshRay.rotation.x = - Math.PI / 2;
+            meshRay.position.y = yAxisForMinorAndRay
+            meshRay.matrixAutoUpdate = false;
+            meshRay.updateMatrix();
+            scene.add(meshRay);
+
+        }
+
+        function fillTexture(texture) {
+
+            const waterMaxHeight = 10;
+
+            function noise(x, y) {
+
+                let multR = waterMaxHeight;
+                let mult = 0.025;
+                let r = 0;
+                for (let i = 0; i < 15; i++) {
+
+                    r += multR * simplex.noise(x * mult, y * mult);
+                    multR *= 0.53 + 0.025 * i;
+                    mult *= 1.25;
+
+                }
+
+                return r;
+
+            }
+
+            const pixels = texture.image.data;
+
+            let p = 0;
+            for (let j = 0; j < WIDTH; j++) {
+
+                for (let i = 0; i < WIDTH; i++) {
+
+                    const x = i * 128 / WIDTH;
+                    const y = j * 128 / WIDTH;
+
+                    pixels[p + 0] = noise(x, y);
+                    pixels[p + 1] = pixels[p + 0];
+                    pixels[p + 2] = 0;
+                    pixels[p + 3] = 1;
+
+                    p += 4;
+
+                }
+
+            }
+
+        }
+      
+        function setMouseCoords(x, y) {
+
+            mouseCoords.set((x / renderer.domElement.clientWidth) * 2 - 1, - (y / renderer.domElement.clientHeight) * 2 + 1);
+            mouseMoved = true;
+
+        }
+
+        function onPointerMove(event) {
+
+            if (event.isPrimary === false) return;
+
+            setMouseCoords(event.clientX, event.clientY);
+
+        }
+
+        //particel
+        const fillPositions = (texture) => {
+            let arr = texture.image.data
+            let temp = new THREE.Vector3();
+
+            for (let i = 0; i < arr.length; i = i + 4) {
+
+                temp.random().subScalar(0.5);
+
+                arr[i + 0] = 0
+                arr[i + 1] = 0
+                arr[i + 2] = 0
+                arr[i + 3] = 1
+
+            }
+            //console.log(arr)
+        }
+
+        const generateParticles = () => {
+            console.log("SIZE::::::::", WIDTHGPGPU * WIDTHGPGPU)
+            geometryPointGPU = new THREE.BufferGeometry()
+            const positions = new Float32Array(WIDTHGPGPU * WIDTHGPGPU * 3) // create a specific number of particles, texture size * 3 for xyz positions
+            const reference = new Float32Array(WIDTHGPGPU * WIDTHGPGPU * 2) // we need to reference every particle in teh shader to drive it's position from the position texture.
+            for (let i = 0; i < WIDTHGPGPU * WIDTHGPGPU; i++) {
+                // randomly position particles, -.5 to move recenter particle cluster (or else orbit controls roate from top corner)
+                let x = Math.random() - .5
+                let y = Math.random() - .5
+                let z = Math.random() - .5
+
+                let xx = (i % WIDTHGPGPU) / WIDTHGPGPU// col num (must be between 0 - 1)
+                let yy = ~~(i / WIDTHGPGPU) / WIDTHGPGPU// row num (must be between 0 - 1
+
+                positions.set([x, y, z], i * 3) // fill positions 
+                reference.set([xx, yy], i * 2) // fill virtual uv's for unique id's/refs to each particle
+            }
+
+            // send position info into geometry aka vertex shader
+            geometryPointGPU.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+            geometryPointGPU.setAttribute('reference', new THREE.BufferAttribute(reference, 2))
+
+
+            materialPointGPU = new THREE.ShaderMaterial({
+                // depthWrite: false,
+                // blending: THREE.AdditiveBlending,
+                // vertexColors: true,
+                vertexShader: vertexShaderPointGPU,
+                fragmentShader: fragmentShaderPointGPU,
+                transparent: true,
+
+                uniforms: {
+                    uTime: { value: 0 },
+                    uTimeFixed: { value: 0 },
+                    uTexturePosition: { value: null },
+                    uTextureResult: { value: null },
+                    VATDragon: { value: null },
+                    uSize: { value: 1 },
+                    uSizeVAT: { value: SIZEVAT },
+                    WIDTHGPGPU: { value: WIDTHGPGPU },
+                    uTexSnapCPU: { value: null }
+                }
+            })
+            let pointsGPU = new THREE.Points(geometryPointGPU, materialPointGPU)
+            pointsGPU.position.y = -3
+            scene.add(pointsGPU)
+
+        }
+
+
+        function initGPGPU() {
+            // Khởi tạo GPUComputationRenderer
+            gpuCompute = new GPUComputationRenderer(WIDTHGPGPU, WIDTHGPGPU, renderer);
+
+            // Tạo texture cho vị trí
+            const dtPosition = gpuCompute.createTexture();
+            dtPosition.wrapS = THREE.RepeatWrapping;
+            dtPosition.wrapT = THREE.RepeatWrapping;
+
+            // Tạo texture cho kết quả
+            const dtResult = gpuCompute.createTexture();
+            dtResult.wrapS = THREE.RepeatWrapping;
+            dtResult.wrapT = THREE.RepeatWrapping;
+
+
+            // Điền dữ liệu vào texture vị trí
+            fillPositions(dtPosition);
+            fillPositions(dtResult);
+
+            // Thêm biến texture cho vị trí
+            texturePositionVariable = gpuCompute.addVariable('texturePosition', simulationFragPoint, dtPosition);
+            textureResultVariable = gpuCompute.addVariable('textureResult', simulationFragResult, dtResult);
+
+
+            gpuCompute.setVariableDependencies(textureResultVariable, [texturePositionVariable, textureResultVariable]);
+            gpuCompute.setVariableDependencies(texturePositionVariable, [texturePositionVariable, textureResultVariable]);
+
+
+            // Cấu hình uniforms
+            positionUniforms = texturePositionVariable.material.uniforms;
+            positionUniforms['uTime'] = { value: 0.0 };
+            positionUniforms['uTimeFixed'] = { value: 0.0 };
+            positionUniforms['VATDragon'] = { value: null };
+            positionUniforms['VATDragonSnap'] = { value: null };
+
+            // Thiết lập uniforms cho kết quả
+            resultUniforms = textureResultVariable.material.uniforms;
+            resultUniforms['uTime'] = { value: 0.0 };
+            resultUniforms['uTimeFixed'] = { value: 0.0 };
+            resultUniforms['VATDragon'] = { value: null }; // Nếu cần thiết
+
+            resultUniforms['VATDragonPrev'] = { value: null }; // Nếu cần thiết
+            // Khởi tạo GPU computation
+            
+            // Creates the gpu computation class and sets it up
+
+
+            const heightmap0 = gpuCompute.createTexture();
+
+            fillTexture(heightmap0);
+
+            heightmapVariable = gpuCompute.addVariable('heightmap', document.getElementById('heightmapFragmentShader').textContent, heightmap0);
+
+            gpuCompute.setVariableDependencies(heightmapVariable, [heightmapVariable]);
+
+            heightmapVariable.material.uniforms['mousePos'] = { value: new THREE.Vector2(0, 0) };
+            heightmapVariable.material.uniforms['mouseSize'] = { value: 0.1 };
+            heightmapVariable.material.uniforms['viscosityConstant'] = { value: 0.98 };
+            heightmapVariable.material.uniforms['heightCompensation'] = { value: 0 };
+            heightmapVariable.material.defines.BOUNDS = BOUNDS.toFixed(1);
+
+          
+            // Create compute shader to smooth the water surface and velocity
+            // smoothShader = gpuCompute.createShaderMaterial(document.getElementById('smoothFragmentShader').textContent, { smoothTexture: { value: null } });
+
+            // // Create compute shader to read water level
+            // readWaterLevelShader = gpuCompute.createShaderMaterial(document.getElementById('readWaterLevelFragmentShader').textContent, {
+            //     point1: { value: new THREE.Vector2() },
+            //     levelTexture: { value: null }
+            // });
+            // readWaterLevelShader.defines.WIDTH = WIDTH.toFixed(1);
+            // readWaterLevelShader.defines.BOUNDS = BOUNDS.toFixed(1);
+
+            // // Create a 4x1 pixel image and a render target (Uint8, 4 channels, 1 byte per channel) to read water height and orientation
+            // readWaterLevelImage = new Uint8Array(4 * 1 * 4);
+
+            // readWaterLevelRenderTarget = new THREE.WebGLRenderTarget(4, 1, {
+            //     wrapS: THREE.ClampToEdgeWrapping,
+            //     wrapT: THREE.ClampToEdgeWrapping,
+            //     minFilter: THREE.NearestFilter,
+            //     magFilter: THREE.NearestFilter,
+            //     format: THREE.RGBAFormat,
+            //     type: THREE.UnsignedByteType,
+            //     depthBuffer: false
+            // });
+
+
+            gpuCompute.init();
+
+            // Tạo particles
+            generateParticles();
+
+            // Hiển thị texture
+            showTexture();
+        }
+
+
+        function toggleDelta(dom) {
+            toggleDeltaUpdate = !toggleDeltaUpdate;
+            if (toggleDeltaUpdate) {
+                dom.textContent = "Stop delta";
+            } else {
+                dom.textContent = "Resume Delta";
+            }
+        }
+        function toggleCamera(dom) {
+            toggleCameraUpdate = !toggleCameraUpdate;
+            if (toggleCameraUpdate) {
+                dom.textContent = "Stop rot cam";
+            } else {
+                dom.textContent = "Resume rot cam";
+            }
+        }
+        if (delta_toggle) {
+            delta_toggle.addEventListener('click', (e) => {
+                toggleDelta(e.target);
+            });
+            camera_toggle.addEventListener('click', (e) => {
+                toggleCamera(e.target);
+            });
+        }
+
+        init();
+
+        initGPGPU()
+        //set lại camera và showTexture size/pos
+        // khi bật thì gpgpu sẽ lấy nhầm / hoặc cơ chế gpgpu dành cho 1 rendered
+        initModelAndPrepare();
+        initWater()
+        animate();
+
+
+        function initDataTexSnap() {
+            const width = SIZEVAT.x;
+            const height = SIZEVAT.y * UPSIZE_ + 10; // 1 nữa của obj, 1 nửa freestyle
+            console.log("SIZEVATSnap::::", width, height)
+            const size = width * height;
+
+            const data = new Float32Array(4 * size);
+
+            const le_c = ARRAYPOSMODEL.length / 3
+            for (let i = 0; i < size; i++) {
+                const stride = i * 4;
+                data[stride] = 0;
+                data[stride + 1] = 0;
+                data[stride + 2] = 0;
+                data[stride + 3] = 1;
+                if (i < 40000 && i < 39000) {
+                    data[stride] = Math.random();
+                    data[stride + 1] = Math.random();
+                    data[stride + 2] = Math.random();
+                }
+            }
+
+            textureFBOSnap = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
+            textureFBOSnap.needsUpdate = true;
+        }
+
+        function initDataTex() {
+            // TEXTURE NÀY PHẢI > POINT MODEL , PHẦN CÒN LẠI ÁP DỤNG SIM TRAIL
+
+            const width = SIZEVAT.x;
+            const height = SIZEVAT.y * UPSIZE_ + 10; // 1 nữa của obj, 1 nửa freestyle
+            console.log("SIZEVAT::::", width, height)
+            const size = width * height;
+
+            const data = new Float32Array(4 * size);
+
+            const le_c = ARRAYPOSMODEL.length / 3
+            for (let i = 0; i < size; i++) {
+                const stride = i * 4;
+                // if(i > le_c) {
+
+                //     data[stride] = Math.random();
+                //     data[stride + 1] = Math.random();
+                //     data[stride + 2] = Math.random();
+                //     data[stride + 3] = Math.random();
+
+                // }else{
+
+
+                // }
+                //   data[stride] = ARRAYPOSMODEL[i * 3];
+                //     data[stride + 1] = ARRAYPOSMODEL[i * 3 + 1];
+                //     data[stride + 2] = ARRAYPOSMODEL[i * 3 + 2];
+                //     data[stride + 3] = Math.random();
+                data[stride] = 0;
+                data[stride + 1] = 0;
+                data[stride + 2] = 0;
+                data[stride + 3] = 1;
+            }
+
+            textureFBO = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
+            textureFBO.needsUpdate = true;
+        }
+
+        function showTexture() {
+            const vertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                  vUv = uv;
+                }
+            `;
+
+            const fragmentShader = `
+                 varying vec2 vUv;
+                uniform sampler2D renderTex;
+                  float rand( vec2 co ){
+				return fract( sin( dot( co.xy, vec2(12.9898,78.233) ) ) * 43758.5453 );
+			}
+                void main() {
+                 vec4 tex = texture2D(renderTex,vUv);
+                    gl_FragColor = tex * vec4(vec3(rand(vUv)),1.);
+                }
+            `;
+
+            const shaderMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    renderTex: { value: null }
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                transparent: true,
+                side: 2
+            });
+            const geometry = new THREE.PlaneGeometry(3, 3);
+
+            meshShowTexture1 = new THREE.Mesh(geometry, shaderMaterial /* new THREE.MeshBasicMaterial({color:'blue'}) */);
+            meshShowTexture1.position.x = 5
+
+            scene.add(meshShowTexture1);
+            const vertexShader2 = `
+                varying vec2 vUv;
+                void main() {
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                  vUv = uv;
+                }
+            `;
+
+            const fragmentShader2 = `
+                varying vec2 vUv;
+                uniform sampler2D renderTex;
+                
+                void main() {
+                 vec4 tex = texture2D(renderTex,vUv);
+                    gl_FragColor = tex;
+                }
+            `;
+
+            const shaderMaterial2 = new THREE.ShaderMaterial({
+                uniforms: {
+                    renderTex: { value: null }
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                transparent: true,
+                side: 2
+            });
+
+
+            meshShowTexture2 = new THREE.Mesh(geometry, shaderMaterial2);
+            meshShowTexture2.position.x = -3
+
+            //   scene.add(meshShowTexture2);
+
+        }
+
+        function initModelAndPrepare() {
+            let root = gltfhelo.scene;
+            let clip = gltfhelo.animations[0];
+
+            root.traverse(function (child) {
+                if (child.name === "GLTF_created_0") {
+                    child.children[0].visible = false
+                    child.children[2].visible = false
+                }
+                if (child.name === "Object_233") {
+
+                    child.material.wireframe = false
+
+                    skinnedMesh = child
+
+
+                    skinnedMesh.geometry.index = null
+                    // set for use AABB , chưa hiểu vì sao có index thì err
+                    // index của model này quá lớn
+
+                    ARRAYPOSMODEL = skinnedMesh.geometry.attributes.position.array
+                    console.log(skinnedMesh.geometry.attributes.position)
+                    COUNTPOINT = skinnedMesh.geometry.attributes.position.count
+                    let withTex = Math.floor(Math.sqrt(COUNTPOINT))
+                    let heightTex = Math.floor(Math.sqrt(COUNTPOINT))
+                    SIZEVAT = new THREE.Vector2(withTex, heightTex)
+
+                    initDataTex()
+                    initDataTexSnap()
+                    //     showTexture()
+                    //    initPoint()
+
+                }
+            })
+
+
+            root.position.y = 2
+
+            root.scale.set(.2, .2, .2)
+            mixer = new THREE.AnimationMixer(root);
+            var action = mixer.clipAction(clip).play()
+
+
+
+ 
+            scene.add(root);
+
+            // show ordinary AABB
+
+            var defaultAABB = new THREE.Box3().setFromObject(root);
+            // scene.add(new THREE.Box3Helper(defaultAABB, 0xff0000));
+
+          //  scene.add(new THREE.Box3Helper(aabb, 0x00ff00));
+
+
+        }
+
+        function init() {
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // camera
+
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 1000);
+            camera.position.set(7, 7, 7)
+            camera.lookAt(new THREE.Vector3(0, 0, 0))
+            cameraVitrualForMinor = new THREE.PerspectiveCamera(45, width / height, 0.01, 1000);
+            cameraVitrualForMinor.position.set(40, 40, 40)
+            cameraVitrualForMinor.lookAt(new THREE.Vector3(0, 0, 0))
+            
+            // renderer
+            cameraO = new THREE.OrthographicCamera(width / - 345, width / 345, height / 345, height / - 345, 0.001, 1000);
+            cameraO.position.set(0, 0, 1)
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            
+            renderer.setClearColor(0x222222)
+            renderer.setClearAlpha(0)
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(width, height);
+            document.body.appendChild(renderer.domElement);
+            document.body.addEventListener( 'pointermove', onPointerMove );
+
+            // scene
+
+            scene = new THREE.Scene();
+            scene2 = new THREE.Scene();
+
+            scene.background = new THREE.Color(0x00000);
+            const light = new THREE.AmbientLight(0xffffff, 20); // soft white light
+            scene.add(light);
+            const directionalLight = new THREE.DirectionalLight( 0xffffff, 10.5 );
+            scene.add( directionalLight );
+            const axesHelper = new THREE.AxesHelper(5);
+           // scene.add(axesHelper);
+    
+scene.fog =  new THREE.Fog( 0x00000, 0, 50 );
+
+const geometry = new THREE.BoxGeometry( 10, 10, 10 ); 
+const material = new THREE.MeshPhongMaterial( {color: 0xffffff,fog:true} ); 
+const cube = new THREE.Mesh( geometry, material ); 
+//scene.add( cube );
+
+
+            mirrorFront1 = new Reflector(
+                new THREE.PlaneGeometry(BOUNDS, BOUNDS, WIDTH - 1, WIDTH - 1), 
+                {
+                color: new THREE.Color('blue'),
+
+                textureWidth: window.innerWidth * window.devicePixelRatio,
+                textureHeight: window.innerHeight * window.devicePixelRatio,
+            })
+        
+            mirrorFront1.rotation.x = 4.7
+            mirrorFront1.position.y = yAxisForMinorAndRay
+        
+            scene.add(mirrorFront1)
+
+            
+				const sun = new THREE.DirectionalLight( 0xFFFFFF, 3.0 );
+				sun.position.set( 300, 400, 175 );
+				scene.add( sun );
+
+				const sun2 = new THREE.DirectionalLight( 0x40A040, 2.0 );
+				sun2.position.set( - 100, 350, - 200 );
+				scene.add( sun2 );
+
+
+            // controls
+
+       controls = new OrbitControls(camera, renderer.domElement);
+
+            // controls2 = new OrbitControls(cameraVitrualForMinor, renderer.domElement);
+            // stats
+
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            // listeners
+
+            window.addEventListener('resize', onWindowResize);
+
+        }
+
+        function onWindowResize() {
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(width, height);
+
+        }
+
+        function animate() {
+
+            requestAnimationFrame(animate);
+
+
+          if(toggleCameraUpdate){
+            controls.enableRotate  = true
+          }else{
+            controls.enableRotate = false
+          }
+            stats.update();
+
+            render();
+
+        }
+
+        function isInteger(num) {
+            return num % 1 === 0;
+        }
+
+
+        function updateAABB(skinnedMesh, aabb, sendVar) {
+
+            let skeleton = skinnedMesh.skeleton;
+            let boneMatrices = skeleton.boneMatrices;
+            let geometry = skinnedMesh.geometry;
+
+            let index = geometry.index;
+            let position = geometry.attributes.position;
+            let skinIndex = geometry.attributes.skinIndex;
+            let skinWeigth = geometry.attributes.skinWeight;
+
+            let bindMatrix = skinnedMesh.bindMatrix;
+            let bindMatrixInverse = skinnedMesh.bindMatrixInverse;
+
+            let i, j, si, sw;
+
+            aabb.makeEmpty();
+
+            // 
+
+            if (index !== null) {
+
+                // indexed geometry
+
+                for (i = 0; i < index.count; i++) {
+
+                    vertex.fromBufferAttribute(position, index[i]);
+                    skinIndices.fromBufferAttribute(skinIndex, index[i]);
+                    skinWeights.fromBufferAttribute(skinWeigth, index[i]);
+
+                    // the following code section is normally implemented in the vertex shader
+
+                    vertex.applyMatrix4(bindMatrix); // transform to bind space
+                    skinned.set(0, 0, 0);
+
+                    for (j = 0; j < 4; j++) {
+
+                        si = skinIndices.getComponent(j);
+                        sw = skinWeights.getComponent(j);
+                        boneMatrix.fromArray(boneMatrices, si * 16);
+
+                        // weighted vertex transformation
+
+                        temp.copy(vertex).applyMatrix4(boneMatrix).multiplyScalar(sw);
+                        skinned.add(temp);
+
+                    }
+
+                    skinned.applyMatrix4(bindMatrixInverse); // back to local space
+
+                    // expand aabb
+
+                    aabb.expandByPoint(skinned);
+
+                }
+
+            } else {
+
+                // non-indexed geometry
+                //console.log(position.count)
+
+                for (i = 0; i < position.count; i++) {
+
+                    vertex.fromBufferAttribute(position, i);
+                    skinIndices.fromBufferAttribute(skinIndex, i);
+                    skinWeights.fromBufferAttribute(skinWeigth, i);
+
+                    // the following code section is normally implemented in the vertex shader
+
+                    vertex.applyMatrix4(bindMatrix); // transform to bind space
+                    skinned.set(0, 0, 0);
+
+                    for (j = 0; j < 4; j++) {
+
+                        si = skinIndices.getComponent(j);
+                        sw = skinWeights.getComponent(j);
+                        boneMatrix.fromArray(boneMatrices, si * 16);
+
+                        // weighted vertex transformation
+
+                        temp.copy(vertex).applyMatrix4(boneMatrix).multiplyScalar(sw);
+                        skinned.add(temp);
+
+                    }
+
+                    skinned.applyMatrix4(bindMatrixInverse); // back to local space
+
+                    // expand aabb
+
+                    aabb.expandByPoint(skinned);
+
+                    if (textureFBO) {
+                        /*    const printFrom2 = 195000 
+                           textureFBO.source.data.data[(i * 4) + printFrom2] = skinned.x / 12;
+                           textureFBO.source.data.data[(i * 4 + 1) + printFrom2] = skinned.y / 12 - 3.;
+                           textureFBO.source.data.data[(i * 4 + 2) + printFrom2] = skinned.z / 12; */
+
+                    }
+                    /*    if(i % 5 === 0) {
+                           textureFBO.source.data.data[180000 + (i * 4)] = .2;
+                           textureFBO.source.data.data[180000 + (i * 4 + 1)] =.2;
+                           textureFBO.source.data.data[180000 + (i * 4 + 2)] = .2;
+                       } */
+
+                    /*                    const printFrom3 = 100000 
+                                       textureFBO.source.data.data[(i * 4) + printFrom3] = skinned.x / 12;
+                                           textureFBO.source.data.data[(i * 4 + 1) + printFrom3] = skinned.y / 12 - 9.;
+                                           textureFBO.source.data.data[(i * 4 + 2) + printFrom3] = skinned.z / 12; */
+
+
+
+                    const printFromSmooth = 0
+                    textureFBO.source.data.data[(i * 4) + printFromSmooth] = skinned.x / 12 - 1.;
+                    textureFBO.source.data.data[(i * 4 + 1) + printFromSmooth] = skinned.y / 12 - 2.;
+                    textureFBO.source.data.data[(i * 4 + 2) + printFromSmooth] = skinned.z / 12 - 1.;
+                    const printFrom1 = 0
+                    /*   if (sendVar === true) {
+                        
+                          textureFBO.source.data.data[(i * 4) + printFrom1] = skinned.x / 12 + 3;
+                          textureFBO.source.data.data[(i * 4 + 1) + printFrom1] = skinned.y / 12 ;
+                          textureFBO.source.data.data[(i * 4 + 2) + printFrom1] = skinned.z / 12;
+                       
+                       
+                      }
+     
+                      const printFrom2 = 23600 * 4
+                          textureFBO.source.data.data[(i * 4) + printFrom2] = skinned.x / 12 + 6;
+                          textureFBO.source.data.data[(i * 4 + 1) + printFrom2] = skinned.y / 12 ;
+                          textureFBO.source.data.data[(i * 4 + 2) + printFrom2] = skinned.z / 12;
+  
+                          const printFrom3 = 23600 * 8
+                          textureFBO.source.data.data[(i * 4) + printFrom3] = skinned.x / 12 - 3;
+                          textureFBO.source.data.data[(i * 4 + 1) + printFrom3] = skinned.y / 12 ;
+                          textureFBO.source.data.data[(i * 4 + 2) + printFrom3] = skinned.z / 12; */
+
+
+                }
+
+            }
+            textureFBO.needsUpdate = true
+            aabb.applyMatrix4(skinnedMesh.matrixWorld);
+
+        }
+
+        // Hàm tạo số ngẫu nhiên trong phạm vi [0, max)
+        function getRandomIntInRange(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function getRandomIntFromTwoRanges(range1, range2) {
+            const useFirstRange = Math.random() > 0.8; // 50% xác suất chọn range1 hoặc range2
+            if (useFirstRange) {
+                return getRandomIntInRange(range1[0], range1[1]);
+            } else {
+                return getRandomIntInRange(range2[0], range2[1]);
+            }
+        }
+
+        function remixTexture(target, snap, countSnap) {
+
+            const nextFrame = ((offset * 4) * countSnap)
+            let normalizeCountFrame = countSnap / totalFrame
+            if (arrayFrameOffset.length < totalFrame) {
+                arrayFrameOffset.push(nextFrame);
+            }
+
+            for (let j = 0; j < arrayFrameOffset.length; j++) {
+                if (arrayFrameOffset[j] !== nextFrame) {
+                    for (let e = 0; e < pointEachFrame; e++) {
+                        snap.source.data.data[(e * 4 + 2) + arrayFrameOffset[j]] -= .36
+                    }
+                }
+            }
+
+            snap.needsUpdate = true;
+        }
+
+        function snapTexture(target, snap, countSnap, lastTimeFixed, time) {
+            // update index frame
+
+
+
+            const nextFrame = ((offset * 4) * countSnap)
+            for (let i = 0; i < pointEachFrame; i++) {
+                // custom = mắt 
+                // có thể sắp xếp từng cụm vert trong blender
+                // (0, 1200) , cánh nè
+                // (8000, 8200) , đuôi nè
+                // khoảng 1k2 đến 1k3,4 là đầu
+                const randomAll = getRandomIntInRange(0, 20000);
+                const random2CaiCanh = getRandomIntInRange(0, 1400);
+                const randomCaiDuoi = getRandomIntInRange(8000, 8200);
+                const randomCanhVaDuoi = getRandomIntFromTwoRanges([0, 1200], [8000, 8200]);
+
+                const downSize = (countSnap / totalFrame) * 0
+                // cái này phải xác định trục z của model
+                // thêm 1 buffer sp những val này, cập nhật từ aabb, xuất thành matrix
+
+
+
+                snap.source.data.data[(i * 4) + nextFrame] = textureFBO.source.data.data[(random2CaiCanh * 4)] + downSize;
+                snap.source.data.data[(i * 4 + 1) + nextFrame] = textureFBO.source.data.data[(random2CaiCanh * 4 + 1)] + downSize;
+                snap.source.data.data[(i * 4 + 2) + nextFrame] = textureFBO.source.data.data[(random2CaiCanh * 4 + 2)] - 0.042 + downSize;
+                snap.source.data.data[(i * 4 + 3) + nextFrame] = 0.4242;
+                // mark frame
+
+                // let rand = Math.random()
+                // snap.source.data.data[(i * 4) + 150000] = rand;
+                // snap.source.data.data[(i * 4 + 1) + 150000] = rand;
+                // snap.source.data.data[(i * 4 + 2) + 150000] = 0;
+            }
+
+
+
+            snap.needsUpdate = true;
+
+
+        }
+
+        function calculateCam(virtualCamera, scope, cameraWord) {
+
+            reflectorWorldPosition.setFromMatrixPosition(scope.matrixWorld);
+            cameraWorldPosition.setFromMatrixPosition(cameraWord.matrixWorld);
+
+            rotationMatrix.extractRotation(scope.matrixWorld);
+
+            normal.set(0, 0, 1);
+            normal.applyMatrix4(rotationMatrix);
+
+            view.subVectors(reflectorWorldPosition, cameraWorldPosition);
+
+            // Avoid rendering when reflector is facing away
+
+            if (view.dot(normal) > 0) return;
+
+            view.reflect(normal).negate();
+            view.add(reflectorWorldPosition);
+
+            rotationMatrix.extractRotation(cameraWord.matrixWorld);
+
+            lookAtPosition.set(0, 0, - 1);
+            lookAtPosition.applyMatrix4(rotationMatrix);
+            lookAtPosition.add(cameraWorldPosition);
+
+            target.subVectors(reflectorWorldPosition, lookAtPosition);
+            target.reflect(normal).negate();
+            target.add(reflectorWorldPosition);
+
+            virtualCamera.position.copy(view);
+            virtualCamera.up.set(0, 1, 0);
+            virtualCamera.up.applyMatrix4(rotationMatrix);
+            virtualCamera.up.reflect(normal);
+            virtualCamera.lookAt(target);
+
+            virtualCamera.far = cameraWord.far; // Used in WebGLBackground
+
+            virtualCamera.updateMatrixWorld();
+            virtualCamera.projectionMatrix.copy(cameraWord.projectionMatrix);
+
+            // Update the texture matrix
+            textureMatrix.set(
+                0.5, 0.0, 0.0, 0.5,
+                0.0, 0.5, 0.0, 0.5,
+                0.0, 0.0, 0.5, 0.5,
+                0.0, 0.0, 0.0, 1.0
+            );
+            textureMatrix.multiply(virtualCamera.projectionMatrix);
+            textureMatrix.multiply(virtualCamera.matrixWorldInverse);
+            textureMatrix.multiply(scope.matrixWorld);
+
+            // Now update projection matrix with new clip plane, implementing code from: http://www.terathon.com/code/oblique.html
+            // Paper explaining this technique: http://www.terathon.com/lengyel/Lengyel-Oblique.pdf
+            reflectorPlane.setFromNormalAndCoplanarPoint(normal, reflectorWorldPosition);
+            reflectorPlane.applyMatrix4(virtualCamera.matrixWorldInverse);
+
+            clipPlane.set(reflectorPlane.normal.x, reflectorPlane.normal.y, reflectorPlane.normal.z, reflectorPlane.constant);
+
+            const projectionMatrix = virtualCamera.projectionMatrix;
+
+            q.x = (Math.sign(clipPlane.x) + projectionMatrix.elements[8]) / projectionMatrix.elements[0];
+            q.y = (Math.sign(clipPlane.y) + projectionMatrix.elements[9]) / projectionMatrix.elements[5];
+            q.z = - 1.0;
+            q.w = (1.0 + projectionMatrix.elements[10]) / projectionMatrix.elements[14];
+
+            // Calculate the scaled plane vector
+            clipPlane.multiplyScalar(2.0 / clipPlane.dot(q));
+
+            // Replacing the third row of the projection matrix
+            projectionMatrix.elements[2] = clipPlane.x;
+            projectionMatrix.elements[6] = clipPlane.y;
+            projectionMatrix.elements[10] = clipPlane.z + 1.0 - clipBias;
+            projectionMatrix.elements[14] = clipPlane.w;
+
+            save_projectionMatrix_minor = projectionMatrix
+
+      
+        }
+
+        function render() {
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime()
+
+            //GPGPU
+            if (toggleDeltaUpdate) {
+                positionUniforms['uTimeFixed'].value = elapsedTime.toFixed(1);
+                positionUniforms['uTime'].value = clock.getElapsedTime()
+
+                resultUniforms['uTimeFixed'].value = elapsedTime.toFixed(1);
+                resultUniforms['uTime'].value = clock.getElapsedTime()
+
+                materialPointGPU.uniforms.uTimeFixed.value = elapsedTime.toFixed(1)
+                materialPointGPU.uniforms.uTime.value = clock.getElapsedTime()
+
+
+                mirrorFront1.material.uniforms["uTime"].value = clock.getElapsedTime()
+
+            }
+
+            positionUniforms['VATDragon'].value = textureFBO;
+            resultUniforms['VATDragon'].value = textureFBO;
+            resultUniforms['VATDragonPrev'].value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            materialPointGPU.uniforms.VATDragon.value = textureFBO
+
+
+            //Fuck SkinnedMesh
+            if (mixer !== undefined) {
+                // mixer.setTime(1.5);
+                const timeNoituyen = Math.sin(delta * 3. + speedModel / 100.)
+                if (toggleDeltaUpdate) mixer.update(timeNoituyen);
+
+                updateAABB(skinnedMesh, aabb, sendVar);
+
+
+                if (toggleDeltaUpdate) {
+                    countLoopSnap += 1
+                    if (countLoopSnap > totalFrame) countLoopSnap = 1 // để vòng loop mới get đc 0
+                    snapTexture(textureFBO, textureFBOSnap, countLoopSnap, lastTimeFixed, clock.getElapsedTime())
+                    remixTexture(textureFBO, textureFBOSnap, countLoopSnap)
+                }
+
+
+                if (elapsedTime - lastTime >= 0.1) {
+
+
+                    sendVar = true;
+                    lastTime = elapsedTime;
+                } else {
+                    sendVar = false;
+                }
+
+
+
+            }
+
+            const uniforms = heightmapVariable.material.uniforms;
+            if (mouseMoved) {
+             
+                raycaster.setFromCamera(mouseCoords, camera);
+              
+                const intersects = raycaster.intersectObject(meshRay);
+             
+                if (intersects.length > 0) {
+
+                    const point = intersects[0].point;
+                    // not work
+       
+                    uniforms['mousePos'].value.set(point.x, point.z);
+
+                } else {
+      
+                    uniforms['mousePos'].value.set(50000, 50000);
+
+                }
+
+                mouseMoved = false;
+
+            } else {
+              
+                 uniforms['mousePos'].value.set(50000, 50000);
+
+            }
+
+            materialPointGPU.uniforms.uTexSnapCPU.value = textureFBOSnap
+            positionUniforms['VATDragonSnap'].value = textureFBOSnap;
+
+            gpuCompute.compute()
+            materialPointGPU.uniforms.uTexturePosition.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            materialPointGPU.uniforms.uTextureResult.value = gpuCompute.getCurrentRenderTarget(textureResultVariable).texture;
+           
+
+
+            if (materialPoint) materialPoint.uniforms.dataTexture.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            if (meshShowTexture1 && meshShowTexture2 && gpuCompute) {
+                meshShowTexture1.material.uniforms.renderTex.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;;
+                meshShowTexture2.material.uniforms.renderTex.value = textureFBOSnap;
+            }
+
+
+
+            const currentRenderTarget = renderer.getRenderTarget();
+
+            // Render cảnh vào renderTarget
+            renderer.setRenderTarget(renderTarget_ForMinor);
+            // khi bật cái này , fps better a litt
+            // renderer.clear(); // Xóa render target nếu cần
+          
+            //  cameraVitrualForMinor.position.set(camera.position.x,camera.position.y,camera.position.z)
+
+            //  cameraVitrualForMinor.position.multiplyScalar(4)
+            // cameraVitrualForMinor.rotation.set(camera.rotation.x,camera.rotation.y,camera.rotation.z)
+
+            // Tính toán vị trí cam qua Reflector.js , cập nhật matrix của mesh so với camera chính ( camera cảnh chính) và vitrual camera
+            calculateCam(cameraVitrualForMinor, mirrorFront1, camera) // meshRay cũng dc
+          
+           // waterUniforms['textureMatrix'].value = targetne;
+            renderer.render(scene, cameraVitrualForMinor);
+
+            // Phục hồi render target ban đầu
+            renderer.setRenderTarget(currentRenderTarget);
+
+            // Cập nhật texture cho mirrorFront1
+            let targetne = renderTarget_ForMinor.texture
+
+            // not work
+            // targetne.flipY = true
+            // targetne.needsUpdate = true
+            // targetne.repeat.x = - 1;
+
+          
+            mirrorFront1.material.uniforms["tDiffuse"].value = targetne;
+            mirrorFront1.material.uniforms["tHeightMap"].value =  gpuCompute.getCurrentRenderTarget(heightmapVariable).texture;
+           
+            // waterUniforms['fboMinor'].value = targetne;
+           
+            // waterUniforms['textureMatrix'].value = save_projectionMatrix_minor;
+
+            // Render cảnh chính
+          //  renderer.clear()
+            camera.scale.y = 1;
+            renderer.render(scene, camera);
+
+
+        }
+
+    </script>
+
+</body>
+
+</html>

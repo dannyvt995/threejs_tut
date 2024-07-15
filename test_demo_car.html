@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>three.js webgl - mesh - batch</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+
+</head>
+
+<style>
+    body {
+        background-color: #fff;
+        color: #444;
+        margin: 0;
+        padding: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    a {
+        color: #08f;
+    }
+</style>
+
+<body>
+
+
+    <script type="importmap">
+		{
+			"imports": {
+				"three": "./three.module.js",
+				"three/addons/": "./jsm/"
+			}
+		}
+	</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/DRACOLoader.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { radixSort } from 'three/addons/SortUtils.js';
+        import { MeshSurfaceSampler } from 'three/addons/MeshSurfaceSampler.js';
+
+
+        import { ShaderPass } from 'three/addons/ShaderPass.js';
+        import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/EffectComposer.js";
+        import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/RenderPass.js";
+        import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/UnrealBloomPass.js";
+        import { AfterimagePass } from 'https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/AfterimagePass.js';
+
+        import { Reflector } from 'three/addons/Reflector.js';
+
+        let meshShowTexture, renderTarget, model, stats, gui, guiStatsEl, mixer, mixer1, sampler, meshSamplerInstanced, pointsSkin;
+        let camera, controls, scene, scene2, renderer;
+        let geometries, mesh, material;
+        let saveMat, saveGeo, dataColection
+        let renderBufferA, renderBufferB, postFXScene, postFXMesh
+        let composer, finalComposer, renderTarget1, renderTarget2, nonBloomComposer
+        const clock = new THREE.Clock();
+        //for skined static
+        const bindMatrixSTATIC = new THREE.Matrix4();
+        bindMatrixSTATIC.set(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+        const bindMatrixInverseSTATIC = new THREE.Matrix4();
+        bindMatrixInverseSTATIC.set(0.1139, 0, 0, 0, 0, 0.1139, 0, 0, 0, 0, 0.1139, 0, 0, 34.1586, 0, 1);
+
+        let pmremGen, envMap, mCustom , meshCheck
+
+        init();
+
+        initMesh();
+        animate();
+
+        function initMesh() {
+
+            const loader = new GLTFLoader().setPath("models/");
+            const dracoLoader = new DRACOLoader();
+            dracoLoader.setDecoderPath('/jsm/draco/');
+            loader.setDRACOLoader(dracoLoader);
+
+
+            pmremGen = new THREE.PMREMGenerator(renderer)
+            pmremGen.compileEquirectangularShader()
+            envMap = new THREE.TextureLoader().load('./textures/envc2.png', (tex) => {
+                envMap = pmremGen.fromEquirectangular(tex).texture
+                pmremGen.dispose()
+                loader.load('buggati_face_2.glb', async function (gltf) {
+
+                    model = gltf.scene;
+                    console.log(model)
+                    //  
+                    model.children[0].rotation.set(0, 0, 0)
+                    model.children[0].position.set(0, 0, 0)
+                    //model.rotation.y = -.168
+                    // model.children[0].material.wireframe = true
+                    //  model.children[0].material = new THREE.MeshPhongMaterial({ color: 0x030e3d })
+
+                    model.children[0].scale.set(60, 60, 60)
+
+                    model.children[0].geometry.center()
+
+                    mCustom = new THREE.MeshStandardMaterial({
+                        //color:0x010103,
+                        metalness: 1,
+                        roughness: 0.2
+                    })
+                    mCustom.envMap = envMap
+                    model.children[0].material = mCustom
+                    model.children[0].material.side = 2
+                    model.children[0].renderOrder = 1;
+                    scene.add(model)
+
+
+
+                    // wireframe
+                    var geometry2 = new THREE.WireframeGeometry(model.children[0].geometry); // or EdgesGeometry
+                    var material2 = new THREE.LineBasicMaterial({
+                        color: 0x60b1c9,
+                        opacity: .1,
+                        transparent: true,
+                        linewidth: 0.01,
+                        linecap: 'round', //ignored by WebGLRenderer
+                        linejoin: 'round' //ignored by WebGLRenderer
+                    });
+                    var wireframe = new THREE.LineSegments(geometry2, material2);
+                    wireframe.scale.set(60, 60, 60)
+
+                    wireframe.renderOrder = 2;
+                    scene2.add(wireframe)
+
+
+                    let groundMirror = new Reflector(new THREE.PlaneGeometry(2000, 2000), {
+                        clipBias: 0.003,
+                        textureWidth: window.innerWidth * window.devicePixelRatio * .5,
+                        textureHeight: window.innerHeight * window.devicePixelRatio * .5,
+                        color: 0xc1cbcb
+                    });
+                    groundMirror.position.y = -120
+                    groundMirror.rotation.x = Math.PI * 1.5
+                    scene.add(groundMirror);
+
+                });
+
+            })
+
+
+
+
+        }
+
+        function init() {
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // camera
+
+            camera = new THREE.OrthographicCamera(
+                -width / 2,
+                width / 2,
+                height / 2,
+                -height / 2,
+                0.0001,
+                100000,
+            )
+            camera = new THREE.PerspectiveCamera(45, width / height, 1, 100000);
+
+            camera.position.set(400, 200, 700)
+            camera.lookAt(new THREE.Vector3(0, 0, 0))
+            // renderer
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setClearColor(0x222222)
+            renderer.setClearAlpha(0)
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(width, height);
+
+            renderer.toneMapping = THREE.ACESFilmicToneMapping
+            renderer.toneMappingExposure = .242
+            document.body.appendChild(renderer.domElement);
+
+            // scene
+            meshCheck = new THREE.Mesh(
+                new THREE.PlaneGeometry(300,300),
+                new THREE.ShaderMaterial({
+                uniforms: {
+                    baseTexture: { value: null },
+                    bloomTexture: { value: null }
+                },
+                        vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                        fragmentShader: `
+                    uniform sampler2D baseTexture;
+                    uniform sampler2D bloomTexture;
+                    varying vec2 vUv;
+                    void main() {
+                        vec4 base = texture2D(baseTexture, vUv);
+                        vec4 bloom = texture2D(bloomTexture, vUv);
+                        gl_FragColor = base;
+                    }
+                `,})
+            )
+            meshCheck.position.x = 200
+            scene = new THREE.Scene();
+            scene.add(meshCheck)
+            scene2 = new THREE.Scene();
+            scene.background = new THREE.Color(0x010103);
+            scene2.background = new THREE.Color(0x010103);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, .75);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(directionalLight);
+            directionalLight.position.z = -1200
+            directionalLight.position.x = -300
+            directionalLight.position.y = 100
+            const helper = new THREE.DirectionalLightHelper( directionalLight, 50 );
+            scene.add( helper );
+            // scene.add(ambientLight);
+
+            // controls
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 1.0;
+
+            // axes
+            const axesHelper = new THREE.AxesHelper(5000);
+            scene.add(axesHelper);
+
+            //composer
+
+            renderTarget1 = new THREE.WebGLRenderTarget(width, height, { format: THREE.RGBAFormat });
+            renderTarget2 = new THREE.WebGLRenderTarget(width, height, { format: THREE.RGBAFormat });
+
+
+            const renderScene = new RenderPass(scene, camera);
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1, 0, 0);
+
+            composer = new EffectComposer(renderer, renderTarget1);
+            composer.addPass(renderScene);
+           composer.addPass(bloomPass);
+
+            const renderScene2 = new RenderPass(scene2, camera);
+            nonBloomComposer = new EffectComposer(renderer, renderTarget2);
+            nonBloomComposer.addPass(renderScene2);
+
+            const finalPass = new ShaderPass(new THREE.ShaderMaterial({
+                uniforms: {
+                    baseTexture: { value: null },
+                    bloomTexture: { value: null }
+                },
+                vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+                fragmentShader: `
+            uniform sampler2D baseTexture;
+            uniform sampler2D bloomTexture;
+            varying vec2 vUv;
+            void main() {
+                vec4 base = texture2D(baseTexture, vUv);
+                vec4 bloom = texture2D(bloomTexture, vUv);
+                gl_FragColor = base + bloom;
+            }
+        `,
+                defines: {}
+            }), 'baseTexture');
+            finalComposer = new EffectComposer(renderer);
+            finalComposer.addPass(finalPass);
+
+
+            // stats
+
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            // listeners
+
+            window.addEventListener('resize', onWindowResize);
+
+        }
+
+
+
+
+        function onWindowResize() {
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(width, height);
+
+        }
+
+        function animate() {
+
+            requestAnimationFrame(animate);
+
+
+            //controls.update();
+            stats.update();
+
+            render();
+
+        }
+
+
+        function render() {
+            const delta = clock.getDelta();
+
+       
+            composer.render(delta);
+
+        
+           
+        }
+
+    </script>
+
+</body>
+
+</html>

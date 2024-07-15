@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>three.js webgl - mesh - batch</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+
+</head>
+
+<style>
+    body {
+        background-color: #fff;
+        color: #444;
+        margin: 0;
+        padding: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    a {
+        color: #08f;
+    }
+
+    p {
+        display: none;
+    }
+</style>
+
+<body>
+
+    <p>https://codesandbox.io/p/sandbox/three-js-instanced-skinned-mesh-2yfgiu?file=%2Findex.html%3A22%2C1</p>
+    <script type="importmap">
+		{
+			"imports": {
+				"three": "./three.module.js",
+				"three/addons/": "./jsm/"
+			}
+		}
+	</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/DRACOLoader.js';
+        import { ColladaLoader } from 'three/addons/ColladaLoader.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
+
+
+        const loaderAlone = new GLTFLoader();
+        const gltfhelo = await loaderAlone.loadAsync('./dragon.gltf');
+
+        let meshShowTexture1,meshShowTexture2, renderTarget, model, stats, gui, guiStatsEl, mixer, mixer1, sampler, meshSamplerInstanced, pointsSkin;
+        let camera, controls, scene, scene2, renderer, cameraO
+
+        let saveMat, saveGeo, dataColection, materialPoint
+        let time = 0
+        let textureFBO, pointsCustom, sphereCheck
+
+        let ARRAYPOSMODEL
+        let COUNTPOINT
+        let SIZEVAT = new THREE.Vector2()
+        let lastTime = 0;
+        //new
+        let dataDragonAnim, skinnedMesh
+        const clock = new THREE.Clock();
+        //AABB
+        let aabb = new THREE.Box3();
+        let vertex = new THREE.Vector3();
+        let temp = new THREE.Vector3();
+        let skinned = new THREE.Vector3();
+        let skinIndices = new THREE.Vector4();
+        let skinWeights = new THREE.Vector4();
+        let boneMatrix = new THREE.Matrix4();
+        let sendVar
+        //gpgpu
+        let geometryPointGPU, materialPointGPU, gpuCompute, texturePositionVariable
+        let positionUniforms, velocityUniforms
+        const UPSIZE_ = 4
+        const WIDTHGPGPU = 154 * UPSIZE_; // dư ra 1 ít
+        let vertexShaderPointGPU = `
+            precision mediump float;
+
+            uniform float uTime; 
+
+            varying vec2 vUv;
+            varying vec4 vPos;
+            varying vec2 vuvID;
+            uniform sampler2D uTexturePosition;
+            uniform float WIDTHGPGPU;
+            uniform sampler2D  uTextureResult;
+           // attribute vec2 position;
+            attribute vec2 reference;
+            uniform vec2 uSizeVAT;
+            float PI = 3.141592653589793238;
+
+            void main() {
+                //vUv = uv;
+                vUv = reference;
+
+
+                float x = mod(float(gl_VertexID), WIDTHGPGPU);
+                float y = floor(float(gl_VertexID) / WIDTHGPGPU);
+                vec2 uvID = vec2(x / WIDTHGPGPU, y / (WIDTHGPGPU/1.));
+
+                vec4 pos = texture(uTexturePosition, uvID).xyzw;
+                vec4 pos2 = texture(uTextureResult, uvID).xyzw;
+                if(pos2.x == 0. && pos2.y == 0. && pos2.z == 0.) {
+                    pos2 = vec4(position,1.); //rand smoke
+                    
+                }  
+                if(pos.x == 0. && pos.y == 0. && pos.z == 0.) {
+                   
+                      pos = vec4(position,1.); //rand smoke
+                }
+
+                vuvID = uvID;
+
+                vec3 getSpace1 = vec3(1.);
+
+                vec3 pop = position;
+           //     pop = mix(pos.xyz,vec3(0.),cos(uTime)/5.);
+
+
+                vec4 mvPosition = modelViewMatrix * vec4( (pos.xyz ), 1.);
+                vPos = pos;
+                gl_PointSize = 2.;
+                gl_Position = projectionMatrix * mvPosition;
+            }
+            `;
+        let fragmentShaderPointGPU = `
+                    //precision mediump float;
+                    varying vec4 vPos;
+                    varying vec2 vUv;
+                    varying vec2 vuvID;
+
+                    void main() {
+                        vec4 rls = vec4(1.);
+                        if(vuvID.y < .5) {
+                            rls *= vec4(vPos.w*2.,.5,.2,vPos.w);
+                        }else{
+                             rls *= vec4(vPos.xyz * 2.,1.);
+                        };
+                       gl_FragColor = rls;
+                    }
+
+            `;
+        let simulationFragPoint = `
+            precision mediump float;
+            uniform float uTime;
+              uniform float uTimeFixed;
+            
+            uniform sampler2D uTexturePosition;
+            uniform sampler2D VATDragon;
+            float PI = 3.141592653589793238;
+	        float rand( vec2 co ){
+				return fract( sin( dot( co.xy, vec2(12.9898,78.233) ) ) * 43758.5453 );
+			}
+                float random(float seed) {
+                    return fract(sin(seed) * 43758.5453123);
+                }
+                    //////
+                        vec3 mod289(vec3 x) {
+            return x - floor(x * (1.0 / 289.0)) * 289.0;
+            }
+
+            vec4 mod289(vec4 x) {
+            return x - floor(x * (1.0 / 289.0)) * 289.0;
+            }
+
+            vec4 permute(vec4 x) {
+                return mod289(((x*34.0)+1.0)*x);
+            }
+
+            vec4 taylorInvSqrt(vec4 r)
+            {
+            return 1.79284291400159 - 0.85373472095314 * r;
+            }
+
+            float snoise(vec3 v)
+            { 
+            const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+            const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+            // First corner
+            vec3 i  = floor(v + dot(v, C.yyy) );
+            vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+            // Other corners
+            vec3 g = step(x0.yzx, x0.xyz);
+            vec3 l = 1.0 - g;
+            vec3 i1 = min( g.xyz, l.zxy );
+            vec3 i2 = max( g.xyz, l.zxy );
+
+            //   x0 = x0 - 0.0 + 0.0 * C.xxx;
+            //   x1 = x0 - i1  + 1.0 * C.xxx;
+            //   x2 = x0 - i2  + 2.0 * C.xxx;
+            //   x3 = x0 - 1.0 + 3.0 * C.xxx;
+            vec3 x1 = x0 - i1 + C.xxx;
+            vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+            vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
+
+            // Permutations
+            i = mod289(i); 
+            vec4 p = permute( permute( permute( 
+                        i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                    + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                    + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+            // Gradients: 7x7 points over a square, mapped onto an octahedron.
+            // The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)
+            float n_ = 0.142857142857; // 1.0/7.0
+            vec3  ns = n_ * D.wyz - D.xzx;
+
+            vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
+
+            vec4 x_ = floor(j * ns.z);
+            vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+            vec4 x = x_ *ns.x + ns.yyyy;
+            vec4 y = y_ *ns.x + ns.yyyy;
+            vec4 h = 1.0 - abs(x) - abs(y);
+
+            vec4 b0 = vec4( x.xy, y.xy );
+            vec4 b1 = vec4( x.zw, y.zw );
+
+            //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
+            //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
+            vec4 s0 = floor(b0)*2.0 + 1.0;
+            vec4 s1 = floor(b1)*2.0 + 1.0;
+            vec4 sh = -step(h, vec4(0.0));
+
+            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+            vec3 p0 = vec3(a0.xy,h.x);
+            vec3 p1 = vec3(a0.zw,h.y);
+            vec3 p2 = vec3(a1.xy,h.z);
+            vec3 p3 = vec3(a1.zw,h.w);
+
+            //Normalise gradients
+            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+            p0 *= norm.x;
+            p1 *= norm.y;
+            p2 *= norm.z;
+            p3 *= norm.w;
+
+            // Mix final noise value
+            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+            m = m * m;
+            return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                            dot(p2,x2), dot(p3,x3) ) );
+            }
+
+            ///////////////////////////
+
+            vec4 updatePosDragonAnim(float time_Fixed, float index,vec4 pos, vec2 uv, vec3 uvMap, float PICK_UVY_TEXTURE, vec4 posDragonAnim,bool isMain) {
+              
+               vec4 posDragonAnimNew = vec4(0.);
+             
+                if (uv.y > uvMap.x && uv.y < uvMap.y ) {
+
+                    // Biến đổi tuyến tính uv.y từ khoảng [uvMap.x, uvMap.y] sang khoảng [PICK_UVY_TEXTURE, 1.0]
+                    float newY = PICK_UVY_TEXTURE + (uv.y - uvMap.x) * (1.0 - PICK_UVY_TEXTURE) / (uvMap.y - uvMap.x);
+
+                    // Tạo giá trị ngẫu nhiên cho newY trong khoảng [PICK_UVY_TEXTURE, 1.0]
+                    float randomSeed = dot(uv, vec2(12.9898, 78.233)) + posDragonAnim.z * 43758.5453123;
+                    float randomValue = random(randomSeed);
+
+                    // Kết hợp newY và giá trị ngẫu nhiên để tạo ra newUV
+                    newY = mix(newY, 1.0, randomValue);
+                    vec2 newUV = vec2(uv.x, newY);
+
+                    // Lấy giá trị texture từ VATDragon tại vị trí newUV
+                    posDragonAnimNew = texture2D(VATDragon, newUV);
+
+                    // Điều chỉnh giá trị z của posDragonAnimNew nếu isMain là false
+                    float endZ = -5.;
+                    if (isMain == false) {
+                        posDragonAnimNew.z -= (1.) * index;
+                    }
+
+                    // Cộng giá trị mới vào posDragonAnim và chia đôi
+                
+                    //if(index == 5. || index == 2.) 
+
+                    posDragonAnim += posDragonAnimNew / 2.;
+                   // posDragonAnim.w = 0.;
+                }
+                    
+                return posDragonAnim.xyzw;
+            }
+
+            vec3 updatePosNoise(vec2 uv, vec2 uvMap, vec4 posDragonAnim) {
+                  if (uv.y > uvMap.x && uv.y < uvMap.y) {
+                        vec4 posDragonAnimNew = vec4(0.);
+
+                        float randomValueX = random(uv.x);
+                        float randomValueY = random(uv.y);
+                         float randomValueZ = random(uv.y-uv.x);
+                         posDragonAnimNew.xyz += vec3(randomValueX,randomValueY,randomValueZ);
+                       //   posDragonAnimNew.xyz += snoise(normalize(vec3(randomValueX * uTime, randomValueY * uTime, randomValueZ* uTime) * 2.));
+                        return posDragonAnimNew.xyz;
+                  }
+                    return posDragonAnim.xyz;
+            }
+
+           
+            void main()	{
+                vec2 uv = gl_FragCoord.xy / resolution.xy;
+                vec4 tmpPos = texture2D( uTexturePosition, uv ); // get current positions from texture 
+                vec4 pos = tmpPos.xyzw; // here is where we are getting the position of the partciles from inside the fragment shader instead of the vertex shader
+                vec4 posDragonAnim = texture2D( VATDragon, uv );
+            
+                vec4 save = vec4(1.);
+          
+        
+                // các đoạn uv này sẽ chứa point sim
+                // nên chuyển thành uniform
+                // point of dragon
+                    float timeFixed = 0.;
+                float PICK_UVY_TEXTURE = 0.71;
+         
+                // add = mắt
+                const int COUNTFRAME = 9;
+                vec3 uvMaps[COUNTFRAME] = vec3[COUNTFRAME](
+                    vec3(0.691, 0.693, 0.),
+                    vec3(0.681, 0.683, 0.),
+                    vec3(0.671, 0.673, 0.),
+                    vec3(0.661, 0.663, 0.),
+
+                    vec3(0.651, 0.653, 0.),
+                    vec3(0.641, 0.643, 0.),
+                    vec3(0.631, 0.633, 0.),
+                    vec3(0.621, 0.623, 0.),
+                    vec3(0.611, 0.613, 0.)
+                );
+
+                bool toggle = true;
+            
+                // Cập nhật posDragonAnim cho uvMap
+
+                
+           
+                
+                if (uv.y < 0.8) {
+            
+                    for (int i = 0; i < COUNTFRAME; i++) {
+                            posDragonAnim = updatePosDragonAnim(timeFixed,float(i) + 1.,pos, uv, uvMaps[i], PICK_UVY_TEXTURE, posDragonAnim, false);
+                        }
+                }
+       
+             
+                gl_FragColor = posDragonAnim;
+             
+            }
+
+            `;
+
+
+            let simulationFragResult = `
+                uniform sampler2D uTexturePosition;
+                uniform sampler2D VATDragonPrev;
+                uniform float uTime;
+                uniform float uTimeFixed;
+                void main() {
+                    vec2 uv = gl_FragCoord.xy / resolution.xy;
+                    vec4 posDragonAnimPrev = texture2D( VATDragonPrev, uv );
+                    vec4 pos = posDragonAnimPrev;
+                    if (mod(uTimeFixed, 1.0) == 0.0) {
+                        if(uv.y < .2) {
+                            pos = vec4(vec3(1.,0.,0.),1.);
+                        }
+                    }else{
+
+                    }
+                   
+                    gl_FragColor = pos;
+                }
+            `
+        const fillPositions = (texture) => {
+            let arr = texture.image.data
+            let temp = new THREE.Vector3();
+
+            for (let i = 0; i < arr.length; i = i + 4) {
+
+                temp.random().subScalar(0.5);
+
+                arr[i + 0] = 0
+                arr[i + 1] = 0
+                arr[i + 2] = 0
+                arr[i + 3] = 0
+
+            }
+            //console.log(arr)
+        }
+
+        const generateParticles = () => {
+            console.log("SIZE::::::::", WIDTHGPGPU * WIDTHGPGPU)
+            geometryPointGPU = new THREE.BufferGeometry()
+            const positions = new Float32Array(WIDTHGPGPU * WIDTHGPGPU * 3) // create a specific number of particles, texture size * 3 for xyz positions
+            const reference = new Float32Array(WIDTHGPGPU * WIDTHGPGPU * 2) // we need to reference every particle in teh shader to drive it's position from the position texture.
+
+            for (let i = 0; i < WIDTHGPGPU * WIDTHGPGPU; i++) {
+                // randomly position particles, -.5 to move recenter particle cluster (or else orbit controls roate from top corner)
+                let x = Math.random() - .5
+                let y = Math.random() - .5
+                let z = Math.random() - .5
+
+                let xx = (i % WIDTHGPGPU) / WIDTHGPGPU// col num (must be between 0 - 1)
+                let yy = ~~(i / WIDTHGPGPU) / WIDTHGPGPU// row num (must be between 0 - 1)
+
+                /*
+                In JavaScript, the ~~ operator is a double bitwise NOT operator. It's used twice in sequence 
+                and has the effect of truncating a floating-point number to its integer part, essentially 
+                acting like Math.floor() for positive numbers and Math.ceil() for negative numbers. It's a 
+                faster substitute because it operates at the bit level, but it only works reliably for numbers 
+                within the 32-bit integer range.
+                */
+
+                positions.set([x, y, z], i * 3) // fill positions 
+                reference.set([xx, yy], i * 2) // fill virtual uv's for unique id's/refs to each particle
+                //console.log(positions)
+                //console.log(reference)
+            }
+
+            // send position info into geometry aka vertex shader
+            geometryPointGPU.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+            geometryPointGPU.setAttribute('reference', new THREE.BufferAttribute(reference, 2))
+            console.log(geometryPointGPU.attributes)
+
+            materialPointGPU = new THREE.ShaderMaterial({
+                // depthWrite: false,
+                // blending: THREE.AdditiveBlending,
+                // vertexColors: true,
+                vertexShader: vertexShaderPointGPU,
+                fragmentShader: fragmentShaderPointGPU,
+                transparent: true,
+
+                uniforms: {
+                    uTime: { value: 0 },
+                    uTimeFixed: { value: 0 },
+                    uTexturePosition: { value: null },
+                    uTextureResult : { value: null },
+                    uSize: { value: 1 },
+                    uSizeVAT: { value: SIZEVAT },
+                    WIDTHGPGPU: { value: WIDTHGPGPU }
+                }
+            })
+            let pointsGPU = new THREE.Points(geometryPointGPU, materialPointGPU)
+            pointsGPU.position.y = -3
+            scene.add(pointsGPU)
+
+        }
+
+        let textureResultVariable,resultUniforms
+        function initGPGPU() {
+            // Khởi tạo GPUComputationRenderer
+            gpuCompute = new GPUComputationRenderer(WIDTHGPGPU, WIDTHGPGPU, renderer);
+
+            // Tạo texture cho vị trí
+            const dtPosition = gpuCompute.createTexture();
+            dtPosition.wrapS = THREE.RepeatWrapping;
+            dtPosition.wrapT = THREE.RepeatWrapping;
+
+            // Tạo texture cho kết quả
+            const dtResult = gpuCompute.createTexture();
+            dtResult.wrapS = THREE.RepeatWrapping;
+            dtResult.wrapT = THREE.RepeatWrapping;
+
+
+            // Điền dữ liệu vào texture vị trí
+            fillPositions(dtPosition);
+            fillPositions(dtResult);
+
+            // Thêm biến texture cho vị trí
+            texturePositionVariable = gpuCompute.addVariable('texturePosition', simulationFragPoint, dtPosition);
+            textureResultVariable = gpuCompute.addVariable('textureResult', simulationFragResult, dtResult);
+
+
+            gpuCompute.setVariableDependencies( textureResultVariable, [ texturePositionVariable, textureResultVariable ] );
+            gpuCompute.setVariableDependencies( texturePositionVariable, [ texturePositionVariable, textureResultVariable ] );
+
+
+            // Cấu hình uniforms
+            positionUniforms = texturePositionVariable.material.uniforms;
+            positionUniforms['uTime'] = { value: 0.0 };
+            positionUniforms['uTimeFixed'] = { value: 0.0 };
+            positionUniforms['VATDragon'] = { value: null };
+
+            // Thiết lập uniforms cho kết quả
+            resultUniforms = textureResultVariable.material.uniforms;
+            resultUniforms['uTime'] = { value: 0.0 };
+            resultUniforms['uTimeFixed'] = { value: 0.0 };
+            resultUniforms['VATDragon'] = { value: null }; // Nếu cần thiết
+            
+            resultUniforms['VATDragonPrev'] = { value: null }; // Nếu cần thiết
+            // Khởi tạo GPU computation
+            gpuCompute.init();
+
+            // Tạo particles
+            generateParticles();
+
+            // Hiển thị texture
+            showTexture();
+        }
+
+
+        init();
+
+        initGPGPU()
+        //set lại camera và showTexture size/pos
+        // khi bật thì gpgpu sẽ lấy nhầm / hoặc cơ chế gpgpu dành cho 1 rendered
+        initModelAndPrepare();
+        animate();
+
+
+        function initPoint() {
+            const vertices = [];
+            console.log("Total Point:::", COUNTPOINT)
+            for (let i = 0; i < 17000; i++) {
+                const x = ARRAYPOSMODEL[i * 3];
+                const y = ARRAYPOSMODEL[i * 3 + 1];
+                const z = ARRAYPOSMODEL[i * 3 + 2];
+
+                vertices.push(x, y, z);
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            console.log("ll", vertices.length)
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            materialPoint = new THREE.ShaderMaterial({
+                uniforms: {
+                    dataTexture: { value: null },
+                    uTime: { value: 0 },
+                    uSizeVAT: { value: new THREE.Vector2(SIZEVAT.x, SIZEVAT.y) },
+                    WIDTHGPGPU: { value: WIDTHGPGPU }
+                },
+                vertexShader: `
+                uniform sampler2D dataTexture;
+                varying vec3 vColor;
+                uniform float uTime;
+                uniform float WIDTHGPGPU;
+                uniform vec2 uSizeVAT;
+                void main() {
+                    float x = mod(float(gl_VertexID), uSizeVAT.x) / uSizeVAT.x;
+                    float y = floor(float(gl_VertexID) / uSizeVAT.x) / (uSizeVAT.y);
+                        y = 1.0 - y;
+                    vec2 uv = vec2(x,y);
+
+                
+                    vec4 particle = texture2D(dataTexture, uv);
+                    vec3 pos = particle.xyz ;
+            //        if(gl_VertexID > 23513) pos = vec3(0.);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                    gl_PointSize = 4.0;
+                }
+            `,
+                fragmentShader: `
+                varying vec3 vColor;
+
+                void main() {
+                    gl_FragColor = vec4(vec3(.7,1.,.7), 1.0);
+                }
+            `
+            });
+            pointsCustom = new THREE.Points(geometry, materialPoint);
+            scene.add(pointsCustom);
+        }
+
+        function initDataTex() {
+            // TEXTURE NÀY PHẢI > POINT MODEL , PHẦN CÒN LẠI ÁP DỤNG SIM TRAIL
+
+            const width = SIZEVAT.x;
+            const height = SIZEVAT.y * UPSIZE_ + 10; // 1 nữa của obj, 1 nửa freestyle
+            console.log("SIZEVAT::::", width, height)
+            const size = width * height;
+
+            const data = new Float32Array(4 * size);
+
+            const le_c = ARRAYPOSMODEL.length / 3
+            for (let i = 0; i < size; i++) {
+                const stride = i * 4;
+                // if(i > le_c) {
+
+                //     data[stride] = Math.random();
+                //     data[stride + 1] = Math.random();
+                //     data[stride + 2] = Math.random();
+                //     data[stride + 3] = Math.random();
+
+                // }else{
+
+
+                // }
+                //   data[stride] = ARRAYPOSMODEL[i * 3];
+                //     data[stride + 1] = ARRAYPOSMODEL[i * 3 + 1];
+                //     data[stride + 2] = ARRAYPOSMODEL[i * 3 + 2];
+                //     data[stride + 3] = Math.random();
+                data[stride] = 0;
+                data[stride + 1] = 0;
+                data[stride + 2] = 0;
+                data[stride + 3] = 1;
+            }
+
+            textureFBO = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
+            textureFBO.needsUpdate = true;
+        }
+
+        function showTexture() {
+            const vertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                  vUv = uv;
+                }
+            `;
+
+            const fragmentShader = `
+                 varying vec2 vUv;
+                uniform sampler2D renderTex;
+                void main() {
+                 vec4 tex = texture2D(renderTex,vUv);
+                    gl_FragColor = tex;
+                }
+            `;
+
+            const shaderMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    renderTex: { value: null }
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                transparent: true,
+                side: 2
+            });
+            const geometry = new THREE.PlaneGeometry(3, 3);
+
+            meshShowTexture1 = new THREE.Mesh(geometry, shaderMaterial /* new THREE.MeshBasicMaterial({color:'blue'}) */);
+            meshShowTexture1.position.x = 3
+
+            scene.add(meshShowTexture1);
+            const vertexShader2 = `
+                varying vec2 vUv;
+                void main() {
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                  vUv = uv;
+                }
+            `;
+
+            const fragmentShader2 = `
+                varying vec2 vUv;
+                uniform sampler2D renderTex;
+                void main() {
+                 vec4 tex = texture2D(renderTex,vUv);
+                    gl_FragColor = tex;
+                }
+            `;
+
+            const shaderMaterial2 = new THREE.ShaderMaterial({
+                uniforms: {
+                    renderTex: { value: null }
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                transparent: true,
+                side: 2
+            });
+
+
+            meshShowTexture2 = new THREE.Mesh(geometry, shaderMaterial2);
+            meshShowTexture2.position.x = -3
+
+            scene.add(meshShowTexture2);
+          
+        }
+
+        function initModelAndPrepare() {
+            let root = gltfhelo.scene;
+            let clip = gltfhelo.animations[0];
+
+            root.traverse(function (child) {
+                if (child.name === "GLTF_created_0") {
+                    child.children[0].visible = false
+                    child.children[2].visible = false
+                }
+                if (child.name === "Object_233") {
+
+                    child.material.wireframe = false
+
+                    skinnedMesh = child
+                    skinnedMesh.geometry.index = null
+                    // set for use AABB , chưa hiểu vì sao có index thì err
+                    // index của model này quá lớn
+
+                    ARRAYPOSMODEL = skinnedMesh.geometry.attributes.position.array
+                    console.log(skinnedMesh.geometry.attributes.position)
+                    COUNTPOINT = skinnedMesh.geometry.attributes.position.count
+                    let withTex = Math.floor(Math.sqrt(COUNTPOINT))
+                    let heightTex = Math.floor(Math.sqrt(COUNTPOINT))
+                    SIZEVAT = new THREE.Vector2(withTex, heightTex)
+
+                    initDataTex()
+                    //     showTexture()
+                    //    initPoint()
+
+                }
+            })
+
+
+            root.position.y = 2
+
+            root.scale.set(.2, .2, .2)
+            mixer = new THREE.AnimationMixer(root);
+            var action = mixer.clipAction(clip).play()
+
+
+
+
+            scene.add(root);
+
+            // show ordinary AABB
+
+            var defaultAABB = new THREE.Box3().setFromObject(root);
+            // scene.add(new THREE.Box3Helper(defaultAABB, 0xff0000));
+
+            scene.add(new THREE.Box3Helper(aabb, 0x00ff00));
+
+
+        }
+
+        function init() {
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // camera
+
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.001, 1000);
+            camera.position.set(0, 0, 7)
+            camera.lookAt(new THREE.Vector3(0, 0, 0))
+            // renderer
+            cameraO = new THREE.OrthographicCamera(width / - 345, width / 345, height / 345, height / - 345, 0.001, 1000);
+            cameraO.position.set(0, 0, 1)
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setClearColor(0x222222)
+            renderer.setClearAlpha(0)
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(width, height);
+            document.body.appendChild(renderer.domElement);
+
+            // scene
+
+            scene = new THREE.Scene();
+            scene2 = new THREE.Scene();
+
+            scene.background = new THREE.Color(0xb5b5b5);
+            const light = new THREE.AmbientLight(0x404040, 20); // soft white light
+            scene.add(light);
+            // controls
+
+            controls = new OrbitControls(camera, renderer.domElement);
+
+            // stats
+
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            // listeners
+
+            window.addEventListener('resize', onWindowResize);
+
+        }
+
+        function onWindowResize() {
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(width, height);
+
+        }
+
+        function animate() {
+
+            requestAnimationFrame(animate);
+
+
+            controls.update();
+            stats.update();
+
+            render();
+
+        }
+
+        function isInteger(num) {
+            return num % 1 === 0;
+        }
+
+
+        function updateAABB(skinnedMesh, aabb, sendVar) {
+
+            let skeleton = skinnedMesh.skeleton;
+            let boneMatrices = skeleton.boneMatrices;
+            let geometry = skinnedMesh.geometry;
+
+            let index = geometry.index;
+            let position = geometry.attributes.position;
+            let skinIndex = geometry.attributes.skinIndex;
+            let skinWeigth = geometry.attributes.skinWeight;
+
+            let bindMatrix = skinnedMesh.bindMatrix;
+            let bindMatrixInverse = skinnedMesh.bindMatrixInverse;
+
+            let i, j, si, sw;
+
+            aabb.makeEmpty();
+
+            // 
+
+            if (index !== null) {
+
+                // indexed geometry
+
+                for (i = 0; i < index.count; i++) {
+
+                    vertex.fromBufferAttribute(position, index[i]);
+                    skinIndices.fromBufferAttribute(skinIndex, index[i]);
+                    skinWeights.fromBufferAttribute(skinWeigth, index[i]);
+
+                    // the following code section is normally implemented in the vertex shader
+
+                    vertex.applyMatrix4(bindMatrix); // transform to bind space
+                    skinned.set(0, 0, 0);
+
+                    for (j = 0; j < 4; j++) {
+
+                        si = skinIndices.getComponent(j);
+                        sw = skinWeights.getComponent(j);
+                        boneMatrix.fromArray(boneMatrices, si * 16);
+
+                        // weighted vertex transformation
+
+                        temp.copy(vertex).applyMatrix4(boneMatrix).multiplyScalar(sw);
+                        skinned.add(temp);
+
+                    }
+
+                    skinned.applyMatrix4(bindMatrixInverse); // back to local space
+
+                    // expand aabb
+
+                    aabb.expandByPoint(skinned);
+
+                }
+
+            } else {
+
+                // non-indexed geometry
+                //console.log(position.count)
+                for (i = 0; i < position.count; i++) {
+
+                    vertex.fromBufferAttribute(position, i);
+                    skinIndices.fromBufferAttribute(skinIndex, i);
+                    skinWeights.fromBufferAttribute(skinWeigth, i);
+
+                    // the following code section is normally implemented in the vertex shader
+
+                    vertex.applyMatrix4(bindMatrix); // transform to bind space
+                    skinned.set(0, 0, 0);
+
+                    for (j = 0; j < 4; j++) {
+
+                        si = skinIndices.getComponent(j);
+                        sw = skinWeights.getComponent(j);
+                        boneMatrix.fromArray(boneMatrices, si * 16);
+
+                        // weighted vertex transformation
+
+                        temp.copy(vertex).applyMatrix4(boneMatrix).multiplyScalar(sw);
+                        skinned.add(temp);
+
+                    }
+
+                    skinned.applyMatrix4(bindMatrixInverse); // back to local space
+
+                    // expand aabb
+
+                    aabb.expandByPoint(skinned);
+
+                    if (textureFBO) {
+                        /*    const printFrom2 = 195000 
+                           textureFBO.source.data.data[(i * 4) + printFrom2] = skinned.x / 12;
+                           textureFBO.source.data.data[(i * 4 + 1) + printFrom2] = skinned.y / 12 - 3.;
+                           textureFBO.source.data.data[(i * 4 + 2) + printFrom2] = skinned.z / 12; */
+
+                    }
+                    /*    if(i % 5 === 0) {
+                           textureFBO.source.data.data[180000 + (i * 4)] = .2;
+                           textureFBO.source.data.data[180000 + (i * 4 + 1)] =.2;
+                           textureFBO.source.data.data[180000 + (i * 4 + 2)] = .2;
+                       } */
+
+                    /*                    const printFrom3 = 100000 
+                                       textureFBO.source.data.data[(i * 4) + printFrom3] = skinned.x / 12;
+                                           textureFBO.source.data.data[(i * 4 + 1) + printFrom3] = skinned.y / 12 - 9.;
+                                           textureFBO.source.data.data[(i * 4 + 2) + printFrom3] = skinned.z / 12; */
+
+
+
+                    const printFromSmooth = 23600 * 12
+                    textureFBO.source.data.data[(i * 4) + printFromSmooth] = skinned.x / 12;
+                    textureFBO.source.data.data[(i * 4 + 1) + printFromSmooth] = skinned.y / 12;
+                    textureFBO.source.data.data[(i * 4 + 2) + printFromSmooth] = skinned.z / 12;
+                    const printFrom1 = 0
+                    /*   if (sendVar === true) {
+                        
+                          textureFBO.source.data.data[(i * 4) + printFrom1] = skinned.x / 12 + 3;
+                          textureFBO.source.data.data[(i * 4 + 1) + printFrom1] = skinned.y / 12 ;
+                          textureFBO.source.data.data[(i * 4 + 2) + printFrom1] = skinned.z / 12;
+                       
+                       
+                      }
+     
+                      const printFrom2 = 23600 * 4
+                          textureFBO.source.data.data[(i * 4) + printFrom2] = skinned.x / 12 + 6;
+                          textureFBO.source.data.data[(i * 4 + 1) + printFrom2] = skinned.y / 12 ;
+                          textureFBO.source.data.data[(i * 4 + 2) + printFrom2] = skinned.z / 12;
+  
+                          const printFrom3 = 23600 * 8
+                          textureFBO.source.data.data[(i * 4) + printFrom3] = skinned.x / 12 - 3;
+                          textureFBO.source.data.data[(i * 4 + 1) + printFrom3] = skinned.y / 12 ;
+                          textureFBO.source.data.data[(i * 4 + 2) + printFrom3] = skinned.z / 12; */
+
+
+                }
+
+            }
+            textureFBO.needsUpdate = true
+            aabb.applyMatrix4(skinnedMesh.matrixWorld);
+
+        }
+
+        function render() {
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime()
+
+            //GPGPU
+            positionUniforms['uTimeFixed'].value = elapsedTime.toFixed(1);
+            positionUniforms['uTime'].value = clock.getElapsedTime()
+            positionUniforms['VATDragon'].value = textureFBO;
+
+            resultUniforms['uTimeFixed'].value = elapsedTime.toFixed(1);
+            resultUniforms['uTime'].value = clock.getElapsedTime()
+            resultUniforms['VATDragon'].value = textureFBO;
+
+
+            materialPointGPU.uniforms.uTimeFixed.value = elapsedTime.toFixed(1)
+            materialPointGPU.uniforms.uTime.value = clock.getElapsedTime()
+
+        
+            materialPointGPU.uniforms.uTexturePosition.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            materialPointGPU.uniforms.uTextureResult.value = gpuCompute.getCurrentRenderTarget(textureResultVariable).texture;
+
+            gpuCompute.compute()
+            if (materialPoint) materialPoint.uniforms.dataTexture.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            if (meshShowTexture1 && meshShowTexture2 && gpuCompute) {
+                meshShowTexture1.material.uniforms.renderTex.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+                meshShowTexture2.material.uniforms.renderTex.value = gpuCompute.getCurrentRenderTarget(textureResultVariable).texture;
+            }
+            resultUniforms['VATDragonPrev'].value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            //SkinnedMesh
+            if (mixer !== undefined) {
+                // mixer.setTime(1.5);
+                mixer.update(delta);
+
+                if (elapsedTime - lastTime >= .5) {
+
+                    sendVar = true;
+                    lastTime = elapsedTime;
+                } else {
+                    sendVar = false;
+                }
+                updateAABB(skinnedMesh, aabb, sendVar);
+
+            }
+
+            // if (meshShowTexture && textureFBO) meshShowTexture.material.uniforms.renderTex.value = textureFBO
+            // if (pointsCustom) pointsCustom.material.uniforms.dataTexture.value = textureFBO
+
+
+            // renderer.render(scene2, cameraO);
+            renderer.render(scene, camera);
+            //         renderer.setViewport(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
+            //
+
+
+
+        }
+
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>testing</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+    <style>
+        body {
+  margin: 0;
+  background-color: #000;
+  color: #fff;
+  font-family: Monospace;
+  font-size: 13px;
+  line-height: 24px;
+  overscroll-behavior: none;
+}
+
+a {
+  color: #ff0;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  cursor: pointer;
+  /*text-transform: uppercase;*/
+}
+
+#info {
+  position: absolute;
+  top: 0px;
+  width: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  text-align: center;
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  pointer-events: none;
+  z-index: 1; /* TODO Solve this in HTML */
+}
+
+a,
+button,
+input,
+select {
+  pointer-events: auto;
+}
+
+.dg.ac {
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  z-index: 2 !important; /* TODO Solve this in HTML */
+}
+
+#overlay {
+  position: absolute;
+  font-size: 16px;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+#overlay button {
+  background: transparent;
+  border: 0;
+  border: 1px solid rgb(255, 255, 255);
+  border-radius: 4px;
+  color: #ffffff;
+  padding: 12px 18px;
+  /*text-transform: uppercase;*/
+  cursor: pointer;
+}
+
+#overlay button:disabled {
+  border: none;
+  cursor: default;
+}
+
+#notSupported {
+  width: 50%;
+  margin: auto;
+  background-color: #f00;
+  margin-top: 20px;
+  padding: 10px;
+}
+
+    </style>
+</head>
+
+<body>
+    <div id="overlay">
+        <button id="startButton" disabled>
+          Patience... We're counting grains of sand...
+        </button>
+      </div>
+    <div id="container"></div>
+    <script type="importmap">
+			{
+				"imports": {
+					"three": "./three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+    <script type="module">
+
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/EffectComposer.js";
+        import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/RenderPass.js";
+        import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/UnrealBloomPass.js";
+        import { AfterimagePass } from 'https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/AfterimagePass.js';
+        import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/DRACOLoader.js';
+        import {
+            computeBoundsTree,
+            disposeBoundsTree,
+            acceleratedRaycast
+        } from "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.5/build/index.module.min.js";
+
+      import TWEEN from "three/addons/tween.module.js";
+        const sandRadius = 40;
+        let inProgress = false;
+        let model, sand;
+
+        let scene = new THREE.Scene();
+        let camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            1,
+            5000
+        );
+        camera.position.set(20, 5, 20).setLength(30);
+        camera.lookAt(scene.position);
+        let renderer = new THREE.WebGLRenderer();
+        renderer.setClearColor(0x3e371e);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        const container = document.getElementById("container");
+        container.appendChild(renderer.domElement);
+
+        let controls = new OrbitControls(camera, renderer.domElement);
+        controls.enablePan = false;
+        controls.enableDamping = true;
+        controls.minDistance = 20;
+        controls.maxDistance = 50;
+        controls.minPolarAngle = Math.PI / 6;
+        controls.maxPolarAngle = Math.PI / 2;
+
+        let light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.setScalar(1);
+        scene.add(light, new THREE.AmbientLight(0xffffff, 0.2));
+        //scene.add(new THREE.GridHelper());
+
+        THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+        THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+        THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+        let uniforms = {
+            sand: {
+                action: { value: 0 },
+                delayRatio: { value: 0.875 },
+                wave: { value: 0 }
+            },
+            statue: {
+                action: { value: 0 }
+            }
+        };
+
+        // background
+        let bg = new THREE.SphereGeometry(2500, 36, 18);
+        bg.rotateY(Math.PI);
+        let bm = new THREE.MeshBasicMaterial({
+            side: THREE.BackSide,
+            color: 0x3e371e,
+            onBeforeCompile: (shader) => {
+                shader.fragmentShader = `
+      #define s(a, b, c) smoothstep(a, b, c)
+
+      float sdOrientedBox( vec2 p, vec2 a, vec2 b, float th )
+      {
+          float l = length(b-a);
+          vec2  d = (b-a)/l;
+          vec2  q = (p-(a+b)*0.5);
+                q = mat2(d.x,-d.y,d.y,d.x)*q;
+                q = abs(q)-vec2(l,th)*0.5;
+          return length(max(q,0.0)) + min(max(q.x,q.y),0.0);    
+      }
+
+      float merge(float shape1, float shape2){
+        return min(shape1, shape2);
+      }
+      ${shader.fragmentShader}
+    `.replace(
+                    `#include <color_fragment>`,
+                    `#include <color_fragment>
+        vec3 col = diffuseColor.rgb;
+        float horizon = s(0.5, 0.55, vUv.y);
+        diffuseColor.rgb = mix(col, col + 0.125, horizon);
+
+        vec2 pUv = vUv * vec2(2., 1.);
+
+        float p1 = sdOrientedBox(pUv, vec2(0.5), vec2(0.4), 0.3);
+        float p2 = sdOrientedBox(pUv, vec2(0.6, 0.5), vec2(0.7, 0.4), 0.15);
+        float p3 = sdOrientedBox(pUv, vec2(0.45, 0.5), vec2(0.55, 0.4), 0.2);
+        float p = 1.;
+              p = merge(p, p1);
+              p = merge(p, p2);
+              p = merge(p, p3);
+        diffuseColor.rgb = mix(col, diffuseColor.rgb, s(0., 0.01, p));
+
+        diffuseColor.rgb = mix(diffuseColor.rgb, col * 0.75, s(0.45, 0.4, vUv.y));
+      `
+                );
+                //console.log(shader.fragmentShader);
+            }
+        });
+        bm.defines = { USE_UV: "" };
+        let bkg = new THREE.Mesh(bg, bm);
+        scene.add(bkg);
+        //////////////
+
+        var loader = new GLTFLoader();
+        loader.load(
+            "https://threejs.org/examples/models/gltf/Nefertiti/Nefertiti.glb",
+            function (gltf) {
+                model = gltf.scene.children[0];
+                model.material.side = THREE.DoubleSide;
+                model.material.normalMapType = THREE.ObjectSpaceNormalMap;
+                model.material.onBeforeCompile = (shader) => {
+                    shader.uniforms.action = uniforms.statue.action;
+                    shader.vertexShader = `
+        varying vec3 vPos;
+        ${shader.vertexShader}
+      `.replace(
+                        `#include <begin_vertex>`,
+                        `#include <begin_vertex>
+        vPos = vec3(position);
+        `
+                    );
+                    //console.log(shader.vertexShader);
+                    shader.fragmentShader = `
+        uniform float action;
+        varying vec3 vPos;
+        
+        #define s(a, b, c) smoothstep(a, b, c)
+
+        // https://github.com/yiwenl/glsl-fbm/blob/master/3d.glsl
+        #define NUM_OCTAVES 5
+
+        float mod289(float x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
+        vec4 mod289(vec4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
+        vec4 perm(vec4 x){return mod289(((x * 34.0) + 1.0) * x);}
+      
+        float noise(vec3 p){
+            vec3 a = floor(p);
+            vec3 d = p - a;
+            d = d * d * (3.0 - 2.0 * d);
+      
+            vec4 b = a.xxyy + vec4(0.0, 1.0, 0.0, 1.0);
+            vec4 k1 = perm(b.xyxy);
+            vec4 k2 = perm(k1.xyxy + b.zzww);
+      
+            vec4 c = k2 + a.zzzz;
+            vec4 k3 = perm(c);
+            vec4 k4 = perm(c + 1.0);
+      
+            vec4 o1 = fract(k3 * (1.0 / 41.0));
+            vec4 o2 = fract(k4 * (1.0 / 41.0));
+      
+            vec4 o3 = o2 * d.z + o1 * (1.0 - d.z);
+            vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
+      
+            return o4.y * d.y + o4.x * (1.0 - d.y);
+        }
+      
+      
+        float fbm(vec3 x) {
+          float v = 0.0;
+          float a = 0.5;
+          vec3 shift = vec3(100);
+          for (int i = 0; i < NUM_OCTAVES; ++i) {
+            v += a * noise(x);
+            x = x * 2.0 + shift;
+            a *= 0.5;
+          }
+          return v;
+        }
+        ${shader.fragmentShader}
+      `.replace(
+                        `#include <dithering_fragment>`,
+                        `#include <dithering_fragment>
+
+        float d = clamp(fbm(vPos * 0.5), 0., 1.);
+        float dissolve = 1. - action;
+        if(d < dissolve) discard;
+        
+        float solidify = s(dissolve + 0.1, dissolve, d);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1, 0.75, 0.5), solidify);
+        
+        `
+                    );
+                    //console.log(shader.fragmentShader);
+                };
+
+                let geom = model.geometry;
+                geom.computeVertexNormals();
+                geom.center();
+                geom.computeBoundsTree();
+                scene.add(model);
+
+                let t = performance.now();
+                let g = fillWithPoints(model, 300000);
+                console.log("filling: " + (performance.now() - t) / 1000 + " s");
+
+                let m = new THREE.PointsMaterial({
+                    color: 0xa69150,
+                    size: 0.15,
+                    onBeforeCompile: (shader) => {
+                        shader.uniforms.action = uniforms.sand.action;
+                        shader.uniforms.delayRatio = uniforms.sand.delayRatio;
+                        shader.uniforms.wave = uniforms.sand.wave;
+                        shader.vertexShader = `
+          #define s(a, b, c) smoothstep(a, b, c)
+
+          uniform float action;
+          uniform float delayRatio;
+          uniform float wave;
+
+          attribute vec3 positionStart;
+          attribute float positionDelay;
+
+          varying float vTint;
+          varying float vRealAction;
+          varying float vWave;
+          varying float vAmplitude;
+          
+          float bump(float a, float b, float c, float f){
+            return s(a, b, f) - s(b, c, f);
+          }
+
+          float mapLinear01(float x, float a1, float a2){
+            float f = ( x - a1 ) / ( a2 - a1 );
+            f = clamp(f, 0., 1.);
+            return f;
+          }
+          
+          // https://www.shadertoy.com/view/lscczl
+          float N31(vec3 p) {
+            vec3 a = fract(vec3(p.xyz) * vec3(213.897, 653.453, 253.098));
+              a += dot(a, a.yzx + 79.76);
+              return fract((a.x + a.y) * a.z);
+          }
+          
+
+          ${shader.vertexShader}
+        `.replace(
+                            `#include <begin_vertex>`,
+                            `#include <begin_vertex>
+
+            vec3 pStart = positionStart;
+            vec3 pEnd = position;
+
+            float realDelay = positionDelay * delayRatio;
+            float pureAction = 1. - delayRatio;
+            float realAction = mapLinear01(action, realDelay, realDelay + pureAction);
+            vRealAction = realAction;
+
+            transformed = mix(pStart, pEnd, realAction);
+
+            float slope = sin(realAction * PI);//s(0., 0.5, realAction) - s(0.5, 1., realAction);
+            transformed.y += slope * distance(pStart, pEnd) * 0.5 * N31(pStart);
+
+            vTint = length(transformed.xz) / ${sandRadius}.;
+
+            // wave
+            float wF = 5.;
+            float wB = 10.;
+            float wR = wave * (${sandRadius}. + wB) - wF; // wave radius
+            float pSL = length(pStart.xz);
+            vWave = bump(wR - wB, wR, wR + wF, pSL);
+            vAmplitude = 1. - wave;
+            transformed.y += vWave * vAmplitude * 0.5;
+          `
+                        );
+                        //console.log(shader.vertexShader);
+                        shader.fragmentShader = `
+        #define s(a, b, c) smoothstep(a, b, c)
+        varying float vTint;
+        varying float vRealAction;
+        varying float vWave;
+        varying float vAmplitude;
+
+        float bump(float a, float b, float c, float f){
+          return s(a, b, f) - s(b, c, f);
+        }
+        ${shader.fragmentShader}
+      `
+                            .replace(
+                                `#include <clipping_planes_fragment>`,
+                                `
+        if (distance(gl_PointCoord, vec2(0.5)) > 0.5) discard; // make'em round
+        #include <clipping_planes_fragment>`
+                            )
+                            .replace(
+                                `#include <color_fragment>`,
+                                `#include <color_fragment>
+            
+            // wave
+            diffuseColor.rgb += vWave * vec3(0.5, 1, 1) * 0.125 * pow(vAmplitude, 2.);
+
+            diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.375, vTint);
+            diffuseColor.rgb = mix(diffuseColor.rgb, (vec3(48., 213., 200.) / 255.) * 1.5, bump(0.975, 0.9875, 0.99, vRealAction));
+            diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.875, s(0.99, 1., vRealAction));
+            
+            
+          `
+                            );
+                        //console.log(shader.fragmentShader);
+                    }
+                });
+                sand = new THREE.Points(g, m);
+                scene.add(sand);
+
+                /*let params = {
+                  sequence: startSequence
+                };
+                let gui = new GUI();
+                gui.add(params, "sequence").name("start sequence");*/
+                let startButton = document.getElementById("startButton");
+                startButton.disabled = false;
+                startButton.innerHTML = "RUN";
+                startButton.addEventListener("click", (e) => {
+                    let overlay = document.getElementById("overlay");
+                    overlay.style.width = "auto";
+                    overlay.style.height = "auto";
+                    overlay.style.margin = "10px";
+                    //overlay.remove();
+                    console.log("startSequence")
+                    startSequence(overlay);
+                });
+            }
+        );
+        window.addEventListener("resize", onWindowResize, false);
+
+        renderer.setAnimationLoop((_) => {
+            controls.update();
+            TWEEN.update();
+            renderer.render(scene, camera);
+        });
+
+        function startSequence(overlay) {
+            if (inProgress) return;
+            console.log("Sss")
+            inProgress = true;
+            overlay.style.display = "none";
+
+            uniforms.sand.action.value = 0;
+            uniforms.sand.wave.value = 0;
+            uniforms.statue.action.value = 0;
+            sand.visible = true;
+            sand.material.transparent = true;
+            sand.material.opacity = 0;
+
+           TWEEN.removeAll();
+
+            let wave = new TWEEN.Tween(uniforms.sand.wave)
+                .to({ value: 1 }, 2000)
+                .delay(1000);
+            let gathering = new TWEEN.Tween(uniforms.sand.action)
+                .to({ value: 1 }, 30000)
+                .delay(1000);
+            let solidify = new TWEEN.Tween(uniforms.statue.action)
+                .to({ value: 1 }, 5000)
+                .delay(2000)
+                .onStart(() => {
+                    sand.material.transparent = true;
+                })
+                .onUpdate((val) => {
+                    sand.material.opacity = 1 - val.value;
+                })
+                .onComplete(() => {
+                    sand.visible = false;
+                    inProgress = false;
+                    overlay.style.display = "block";
+                });
+            
+                wave.chain(gathering);
+            gathering.chain(solidify);
+            wave.start();
+        }
+
+        function onWindowResize(event) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function fillWithPoints(mesh, count) {
+            var ray = new THREE.Raycaster();
+            ray.firstHitOnly = true;
+
+            let meshInvMatrix = new THREE.Matrix4();
+            meshInvMatrix.copy(mesh.matrixWorld).invert();
+            let localRay = new THREE.Ray();
+
+            mesh.geometry.computeBoundingBox();
+            let bbox = mesh.geometry.boundingBox;
+            let center = new THREE.Vector3();
+            bbox.getCenter(center);
+            let bsize = new THREE.Vector3();
+            bbox.getSize(bsize);
+
+            let points = [];
+            let pointsStart = [];
+            let pointsDelay = []; //[0..1]
+
+            var dir = new THREE.Vector3();
+            var v = new THREE.Vector3();
+            var vps = new THREE.Vector3();
+            let intersects = [];
+            let counter = 0;
+            while (counter < count) {
+                dir.set(0, 1, 0); //.random().normalize();
+                v.set(
+                    THREE.MathUtils.randFloat(bbox.min.x, bbox.max.x),
+                    THREE.MathUtils.randFloat(bbox.min.y, bbox.max.y),
+                    THREE.MathUtils.randFloat(bbox.min.z, bbox.max.z)
+                );
+                if (isInside(v)) {
+                    vps
+                        .setFromSphericalCoords(
+                            Math.random() * sandRadius,
+                            Math.random() * Math.PI,
+                            Math.random() * Math.PI * 2
+                        )
+                        .setY(bbox.min.y);
+                    pointsStart.push(vps.x, vps.y, vps.z);
+                    pointsDelay.push((v.y - bbox.min.y) / bsize.y);
+
+                    points.push(v.clone());
+                    counter++;
+                }
+            }
+
+            function isInside(v) {
+                ray.set(v, dir);
+                intersects = [];
+                intersects = ray.intersectObjects([mesh]);
+
+                localRay.copy(ray.ray).applyMatrix4(meshInvMatrix);
+
+                if (intersects.length > 0) {
+                    if (intersects[0].face.normal.dot(localRay.direction) > 0) return true;
+                }
+                return false;
+            }
+
+            //console.log(points.length);
+            //console.log(pointsDelay);
+            let rg = new THREE.BufferGeometry().setFromPoints(points);
+            rg.setAttribute(
+                "positionStart",
+                new THREE.Float32BufferAttribute(pointsStart, 3)
+            );
+            rg.setAttribute(
+                "positionDelay",
+                new THREE.Float32BufferAttribute(pointsDelay, 1)
+            );
+            return rg;
+        }
+
+    </script>
+</body>
+
+</html>

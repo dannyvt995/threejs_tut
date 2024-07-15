@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+	<head>
+		<title>testing</title>
+		<meta charset="utf-8">
+		<meta name="viewport"
+			content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+		<style>
+		body {
+			background-color: #fff;
+			color: #444;
+			margin:0;
+			padding:0;
+			width: 100vw;
+			height: 100vh;
+			overflow: hidden;
+		}
+
+		a {
+			color: #08f;
+		}
+	</style>
+	</head>
+
+	<body>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "./three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+		import * as THREE from 'three';
+
+		import Stats from 'three/addons/stats.module.js';
+		import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/EffectComposer.js";
+        import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/RenderPass.js";
+        import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/UnrealBloomPass.js";
+        import { AfterimagePass } from 'https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/AfterimagePass.js';
+		
+		/* TEXTURE WIDTH FOR SIMULATION */
+		const WIDTH = 20;
+
+		const BIRDS = WIDTH * WIDTH;
+
+		// Custom Geometry - using 3 triangles each. No UVs, no normals currently.
+
+
+
+		let container, stats;
+		let camera, scene, renderer;
+		let mouseX = 0, mouseY = 0;
+
+		let windowHalfX = window.innerWidth / 2;
+		let windowHalfY = window.innerHeight / 2;
+
+		const BOUNDS = 800, BOUNDS_HALF = BOUNDS / 2;
+
+		let last = performance.now();
+
+		let gpuCompute;
+		let velocityVariable;
+		let positionVariable;
+		let positionUniforms;
+		let velocityUniforms;
+		let birdUniforms;
+
+		let monitorPos
+		let monitorVel
+		let meshDemo
+		let materialShader
+		let pointLightMNouse
+		let groundMesh
+		let materialInstanceCustom2
+		let materialInstancecustomDepthMaterial
+		let saverefence
+		let mathh
+		
+        let composer
+        let aS = 1.5, bS = -2.4;
+        let time = 0;
+
+		init();
+		animate();
+
+		function init() {
+
+			container = document.createElement('div');
+			document.body.appendChild(container);
+
+			camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
+			camera.position.z = 750;
+			
+			scene = new THREE.Scene();
+			scene.background = new THREE.Color(0x00000);
+			
+
+
+		
+			const axesHelper = new THREE.AxesHelper( window.innerHeight );
+			scene.add( axesHelper );
+
+
+			const directionalLight = new THREE.DirectionalLight(0xffffff, Math.PI * 1)
+			directionalLight.position.set( 0, window.innerHeight/2,  window.innerHeight/6 );
+			directionalLight.castShadow = true
+			directionalLight.shadow.mapSize.width = window.innerWidth
+			directionalLight.shadow.mapSize.height =  window.innerHeight
+			directionalLight.shadow.camera.near = 0.5
+			directionalLight.shadow.camera.far = 1000
+			directionalLight.shadow.camera.left = -1000
+			directionalLight.shadow.camera.right = 1000
+			directionalLight.shadow.camera.top = 1000
+			directionalLight.shadow.camera.bottom = -1000
+			scene.add(directionalLight);
+			const helper = new THREE.DirectionalLightHelper( directionalLight, 20 );
+//scene.add( helper );
+			pointLightMNouse = new THREE.PointLight( 0xffffff,700000, 2000 );
+			pointLightMNouse.position.set( 0, 0, 0 );
+			//pointLightMNouse.castShadow = true; 
+			scene.add( pointLightMNouse );
+			const light = new THREE.AmbientLight( 0xffffff,10 ); // soft white light
+			scene.add( light );
+
+			renderer = new THREE.WebGLRenderer();
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.shadowMap.enabled = true
+
+			renderer.shadowMap.type = THREE.PCFSoftShadowMap
+			//renderer.shadowMap.type = THREE.VSMShadowMap
+
+			container.appendChild(renderer.domElement);
+
+        // effects
+        const renderScene = new RenderPass(scene, camera);
+                                                    // resolution, strength, radius, threshold
+                const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 3.0, 0, 0);
+
+                const afterImagePass = new AfterimagePass();
+                afterImagePass.uniforms["damp"].value = 0.3975;
+
+                composer = new EffectComposer(renderer);
+                composer.addPass(renderScene);
+    //     composer.addPass(bloomPass);
+                composer.addPass(afterImagePass);
+
+
+			stats = new Stats();
+			container.appendChild(stats.dom);
+
+			container.style.touchAction = 'none';
+			container.addEventListener('pointermove', onPointerMove);
+            const controls = new OrbitControls( camera, renderer.domElement );
+			initBirds();
+
+		}
+
+	
+		function initBirds() {
+
+			groundMesh = new THREE.Mesh(
+				new THREE.PlaneGeometry(window.innerWidth,window.innerWidth),
+				new THREE.MeshPhongMaterial({	color:0x353535})
+			)
+	
+			groundMesh.rotateX(-Math.PI / 4.2)
+			groundMesh.position.y = -300
+		
+			groundMesh.receiveShadow = true
+
+			meshDemo = 	new THREE.Mesh(new THREE.SphereGeometry(5, 16, 16),
+					new THREE.MeshPhongMaterial({
+						color:0xfefefe
+					}))
+              
+			scene.add(groundMesh,meshDemo);
+
+		}
+
+
+
+		function onWindowResize() {
+
+			windowHalfX = window.innerWidth / 2;
+			windowHalfY = window.innerHeight / 2;
+
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+
+			renderer.setSize(window.innerWidth, window.innerHeight);
+
+		}
+
+		function onPointerMove(event) {
+
+			if (event.isPrimary === false) return;
+
+			mouseX = event.clientX - windowHalfX;
+			mouseY = event.clientY - windowHalfY;
+
+		}
+
+		//
+
+		function animate() {
+
+			requestAnimationFrame(animate);
+
+			render();
+
+		}
+        function computeSpiral(time) {
+            let xS = (aS - bS * time) * Math.cos(time);
+            let yS = (aS - bS * time) * Math.sin(time);
+            return [xS, yS];
+        }
+		function render() {
+			const now = performance.now();
+            composer.render();
+           // renderer.render(scene, camera);
+            // Compute new position
+            time -= 0.1
+            let calc = computeSpiral(time);
+            meshDemo.position.x = calc[0];
+            meshDemo.position.y = calc[1]
+            // meshDemo.position.z =  now *0.009;
+		}
+
+	</script>
+	</body>
+
+</html>
