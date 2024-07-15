@@ -730,22 +730,22 @@ float snoise(vec3 v)
             dtPosition.wrapT = THREE.RepeatWrapping;
 
             // Tạo texture cho kết quả
-            const dtResult = gpuCompute.createTexture();
-            dtResult.wrapS = THREE.RepeatWrapping;
-            dtResult.wrapT = THREE.RepeatWrapping;
+            // const dtResult = gpuCompute.createTexture();
+            // dtResult.wrapS = THREE.RepeatWrapping;
+            // dtResult.wrapT = THREE.RepeatWrapping;
 
 
             // Điền dữ liệu vào texture vị trí
             fillPositions(dtPosition);
-            fillPositions(dtResult);
+           // fillPositions(dtResult);
 
             // Thêm biến texture cho vị trí
             texturePositionVariable = gpuCompute.addVariable('texturePosition', simulationFragPoint, dtPosition);
-            textureResultVariable = gpuCompute.addVariable('textureResult', simulationFragResult, dtResult);
+           // textureResultVariable = gpuCompute.addVariable('textureResult', simulationFragResult, dtResult);
 
 
-            gpuCompute.setVariableDependencies(textureResultVariable, [texturePositionVariable, textureResultVariable]);
-            gpuCompute.setVariableDependencies(texturePositionVariable, [texturePositionVariable, textureResultVariable]);
+            // gpuCompute.setVariableDependencies(textureResultVariable, [texturePositionVariable, textureResultVariable]);
+            // gpuCompute.setVariableDependencies(texturePositionVariable, [texturePositionVariable, textureResultVariable]);
 
 
             // Cấu hình uniforms
@@ -756,12 +756,12 @@ float snoise(vec3 v)
             positionUniforms['VATDragonSnap'] = { value: null };
 
             // Thiết lập uniforms cho kết quả
-            resultUniforms = textureResultVariable.material.uniforms;
-            resultUniforms['uTime'] = { value: 0.0 };
-            resultUniforms['uTimeFixed'] = { value: 0.0 };
-            resultUniforms['VATDragon'] = { value: null }; // Nếu cần thiết
+            // resultUniforms = textureResultVariable.material.uniforms;
+            // resultUniforms['uTime'] = { value: 0.0 };
+            // resultUniforms['uTimeFixed'] = { value: 0.0 };
+            // resultUniforms['VATDragon'] = { value: null }; // Nếu cần thiết
 
-            resultUniforms['VATDragonPrev'] = { value: null }; // Nếu cần thiết
+        //    resultUniforms['VATDragonPrev'] = { value: null }; // Nếu cần thiết
             // Khởi tạo GPU computation
             
             // Creates the gpu computation class and sets it up
@@ -1472,8 +1472,8 @@ const cube = new THREE.Mesh( geometry, material );
                 positionUniforms['uTimeFixed'].value = elapsedTime.toFixed(1);
                 positionUniforms['uTime'].value = clock.getElapsedTime()
 
-                resultUniforms['uTimeFixed'].value = elapsedTime.toFixed(1);
-                resultUniforms['uTime'].value = clock.getElapsedTime()
+                // resultUniforms['uTimeFixed'].value = elapsedTime.toFixed(1);
+                // resultUniforms['uTime'].value = clock.getElapsedTime()
 
                 materialPointGPU.uniforms.uTimeFixed.value = elapsedTime.toFixed(1)
                 materialPointGPU.uniforms.uTime.value = clock.getElapsedTime()
@@ -1484,8 +1484,8 @@ const cube = new THREE.Mesh( geometry, material );
             }
 
             positionUniforms['VATDragon'].value = textureFBO;
-            resultUniforms['VATDragon'].value = textureFBO;
-            resultUniforms['VATDragonPrev'].value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            // resultUniforms['VATDragon'].value = textureFBO;
+            // resultUniforms['VATDragonPrev'].value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
             materialPointGPU.uniforms.VATDragon.value = textureFBO
 
 
@@ -1552,7 +1552,7 @@ const cube = new THREE.Mesh( geometry, material );
 
             gpuCompute.compute()
             materialPointGPU.uniforms.uTexturePosition.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
-            materialPointGPU.uniforms.uTextureResult.value = gpuCompute.getCurrentRenderTarget(textureResultVariable).texture;
+          //  materialPointGPU.uniforms.uTextureResult.value = gpuCompute.getCurrentRenderTarget(textureResultVariable).texture;
            
 
 
