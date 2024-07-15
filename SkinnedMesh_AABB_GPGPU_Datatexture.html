@@ -743,7 +743,7 @@ float snoise(vec3 v)
             texturePositionVariable = gpuCompute.addVariable('texturePosition', simulationFragPoint, dtPosition);
            // textureResultVariable = gpuCompute.addVariable('textureResult', simulationFragResult, dtResult);
 
-
+           gpuCompute.setVariableDependencies(texturePositionVariable, [texturePositionVariable]);
             // gpuCompute.setVariableDependencies(textureResultVariable, [texturePositionVariable, textureResultVariable]);
             // gpuCompute.setVariableDependencies(texturePositionVariable, [texturePositionVariable, textureResultVariable]);
 
