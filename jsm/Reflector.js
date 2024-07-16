@@ -59,8 +59,10 @@ class Reflector extends Mesh {
 			uniforms: UniformsUtils.clone( shader.uniforms ),
 			fragmentShader: shader.fragmentShader,
 			vertexShader: shader.vertexShader,
+			transparent:true,
+			opacity:.2,
 			wireframe:false,
-			
+			side:2,
 			fog:true
 		} );
 		console.log(material)
@@ -222,7 +224,7 @@ Reflector.ReflectorShader = {
 		},
 
 		'color': {
-			value: new Color(0xffffff)
+			value: new Color(0x00000)
 		},
 
 		'tDiffuse': {
@@ -234,16 +236,16 @@ Reflector.ReflectorShader = {
 		},
 
 		'diffuse' : {
-			value: new Color(0x111111)
+			value: new Color(0x00000)
 		},
 		'specular' : {
-			value: new Color(0x111111)
+			value: new Color(0x323232)
 		},
 		'shininess' : {
 			value: Math.max(50, 1e-4)
 		},
 		'opacity' : {
-			value: 1
+			value: .5
 		},
 		'tHeightMap' : {
 			value: null
@@ -430,7 +432,8 @@ Reflector.ReflectorShader = {
 			#include <lights_fragment_end>
 			#include <aomap_fragment>
 			vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + reflectedLight.directSpecular + reflectedLight.indirectSpecular + totalEmissiveRadiance;
-			outgoingLight += blendOverlay( base.rgb / 20., vec3(.5,.5,.5) );
+			outgoingLight += blendOverlay(mix(base.rgb, vec3(0.), 0.5), vec3(1., 1., 1.));
+
 
 
 			#include <envmap_fragment>
@@ -441,7 +444,7 @@ Reflector.ReflectorShader = {
 			#include <premultiplied_alpha_fragment>
 			#include <dithering_fragment>
 
-			
+			gl_FragColor = vec4(outgoingLight,.5);
 	
 
 		}`

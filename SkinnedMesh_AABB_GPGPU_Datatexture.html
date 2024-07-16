@@ -28,7 +28,10 @@
         display: flex;
         margin: 0 auto;
         position: fixed;
-        left: 50%;
+        left: 20%;
+    }
+    p {
+        color:white;
     }
 </style>
 
@@ -50,7 +53,7 @@
     <script id="heightmapFragmentShader" type="x-shader/x-fragment">
 
         #include <common>
-
+            uniform float uTime;
         uniform vec2 mousePos;
         uniform float mouseSize;
         uniform float viscosityConstant;
@@ -75,12 +78,20 @@
 
             // https://web.archive.org/web/20080618181901/http://freespace.virgin.net/hugo.elias/graphics/x_water.htm
 
-            float newHeight = ( ( north.x + south.x + east.x + west.x ) * 0.5 - heightmapValue.y ) * viscosityConstant;
+            float newHeight = ( ( north.x + south.x + east.x + west.x ) * 0.5 - heightmapValue.y) * viscosityConstant;
 
             // Mouse influence
-            float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y ) ) * PI / mouseSize, 0.0, PI );
-            newHeight += ( cos( mousePhase ) + 1.0 ) * 0.28;
+            vec2 catchMouse =  vec2( mousePos.x, - mousePos.y );
 
+            float xx =  sin(uTime);
+            float yy = cos(uTime);
+            catchMouse =  vec2(xx,yy) * 5.;
+
+            float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - catchMouse) * PI / mouseSize, 0., PI ) ;
+            float mousePhaseOrigin = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y )) * PI / .2, 0.0, PI );
+         //   newHeight += ( cos( mousePhase  ) + 1.0 ) * 0.28;
+            newHeight += ( cos( mousePhaseOrigin  ) + 1.0 ) * 0.18;
+      
             heightmapValue.y = heightmapValue.x;
             heightmapValue.x = newHeight;
       
@@ -265,7 +276,7 @@ float snoise(vec3 v)
         
         //WATER
         // Texture width for simulation
-        const WIDTH = 180;
+        const WIDTH = 256;
 
         // Water size in system units
         const BOUNDS = 20;
@@ -779,10 +790,10 @@ precision highp int;   // Define precision for int types
             heightmapVariable = gpuCompute.addVariable('heightmap', document.getElementById('heightmapFragmentShader').textContent, heightmap0);
 
             gpuCompute.setVariableDependencies(heightmapVariable, [heightmapVariable]);
-
+            heightmapVariable.material.uniforms['uTime'] = { value: 0 };
             heightmapVariable.material.uniforms['mousePos'] = { value: new THREE.Vector2(0, 0) };
-            heightmapVariable.material.uniforms['mouseSize'] = { value: 0.1 };
-            heightmapVariable.material.uniforms['viscosityConstant'] = { value: 0.98 };
+            heightmapVariable.material.uniforms['mouseSize'] = { value: .5 };
+            heightmapVariable.material.uniforms['viscosityConstant'] = { value: 0.95};
             heightmapVariable.material.uniforms['heightCompensation'] = { value: 0 };
             heightmapVariable.material.defines.BOUNDS = BOUNDS.toFixed(1);
 
@@ -1086,6 +1097,9 @@ precision highp int;   // Define precision for int types
             scene.add(light);
             const directionalLight = new THREE.DirectionalLight( 0xffffff, 10.5 );
             scene.add( directionalLight );
+            const directionalLight2 = new THREE.DirectionalLight( 0xffffff, 10.5 );
+            directionalLight2.position.y = -10
+            scene.add( directionalLight2 );
             const axesHelper = new THREE.AxesHelper(5);
            // scene.add(axesHelper);
                 
@@ -1486,6 +1500,9 @@ precision highp int;   // Define precision for int types
 
                 mirrorFront1.material.uniforms["uTime"].value = clock.getElapsedTime()
 
+
+                heightmapVariable.material.uniforms['uTime'].value = clock.getElapsedTime()
+            
             }
 
             positionUniforms['VATDragon'].value = textureFBO;
@@ -1535,12 +1552,12 @@ precision highp int;   // Define precision for int types
 
                     const point = intersects[0].point;
                     // not work
-       
+                    console.log(point.x, point.z)
                     uniforms['mousePos'].value.set(point.x, point.z);
 
                 } else {
       
-                    uniforms['mousePos'].value.set(50000, 50000);
+                  //  uniforms['mousePos'].value.set(50000, 50000);
 
                 }
 
@@ -1548,7 +1565,7 @@ precision highp int;   // Define precision for int types
 
             } else {
               
-                 uniforms['mousePos'].value.set(50000, 50000);
+                // uniforms['mousePos'].value.set(50000, 50000);
 
             }
 
