@@ -363,8 +363,8 @@ float snoise(vec3 v)
 
             `;
         let simulationFragPoint = `
-            precision mediump float;
-                    precision mediump int;
+     precision highp float; // Define precision for float types
+precision highp int;   // Define precision for int types
 
             uniform float uTime;
               uniform float uTimeFixed;
