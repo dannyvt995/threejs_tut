@@ -291,8 +291,8 @@ float snoise(vec3 v)
         let save_projectionMatrix_minor =  new THREE.Matrix4()
 
         let vertexShaderPointGPU = `
-            precision mediump float;
-        precision mediump int;
+            precision highp float;
+        precision highp int;
             uniform float uTime; 
 
             varying vec2 vUv;
@@ -334,7 +334,7 @@ float snoise(vec3 v)
             }
             `;
         let fragmentShaderPointGPU = `
-             precision mediump float;
+             precision highp float;
                     varying vec4 vPos;
                     varying vec2 vUv;
                     varying vec2 vuvID;
