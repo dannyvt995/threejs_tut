@@ -336,7 +336,7 @@ Reflector.ReflectorShader = {
 
 				//# include <begin_vertex>
 				float heightValue = texture2D( tHeightMap, uv ).x;
-				vec3 transformed = vec3( position.x, position.y, heightValue / 10.);
+				vec3 transformed = vec3( position.x, position.y, heightValue / 5.);
 		
 				//<begin_vertex>
 
@@ -348,7 +348,7 @@ Reflector.ReflectorShader = {
 				#include <clipping_planes_vertex>
 
 				vViewPosition = - mvPosition.xyz;
-				vUv = textureMatrix * vec4( position, 1.0 );
+				vUv = textureMatrix * vec4( transformed, 1.0 );
 				vUvOrgin = uv;
 				#include <worldpos_vertex>
 				#include <envmap_vertex>

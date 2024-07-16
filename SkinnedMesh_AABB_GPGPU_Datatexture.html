@@ -292,7 +292,7 @@ float snoise(vec3 v)
 
         let vertexShaderPointGPU = `
             precision mediump float;
-
+        precision mediump int;
             uniform float uTime; 
 
             varying vec2 vUv;
@@ -334,7 +334,7 @@ float snoise(vec3 v)
             }
             `;
         let fragmentShaderPointGPU = `
-                    //precision mediump float;
+             precision mediump float;
                     varying vec4 vPos;
                     varying vec2 vUv;
                     varying vec2 vuvID;
@@ -364,6 +364,8 @@ float snoise(vec3 v)
             `;
         let simulationFragPoint = `
             precision mediump float;
+                    precision mediump int;
+
             uniform float uTime;
               uniform float uTimeFixed;
             
@@ -556,6 +558,8 @@ float snoise(vec3 v)
             `;
 
         let simulationFragResult = `
+                precision mediump float;
+                precision mediump int;
                 uniform sampler2D uTexturePosition;
                 uniform sampler2D VATDragonPrev;
                 uniform float uTime;
@@ -852,7 +856,7 @@ float snoise(vec3 v)
         animate();
 
 
-        function initDataTexSnap() {
+        function initDataVATDynamicSnap() {
             const width = SIZEVAT.x;
             const height = SIZEVAT.y * UPSIZE_ + 10; // 1 nữa của obj, 1 nửa freestyle
             console.log("SIZEVATSnap::::", width, height)
@@ -867,7 +871,7 @@ float snoise(vec3 v)
                 data[stride + 1] = 0;
                 data[stride + 2] = 0;
                 data[stride + 3] = 1;
-                if (i < 40000 && i < 39000) {
+                if (i < 40000 && i < 39900) {
                     data[stride] = Math.random();
                     data[stride + 1] = Math.random();
                     data[stride + 2] = Math.random();
@@ -878,7 +882,7 @@ float snoise(vec3 v)
             textureFBOSnap.needsUpdate = true;
         }
 
-        function initDataTex() {
+        function initDataVATDynamic() {
             // TEXTURE NÀY PHẢI > POINT MODEL , PHẦN CÒN LẠI ÁP DỤNG SIM TRAIL
 
             const width = SIZEVAT.x;
@@ -1015,8 +1019,8 @@ float snoise(vec3 v)
                     let heightTex = Math.floor(Math.sqrt(COUNTPOINT))
                     SIZEVAT = new THREE.Vector2(withTex, heightTex)
 
-                    initDataTex()
-                    initDataTexSnap()
+                    initDataVATDynamic()
+                    initDataVATDynamicSnap()
                     //     showTexture()
                     //    initPoint()
 
@@ -1083,13 +1087,13 @@ float snoise(vec3 v)
             scene.add( directionalLight );
             const axesHelper = new THREE.AxesHelper(5);
            // scene.add(axesHelper);
-    
-scene.fog =  new THREE.Fog( 0x00000, 0, 50 );
+                
+            scene.fog =  new THREE.Fog( 0x00000, 0, 50 );
 
-const geometry = new THREE.BoxGeometry( 10, 10, 10 ); 
-const material = new THREE.MeshPhongMaterial( {color: 0xffffff,fog:true} ); 
-const cube = new THREE.Mesh( geometry, material ); 
-//scene.add( cube );
+            const geometry = new THREE.BoxGeometry( 10, 10, 10 ); 
+            const material = new THREE.MeshPhongMaterial( {color: 0xffffff,fog:true} ); 
+            const cube = new THREE.Mesh( geometry, material ); 
+            //scene.add( cube );
 
 
             mirrorFront1 = new Reflector(
@@ -1551,14 +1555,16 @@ const cube = new THREE.Mesh( geometry, material );
             positionUniforms['VATDragonSnap'].value = textureFBOSnap;
 
             gpuCompute.compute()
-            materialPointGPU.uniforms.uTexturePosition.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            let texturePosition_Tex = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture
+            console.log(texturePosition_Tex)
+            materialPointGPU.uniforms.uTexturePosition.value = texturePosition_Tex;
           //  materialPointGPU.uniforms.uTextureResult.value = gpuCompute.getCurrentRenderTarget(textureResultVariable).texture;
            
 
 
-            if (materialPoint) materialPoint.uniforms.dataTexture.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;
+            if (materialPoint) materialPoint.uniforms.dataTexture.value = texturePosition_Tex;
             if (meshShowTexture1 && meshShowTexture2 && gpuCompute) {
-                meshShowTexture1.material.uniforms.renderTex.value = gpuCompute.getCurrentRenderTarget(texturePositionVariable).texture;;
+                meshShowTexture1.material.uniforms.renderTex.value = texturePosition_Tex;
                 meshShowTexture2.material.uniforms.renderTex.value = textureFBOSnap;
             }
 
