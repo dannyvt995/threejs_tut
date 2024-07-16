@@ -88,8 +88,8 @@
             catchMouse =  vec2(xx,yy) * 5.;
 
             float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - catchMouse) * PI / mouseSize, 0., PI ) ;
-            float mousePhaseOrigin = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y )) * PI / .2, 0.0, PI );
-         //   newHeight += ( cos( mousePhase  ) + 1.0 ) * 0.28;
+            float mousePhaseOrigin = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y )) * PI / .1, 0.0, PI );
+           newHeight += ( cos( mousePhase  ) + 1.0 ) * 0.28;
             newHeight += ( cos( mousePhaseOrigin  ) + 1.0 ) * 0.18;
       
             heightmapValue.y = heightmapValue.x;
@@ -829,7 +829,7 @@ precision highp int;   // Define precision for int types
             generateParticles();
 
             // Hiển thị texture
-            showTexture();
+          //  showTexture();
         }
 
 
