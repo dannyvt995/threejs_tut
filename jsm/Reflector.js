@@ -60,7 +60,7 @@ class Reflector extends Mesh {
 			fragmentShader: shader.fragmentShader,
 			vertexShader: shader.vertexShader,
 			transparent:true,
-			opacity:.2,
+			opacity:.9,
 			wireframe:false,
 			side:2,
 			fog:true
@@ -338,7 +338,7 @@ Reflector.ReflectorShader = {
 
 				//# include <begin_vertex>
 				float heightValue = texture2D( tHeightMap, uv ).x;
-				vec3 transformed = vec3( position.x, position.y, heightValue / 5.);
+				vec3 transformed = vec3( position.x, position.y, heightValue / 10.);
 		
 				//<begin_vertex>
 
@@ -432,7 +432,7 @@ Reflector.ReflectorShader = {
 			#include <lights_fragment_end>
 			#include <aomap_fragment>
 			vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + reflectedLight.directSpecular + reflectedLight.indirectSpecular + totalEmissiveRadiance;
-			outgoingLight += blendOverlay(mix(base.rgb, vec3(0.), 0.5), vec3(1., 1., 1.));
+			//outgoingLight += blendOverlay(mix(base.rgb, vec3(0.), 0.5), vec3(1., 1., 1.));
 
 
 
@@ -444,7 +444,7 @@ Reflector.ReflectorShader = {
 			#include <premultiplied_alpha_fragment>
 			#include <dithering_fragment>
 
-			gl_FragColor = vec4(outgoingLight,.5);
+			gl_FragColor = vec4(outgoingLight,.5	);
 	
 
 		}`

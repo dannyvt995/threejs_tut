@@ -88,9 +88,9 @@
             catchMouse =  vec2(xx,yy) * 5.;
 
             float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - catchMouse) * PI / mouseSize, 0., PI ) ;
-            float mousePhaseOrigin = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y )) * PI / .1, 0.0, PI );
-           newHeight += ( cos( mousePhase  ) + 1.0 ) * 0.28;
-            newHeight += ( cos( mousePhaseOrigin  ) + 1.0 ) * 0.18;
+            float mousePhaseOrigin = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y )) * PI / .3 , 0.0, PI );
+            newHeight -= ( cos( mousePhase  ) + 1.0 ) * 0.28;
+            newHeight -= ( cos( mousePhaseOrigin  ) + 1.0 ) * 0.18;
       
             heightmapValue.y = heightmapValue.x;
             heightmapValue.x = newHeight;
@@ -265,7 +265,7 @@ float snoise(vec3 v)
 
         const textureMatrix = new THREE.Matrix4();
 
-
+        let pmremGen , envMap , textureCube , textureEquirec
 
         let textureResultVariable, resultUniforms, cameraVitrualForMinor
         const renderTarget_ForMinor = new THREE.WebGLRenderTarget(window.innerWidth/2, window.innerHeight/2, { samples: 4, type: THREE.HalfFloatType });
@@ -612,24 +612,6 @@ precision highp int;   // Define precision for int types
         function fillTexture(texture) {
 
             const waterMaxHeight = 10;
-
-            function noise(x, y) {
-
-                let multR = waterMaxHeight;
-                let mult = 0.025;
-                let r = 0;
-                for (let i = 0; i < 15; i++) {
-
-                    r += 0 * multR * simplex.noise(x * mult, y * mult);
-                    multR *= 0.53 + 0.025 * i;
-                    mult *= 1.25;
-
-                }
-
-                return r;
-
-            }
-
             const pixels = texture.image.data;
 
             let p = 0;
@@ -640,8 +622,8 @@ precision highp int;   // Define precision for int types
                     const x = i * 128 / WIDTH;
                     const y = j * 128 / WIDTH;
 
-                    pixels[p + 0] = noise(x, y) * 0;
-                    pixels[p + 1] = pixels[p + 0];
+                    pixels[p + 0] = 0;
+                    pixels[p + 1] = 0;
                     pixels[p + 2] = 0;
                     pixels[p + 3] = 1;
 
@@ -793,7 +775,7 @@ precision highp int;   // Define precision for int types
             heightmapVariable.material.uniforms['uTime'] = { value: 0 };
             heightmapVariable.material.uniforms['mousePos'] = { value: new THREE.Vector2(0, 0) };
             heightmapVariable.material.uniforms['mouseSize'] = { value: .5 };
-            heightmapVariable.material.uniforms['viscosityConstant'] = { value: 0.95};
+            heightmapVariable.material.uniforms['viscosityConstant'] = { value: 0.895};
             heightmapVariable.material.uniforms['heightCompensation'] = { value: 0 };
             heightmapVariable.material.defines.BOUNDS = BOUNDS.toFixed(1);
 
@@ -1033,7 +1015,7 @@ precision highp int;   // Define precision for int types
 
                     initDataVATDynamic()
                     initDataVATDynamicSnap()
-                    //     showTexture()
+  showTexture()
                     //    initPoint()
 
                 }
@@ -1046,8 +1028,47 @@ precision highp int;   // Define precision for int types
             mixer = new THREE.AnimationMixer(root);
             var action = mixer.clipAction(clip).play()
 
+            pmremGen = new THREE.PMREMGenerator(renderer)
+            pmremGen.compileEquirectangularShader()
+            envMap = new THREE.TextureLoader().load('./textures/env.jpg', (tex) => {
+                envMap = pmremGen.fromEquirectangular(tex).texture
+                pmremGen.dispose()
+            })
 
 
+            const loader = new THREE.CubeTextureLoader();
+				loader.setPath( 'textures/cube/Bridge2/' );
+
+				textureCube = loader.load( [ 'posx.jpg', 'negx.jpg', 'posy.jpg', 'negy.jpg', 'posz.jpg', 'negz.jpg' ] );
+
+				const textureLoader = new THREE.TextureLoader();
+
+				textureEquirec = textureLoader.load( 'textures/env-room.jpg' );
+				textureEquirec.mapping = THREE.EquirectangularReflectionMapping;
+				textureEquirec.colorSpace = THREE.SRGBColorSpace;
+
+				scene.background = textureEquirec;
+
+            mirrorFront1 = new Reflector(
+                new THREE.PlaneGeometry(BOUNDS, BOUNDS, WIDTH - 1, WIDTH - 1), 
+                {
+                color: new THREE.Color('blue'),
+
+                textureWidth: window.innerWidth * window.devicePixelRatio,
+                textureHeight: window.innerHeight * window.devicePixelRatio,
+            })
+        
+
+
+            mirrorFront1.rotation.x = 4.7
+            mirrorFront1.position.y = yAxisForMinorAndRay
+          
+            const spm = new THREE.Mesh(
+                new THREE.PlaneGeometry(16,16),
+                new THREE.MeshBasicMaterial({envMap:textureEquirec})
+            )
+          
+            scene.add(mirrorFront1  )
  
             scene.add(root);
 
@@ -1103,7 +1124,7 @@ precision highp int;   // Define precision for int types
             const axesHelper = new THREE.AxesHelper(5);
            // scene.add(axesHelper);
                 
-            scene.fog =  new THREE.Fog( 0x00000, 0, 50 );
+             scene.fog =  new THREE.Fog( 0x00000, 0, 50 );
 
             const geometry = new THREE.BoxGeometry( 10, 10, 10 ); 
             const material = new THREE.MeshPhongMaterial( {color: 0xffffff,fog:true} ); 
@@ -1111,19 +1132,7 @@ precision highp int;   // Define precision for int types
             //scene.add( cube );
 
 
-            mirrorFront1 = new Reflector(
-                new THREE.PlaneGeometry(BOUNDS, BOUNDS, WIDTH - 1, WIDTH - 1), 
-                {
-                color: new THREE.Color('blue'),
-
-                textureWidth: window.innerWidth * window.devicePixelRatio,
-                textureHeight: window.innerHeight * window.devicePixelRatio,
-            })
         
-            mirrorFront1.rotation.x = 4.7
-            mirrorFront1.position.y = yAxisForMinorAndRay
-        
-            scene.add(mirrorFront1)
 
             
 				const sun = new THREE.DirectionalLight( 0xFFFFFF, 3.0 );
@@ -1551,8 +1560,7 @@ precision highp int;   // Define precision for int types
                 if (intersects.length > 0) {
 
                     const point = intersects[0].point;
-                    // not work
-                    console.log(point.x, point.z)
+ 
                     uniforms['mousePos'].value.set(point.x, point.z);
 
                 } else {
