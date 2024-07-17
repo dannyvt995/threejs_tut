@@ -640,7 +640,7 @@ precision highp int;   // Define precision for int types
                     const x = i * 128 / WIDTH;
                     const y = j * 128 / WIDTH;
 
-                    pixels[p + 0] = noise(x, y);
+                    pixels[p + 0] = noise(x, y) * 0;
                     pixels[p + 1] = pixels[p + 0];
                     pixels[p + 2] = 0;
                     pixels[p + 3] = 1;
