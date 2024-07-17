@@ -620,7 +620,7 @@ precision highp int;   // Define precision for int types
                 let r = 0;
                 for (let i = 0; i < 15; i++) {
 
-                    r += multR * simplex.noise(x * mult, y * mult);
+                    r += 0 * multR * simplex.noise(x * mult, y * mult);
                     multR *= 0.53 + 0.025 * i;
                     mult *= 1.25;
 
