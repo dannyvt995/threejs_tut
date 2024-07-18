@@ -277,10 +277,10 @@ float snoise(vec3 v)
         
         //WATER
         // Texture width for simulation
-        const WIDTH = 128;
+        const WIDTH = 100;
 
         // Water size in system units
-        const BOUNDS = 50;
+        const BOUNDS = 20;
         const BOUNDS_HALF = BOUNDS * 0.5;
         const raycaster = new THREE.Raycaster();
         let mouseMoved = false;
@@ -1060,8 +1060,8 @@ precision highp int;   // Define precision for int types
                 {
                     color: new THREE.Color(0x7f7f7f),
 
-                textureWidth: window.innerWidth * window.devicePixelRatio,
-                textureHeight: window.innerHeight * window.devicePixelRatio,
+                textureWidth: window.innerWidth * window.devicePixelRatio / 2.,
+                textureHeight: window.innerHeight * window.devicePixelRatio / 2.,
             })
         
 
