@@ -63,9 +63,9 @@ class Reflector extends Mesh {
 			opacity:.9,
 			wireframe:false,
 			side:2,
-			fog:true
+			fog:true,
 		} );
-		console.log(material)
+	
 
 		 material.uniforms[ 'textureMatrix' ].value = textureMatrix;
 	
