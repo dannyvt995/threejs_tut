@@ -83,15 +83,15 @@
             // Mouse influence
             vec2 catchMouse =  vec2( mousePos.x, - mousePos.y );
 
-            float xx =  sin(uTime);
-            float yy = cos(uTime);
-            catchMouse =  vec2(xx,yy) * 5.;
+            float xx =  sin(uTime * 10.);
+            float yy = cos(uTime * 10.);
+            catchMouse =  vec2(xx,yy) * 2.;
 
-            float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - catchMouse) * PI / mouseSize, 0., PI ) ;
-            float mousePhaseOrigin = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y )) * PI / .3 , 0.0, PI );
-            newHeight -= ( cos( mousePhase  ) + 1.0 ) * 0.28;
-            newHeight -= ( cos( mousePhaseOrigin  ) + 1.0 ) * 0.18;
-      
+            float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - catchMouse) * PI / .5, 0., PI ) ;
+            float mousePhaseOrigin = clamp( length( ( uv - vec2( 0.5 ) ) * BOUNDS - vec2( mousePos.x, - mousePos.y )) * PI / mouseSize , 0.0, PI );
+            newHeight += ( cos( mousePhase  ) + 1.0 ) * .5  ;
+            newHeight += ( cos( mousePhaseOrigin  ) + 1.0 ) * 0.2;
+       
             heightmapValue.y = heightmapValue.x;
             heightmapValue.x = newHeight;
       
@@ -113,6 +113,7 @@
         import { OrbitControls } from 'three/addons/OrbitControls.js';
         import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
         import { Reflector } from 'three/addons/Reflector.js'
+          import { ReflectorMain } from 'three/addons/ReflectorMain.js'
         import { SimplexNoise } from 'three/addons/SimplexNoise.js';
 
 
@@ -215,7 +216,7 @@ float snoise(vec3 v)
         let meshShowTexture1, meshShowTexture2, renderTarget, model, stats, gui, guiStatsEl, mixer, mixer1, sampler, meshSamplerInstanced, pointsSkin;
         let camera, controls, scene, scene2, renderer, cameraO
 
-        let saveMat, saveGeo, dataColection, materialPoint
+        let saveMat, saveGeo, dataColection, materialPoint , meshCheck
         let time = 0
         let textureFBO, textureFBOSnap, pointsCustom, sphereCheck
 
@@ -234,7 +235,7 @@ float snoise(vec3 v)
         let skinIndices = new THREE.Vector4();
         let skinWeights = new THREE.Vector4();
         let boneMatrix = new THREE.Matrix4();
-        let sendVar, mirrorFront1
+        let sendVar, mirrorFront1 , mirrorFrontMain
         //gpgpu
         let geometryPointGPU, materialPointGPU, gpuCompute, texturePositionVariable, controls2
         let positionUniforms, velocityUniforms
@@ -605,7 +606,7 @@ precision highp int;   // Define precision for int types
             meshRay.position.y = yAxisForMinorAndRay
             meshRay.matrixAutoUpdate = false;
             meshRay.updateMatrix();
-            scene.add(meshRay);
+          scene.add(meshRay);
 
         }
 
@@ -774,8 +775,8 @@ precision highp int;   // Define precision for int types
             gpuCompute.setVariableDependencies(heightmapVariable, [heightmapVariable]);
             heightmapVariable.material.uniforms['uTime'] = { value: 0 };
             heightmapVariable.material.uniforms['mousePos'] = { value: new THREE.Vector2(0, 0) };
-            heightmapVariable.material.uniforms['mouseSize'] = { value: .5 };
-            heightmapVariable.material.uniforms['viscosityConstant'] = { value: 0.895};
+            heightmapVariable.material.uniforms['mouseSize'] = { value: .2 };
+            heightmapVariable.material.uniforms['viscosityConstant'] = { value: 0.85};
             heightmapVariable.material.uniforms['heightCompensation'] = { value: 0 };
             heightmapVariable.material.defines.BOUNDS = BOUNDS.toFixed(1);
 
@@ -811,7 +812,7 @@ precision highp int;   // Define precision for int types
             generateParticles();
 
             // Hiển thị texture
-          //  showTexture();
+         showTexture();
         }
 
 
@@ -949,7 +950,7 @@ precision highp int;   // Define precision for int types
             meshShowTexture1 = new THREE.Mesh(geometry, shaderMaterial /* new THREE.MeshBasicMaterial({color:'blue'}) */);
             meshShowTexture1.position.x = 5
 
-            scene.add(meshShowTexture1);
+           // scene.add(meshShowTexture1);
             const vertexShader2 = `
                 varying vec2 vUv;
                 void main() {
@@ -982,7 +983,7 @@ precision highp int;   // Define precision for int types
             meshShowTexture2 = new THREE.Mesh(geometry, shaderMaterial2);
             meshShowTexture2.position.x = -3
 
-            //   scene.add(meshShowTexture2);
+        //    scene.add(meshShowTexture2);
 
         }
 
@@ -1049,10 +1050,12 @@ precision highp int;   // Define precision for int types
 
 				scene.background = textureEquirec;
 
-            mirrorFront1 = new Reflector(
+        
+
+            mirrorFrontMain= new ReflectorMain(
                 new THREE.PlaneGeometry(BOUNDS, BOUNDS, WIDTH - 1, WIDTH - 1), 
                 {
-                color: new THREE.Color('blue'),
+                    color: new THREE.Color(0x7f7f7f),
 
                 textureWidth: window.innerWidth * window.devicePixelRatio,
                 textureHeight: window.innerHeight * window.devicePixelRatio,
@@ -1060,15 +1063,15 @@ precision highp int;   // Define precision for int types
         
 
 
-            mirrorFront1.rotation.x = 4.7
-            mirrorFront1.position.y = yAxisForMinorAndRay
-          
-            const spm = new THREE.Mesh(
-                new THREE.PlaneGeometry(16,16),
+            mirrorFrontMain.rotation.x = 4.7
+            mirrorFrontMain.position.y = yAxisForMinorAndRay
+
+            meshCheck = new THREE.Mesh(
+                new THREE.PlaneGeometry(BOUNDS, BOUNDS, WIDTH - 1, WIDTH - 1), 
                 new THREE.MeshBasicMaterial({envMap:textureEquirec})
             )
           
-            scene.add(mirrorFront1  )
+            scene.add(mirrorFrontMain  )
  
             scene.add(root);
 
@@ -1507,7 +1510,7 @@ precision highp int;   // Define precision for int types
                 materialPointGPU.uniforms.uTime.value = clock.getElapsedTime()
 
 
-                mirrorFront1.material.uniforms["uTime"].value = clock.getElapsedTime()
+                mirrorFrontMain.material.uniforms["uTime"].value = clock.getElapsedTime()
 
 
                 heightmapVariable.material.uniforms['uTime'].value = clock.getElapsedTime()
@@ -1565,7 +1568,7 @@ precision highp int;   // Define precision for int types
 
                 } else {
       
-                  //  uniforms['mousePos'].value.set(50000, 50000);
+                  uniforms['mousePos'].value.set(50000, 50000);
 
                 }
 
@@ -1573,7 +1576,7 @@ precision highp int;   // Define precision for int types
 
             } else {
               
-                // uniforms['mousePos'].value.set(50000, 50000);
+                uniforms['mousePos'].value.set(50000, 50000);
 
             }
 
@@ -1591,51 +1594,55 @@ precision highp int;   // Define precision for int types
             if (materialPoint) materialPoint.uniforms.dataTexture.value = texturePosition_Tex;
             if (meshShowTexture1 && meshShowTexture2 && gpuCompute) {
                 meshShowTexture1.material.uniforms.renderTex.value = texturePosition_Tex;
-                meshShowTexture2.material.uniforms.renderTex.value = textureFBOSnap;
+            
             }
 
 
+        // NOTE: ĐÃ THỬ CHUYỂN ĐỔI , FPX TĂNG NHƯNG MATRIX CAM KO CẬP NHẬT ĐÚNG CÁCH
+        // CONFLIC GIỮA CAM MAIN VÀ VITRUAL CAM
+        //     const currentRenderTarget = renderer.getRenderTarget();
 
-            const currentRenderTarget = renderer.getRenderTarget();
-
-            // Render cảnh vào renderTarget
-            renderer.setRenderTarget(renderTarget_ForMinor);
-            // khi bật cái này , fps better a litt
-            // renderer.clear(); // Xóa render target nếu cần
+        //     // Render cảnh vào renderTarget
+        //     renderer.setRenderTarget(renderTarget_ForMinor);
+        //     // khi bật cái này , fps better a litt
+        //     // renderer.clear(); // Xóa render target nếu cần
           
-            //  cameraVitrualForMinor.position.set(camera.position.x,camera.position.y,camera.position.z)
+        //     //  cameraVitrualForMinor.position.set(camera.position.x,camera.position.y,camera.position.z)
 
-            //  cameraVitrualForMinor.position.multiplyScalar(4)
-            // cameraVitrualForMinor.rotation.set(camera.rotation.x,camera.rotation.y,camera.rotation.z)
+        //     //  cameraVitrualForMinor.position.multiplyScalar(4)
+        //     // cameraVitrualForMinor.rotation.set(camera.rotation.x,camera.rotation.y,camera.rotation.z)
 
-            // Tính toán vị trí cam qua Reflector.js , cập nhật matrix của mesh so với camera chính ( camera cảnh chính) và vitrual camera
-            calculateCam(cameraVitrualForMinor, mirrorFront1, camera) // meshRay cũng dc
+        //     // Tính toán vị trí cam qua Reflector.js , cập nhật matrix của mesh so với camera chính ( camera cảnh chính) và vitrual camera
+        //     calculateCam(cameraVitrualForMinor, mirrorFront1, camera) // meshRay cũng dc
           
-           // waterUniforms['textureMatrix'].value = targetne;
-            renderer.render(scene, cameraVitrualForMinor);
+        //    // waterUniforms['textureMatrix'].value = targetne;
+        //     renderer.render(scene, cameraVitrualForMinor);
+        
+        //     // Phục hồi render target ban đầu
+        //     renderer.setRenderTarget(currentRenderTarget);
 
-            // Phục hồi render target ban đầu
-            renderer.setRenderTarget(currentRenderTarget);
+        //     // Cập nhật texture cho mirrorFront1
+        //     let targetne = renderTarget_ForMinor.texture
 
-            // Cập nhật texture cho mirrorFront1
-            let targetne = renderTarget_ForMinor.texture
-
-            // not work
-            // targetne.flipY = true
-            // targetne.needsUpdate = true
-            // targetne.repeat.x = - 1;
-
+        //     // not work
+        //     // targetne.flipY = true
+        //     // targetne.needsUpdate = true
+        //     // targetne.repeat.x = - 1;
+        //     meshShowTexture2.material.uniforms.renderTex.value = targetne;
           
-            mirrorFront1.material.uniforms["tDiffuse"].value = targetne;
-            mirrorFront1.material.uniforms["tHeightMap"].value =  gpuCompute.getCurrentRenderTarget(heightmapVariable).texture;
+        //     mirrorFront1.material.uniforms["tDiffuse"].value = targetne;
+        //     mirrorFront1.material.uniforms["tHeightMap"].value =  gpuCompute.getCurrentRenderTarget(heightmapVariable).texture;
            
-            // waterUniforms['fboMinor'].value = targetne;
+        //     // waterUniforms['fboMinor'].value = targetne;
            
-            // waterUniforms['textureMatrix'].value = save_projectionMatrix_minor;
+        //     // waterUniforms['textureMatrix'].value = save_projectionMatrix_minor;
 
-            // Render cảnh chính
-          //  renderer.clear()
-            camera.scale.y = 1;
+        //     // Render cảnh chính
+        //   //  renderer.clear()
+        //     camera.scale.y = 1;
+        mirrorFrontMain.material.uniforms["tHeightMap"].value =  gpuCompute.getCurrentRenderTarget(heightmapVariable).texture;
+       
+        meshShowTexture2.material.uniforms.renderTex.value = gpuCompute.getCurrentRenderTarget(heightmapVariable).texture;
             renderer.render(scene, camera);
 
 
