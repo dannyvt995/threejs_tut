@@ -51,7 +51,7 @@ class ReflectorMain extends Mesh {
 		const textureMatrix = new Matrix4();
 		const virtualCamera = this.camera;
 
-		const renderTarget = new WebGLRenderTarget( textureWidth, textureHeight, { samples: multisample, type: HalfFloatType } );
+		const renderTarget = new WebGLRenderTarget( textureWidth, textureHeight, { samples: 1, type: HalfFloatType } );
 		const WIDTH = 100
 		const BOUNDS = 20;
 		const material = new ShaderMaterial( {
@@ -135,7 +135,7 @@ class ReflectorMain extends Mesh {
 				reflectorPlane.setFromNormalAndCoplanarPoint( normal, reflectorWorldPosition );
 				reflectorPlane.applyMatrix4( virtualCamera.matrixWorldInverse );
 	
-				clipPlane.set( reflectorPlane.normal.x, reflectorPlane.normal.y, reflectorPlane.normal.z, reflectorPlane.constant );
+				clipPlane.set( reflectorPlane.normal.x, reflectorPlane.normal.y , reflectorPlane.normal.z, reflectorPlane.constant );
 	
 				const projectionMatrix = virtualCamera.projectionMatrix;
 	

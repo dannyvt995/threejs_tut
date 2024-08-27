@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>three.js webgl2 - volume - cloud</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <link type="text/css" rel="stylesheet" href="main.css">
+</head>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+    }
+</style>
+
+<body>
+
+    <script type="importmap">
+            {
+                "imports": {
+                    "three": "./three.module.js",
+                    "three/addons/": "./jsm/"
+                }
+            }
+		</script>
+
+    <script type="module">
+        import Stats from 'three/addons/stats.module.js';
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
+
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+
+
+        // Initialize Scene, Camera, and Renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        new OrbitControls(camera, renderer.domElement);
+        // Function to load image and create 3D texture
+        async function loadImageBitmap(url) {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            return await createImageBitmap(blob);
+        }
+
+        function convertTo3DTextureData(imageBitmap, width, height, depth) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const context = canvas.getContext('2d');
+            context.drawImage(imageBitmap, 0, 0);
+
+            const imageData = context.getImageData(0, 0, width, height).data;
+            const size = width * height * depth;
+            const data = new Uint8Array(size);
+
+            for (let z = 0; z < depth; z++) {
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const index2D = (y * width + x) * 4;
+                        const index3D = z * (width * height) + (y * width) + x;
+                        data[index3D] = imageData[index2D];
+                    }
+                }
+            }
+
+            return data;
+        }
+
+        async function create3DTexture(url) {
+            const imageBitmap = await loadImageBitmap(url);
+            const width = 16;
+            const height = 16;
+            const depth = 16;
+
+            const textureData = convertTo3DTextureData(imageBitmap, width, height, depth);
+
+            const texture3D = new THREE.Data3DTexture(textureData, width, height, depth);
+            texture3D.format = THREE.RedFormat;
+            texture3D.type = THREE.UnsignedByteType;
+            texture3D.needsUpdate = true;
+
+            return texture3D;
+        }
+
+        // Vertex Shader
+        const vertexShader = /* glsl */`
+  varying vec3 vUv;
+  void main() {
+    vUv = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+        // Fragment Shader
+        const fragmentShader = /* glsl */`
+  uniform sampler3D uTexture;
+  varying vec3 vUv;
+  void main() {
+    vec4 color = texture(uTexture, vUv);
+    gl_FragColor = color;
+  }
+`;
+
+        // Create the 3D texture and use it in the material
+        create3DTexture('/textures/sdf.jpg').then(texture3D => {
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTexture: { value: texture3D },
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+            });
+
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            camera.position.z = 2;
+
+            function animate() {
+                requestAnimationFrame(animate);
+              
+                renderer.render(scene, camera);
+            }
+
+            animate();
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+    </script>
+
+</body>
+
+</html>

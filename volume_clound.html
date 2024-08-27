@@ -1,20 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<title>three.js webgl2 - volume - cloud</title>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link type="text/css" rel="stylesheet" href="main.css">
-	</head>
-    <style>
-        body {
-            margin:0;
-            overflow: hidden;
-        }
-    </style>
-	<body>
 
-		<script type="importmap">
+<head>
+	<title>three.js webgl2 - volume - cloud</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css">
+</head>
+<style>
+	body {
+		margin: 0;
+		overflow: hidden;
+	}
+</style>
+
+<body>
+
+	<script type="importmap">
             {
                 "imports": {
                     "three": "./three.module.js",
@@ -22,95 +24,203 @@
                 }
             }
 		</script>
+		<canvas id="myCanvas"></canvas>
+	<script type="module">
+		import Stats from 'three/addons/stats.module.js';
+		import * as THREE from 'three';
+		import { OrbitControls } from 'three/addons/OrbitControls.js';
+		import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
 
-		<script type="module">
-            import Stats from 'three/addons/stats.module.js';
-			import * as THREE from 'three';
-			import { OrbitControls } from 'three/addons/OrbitControls.js';
-			import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
+		import { GUI } from 'three/addons/lil-gui.module.min.js';
 
-			import { GUI } from 'three/addons/lil-gui.module.min.js';
+		let renderer, scene, camera, stats;
+		let mesh,texturedd;
+		const size = 81;
 
-			let renderer, scene, camera,stats;
-			let mesh;
-
-			init();
-
-			function init() {
-
-				renderer = new THREE.WebGLRenderer();
-				renderer.setPixelRatio( window.devicePixelRatio );
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.setAnimationLoop( animate );
-				document.body.appendChild( renderer.domElement );
-
-				scene = new THREE.Scene();
-
-				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.1, 100 );
-				camera.position.set( 0, 0, 1.5 );
-
-				new OrbitControls( camera, renderer.domElement );
-
-				// Sky
-
-				const canvas = document.createElement( 'canvas' );
-				canvas.width = 1;
-				canvas.height = 32;
-
-				const context = canvas.getContext( '2d' );
-				const gradient = context.createLinearGradient( 0, 0, 0, 32 );
-				gradient.addColorStop( 0.0, '#014a84' );
-				gradient.addColorStop( 0.5, '#0561a0' );
-				gradient.addColorStop( 1.0, '#437ab6' );
-				context.fillStyle = gradient;
-				context.fillRect( 0, 0, 1, 32 );
-
-				const skyMap = new THREE.CanvasTexture( canvas );
-				skyMap.colorSpace = THREE.SRGBColorSpace;
-
-				const sky = new THREE.Mesh(
-					new THREE.SphereGeometry( 10 ),
-					new THREE.MeshBasicMaterial( { map: skyMap, side: THREE.BackSide } )
-				);
-				scene.add( sky );
-                stats = new Stats();
-                document.body.appendChild(stats.dom);
-				// Texture
-
-				const size = 128;
-				const data = new Uint8Array( size * size * size );
-
-				let i = 0;
-				const scale = 0.05;
-				const perlin = new ImprovedNoise();
-				const vector = new THREE.Vector3();
-
-				for ( let z = 0; z < size; z ++ ) {
-
-					for ( let y = 0; y < size; y ++ ) {
-
-						for ( let x = 0; x < size; x ++ ) {
-
-							const d = 1.0 - vector.set( x, y, z ).subScalar( size / 2 ).divideScalar( size ).length();
-							data[ i ] = ( 128 + 128 * perlin.noise( x * scale / 1.5, y * scale, z * scale / 1.5 ) ) * d * d;
-							i ++;
-
+		const radius = 5;
+		const data = new Uint8Array(size * size * size);
+		init();
+		const texSDF = new THREE.Texture
+		function createData3DTextureFromMesh(mesh) {
+				const box = new THREE.Box3().setFromObject(mesh);
+				const size = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).y, box.getSize(new THREE.Vector3()).z);
+				const step = size / (size - 1); // Bước quét để bao phủ toàn bộ kích thước
+				
+				// Loop qua từng lớp cắt (z)
+				for (let z = 0; z < size; z++) {
+					for (let y = 0; y < size; y++) {
+						for (let x = 0; x < size; x++) {
+							const position = new THREE.Vector3(
+								x * step - size / 2,
+								y * step - size / 2,
+								z * step - size / 2
+							);
+							
+							// Tạo một điểm trong không gian 3D
+							const point = new THREE.Vector3(position.x, position.y, position.z);
+							
+							// Kiểm tra xem điểm có nằm trong mesh không
+							const isInMesh = mesh.geometry.boundingBox.containsPoint(point);
+							
+							// Gán giá trị cho điểm dựa trên việc nó nằm trong mesh
+							data[z * size * size + y * size + x] = isInMesh  * Math.random() * z ? 255 : 0;
+							
 						}
-
 					}
-
 				}
+				
+				const texture3D = new THREE.Data3DTexture(data, size, size, size);
+				texture3D.format = THREE.RedFormat;
+		
+				texture3D.minFilter = THREE.LinearFilter;
+				texture3D.magFilter = THREE.LinearFilter;
+				texture3D.unpackAlignment = 1;
+				texture3D.needsUpdate = true;
+				
+				return texture3D;
+			}
+		function init() {
 
-				const texture = new THREE.Data3DTexture( data, size, size, size );
-				texture.format = THREE.RedFormat;
-				texture.minFilter = THREE.LinearFilter;
-				texture.magFilter = THREE.LinearFilter;
-				texture.unpackAlignment = 1;
-				texture.needsUpdate = true;
+			renderer = new THREE.WebGLRenderer();
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.setAnimationLoop(animate);
+			document.body.appendChild(renderer.domElement);
 
-				// Material
+			scene = new THREE.Scene();
 
-				const vertexShader = /* glsl */`
+			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+			camera.position.set(0, 0, 2);
+
+			new OrbitControls(camera, renderer.domElement);
+
+			// Texture
+			stats = new Stats();
+			document.body.appendChild(stats.dom);
+			
+
+			// Tạo giá trị cho mỗi điểm trong Data3DTexture
+			let i = 0;
+			const center = size / 2; // Trung tâm của hình cầu
+
+			for (let z = 0; z < size; z++) {
+				for (let y = 0; y < size; y++) {
+					for (let x = 0; x < size; x++) {
+						// Tính khoảng cách từ (x, y, z) đến trung tâm của hình cầu
+						const dx = x - center;
+						const dy = y - center;
+						const dz = z - center;
+						const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+						// Nếu khoảng cách nhỏ hơn hoặc bằng bán kính, gán giá trị
+						// if (distance <= radius) {
+						// 	data[i] = 255; // Giá trị trong hình cầu
+						// } else {
+						// 	data[i] = 0;   // Giá trị ngoài hình cầu
+						// }
+						data[i] = Math.random() * 255;
+						i++;
+					}
+				}
+			}
+	
+			
+			const img = new Image();
+img.src = '/textures/sdf.jpg';
+ img.onload = () => {
+	const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    // Set canvas dimensions to match the image
+    canvas.width = img.width;
+    canvas.height = img.height;
+    context.drawImage(img, 0, 0);
+	
+    // Get image data
+
+
+    const imageData = context.getImageData(0, 0, img.width, img.height);
+
+    const data = imageData.data;
+	console.log(data)
+    // Assume 81 layers and 9x9 grid of layers in the image
+    const layers = 81;
+    const gridX = 9; // Number of layers in x direction
+    const gridY = 9; // Number of layers in y direction
+    const layerWidth = img.width/9; // Width of each layer
+    const layerHeight = img.height/9; // Height of each layer
+    const layerSize = layerWidth * layerHeight;
+
+    // Initialize 3D data array
+    const textureData = new Float32Array(layers * layerSize);
+
+    // Loop through each pixel and organize data into 3D array
+    for (let z = 0; z < layers; z++) {
+        const sliceXOffset = (z % gridX) * layerWidth;
+        const sliceYOffset = Math.floor(z / gridX) * layerHeight;
+
+        for (let y = 0; y < layerHeight; y++) {
+            for (let x = 0; x < layerWidth; x++) {
+                const sliceX = sliceXOffset + x;
+                const sliceY = sliceYOffset + y;
+                const pixelIndex = (sliceY * img.width + sliceX) * 4;
+                const sdfValue = data[pixelIndex]; // Normalize to [0, 1]
+                textureData[z * layerSize + y * layerWidth + x] = sdfValue;
+            }
+        }
+    }
+    // Create DataTexture3D from textureData
+    const dataTexture3D = new THREE.Data3DTexture(textureData, layerWidth, layerHeight, layers);
+    dataTexture3D.format = THREE.RedFormat;
+    dataTexture3D.type = THREE.FloatType;
+    dataTexture3D.minFilter = THREE.LinearFilter;
+    dataTexture3D.magFilter = THREE.LinearFilter;
+    dataTexture3D.unpackAlignment = 1;
+    dataTexture3D.needsUpdate = true;
+
+	material.uniforms.map.value = dataTexture3D
+};
+
+			
+
+// const img2 = new Image();
+// img2.src = '/textures/sdf.jpg';
+// img2.onload = () => {
+//     const canvas = document.getElementById('myCanvas');
+//     const context = canvas.getContext('2d');
+
+//     // Cài đặt kích thước của canvas theo kích thước của hình ảnh.
+//     canvas.width = img.width;
+//     canvas.height = img.height;
+
+//     // Vẽ hình ảnh lên canvas.
+//     context.drawImage(img, 0, 0);
+
+//     // Lấy dữ liệu hình ảnh từ canvas.
+//     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+//     // Vẽ lại dữ liệu hình ảnh (hoặc thao tác với dữ liệu hình ảnh nếu cần).
+//     context.putImageData(imageData, 0, 0);
+// };
+// img2.onerror = () => {
+//     console.error('Hình ảnh không thể tải được.');
+// };
+			const geometrySampler = new THREE.BoxGeometry(1, 5, 2); 
+			const mesh11 = new THREE.Mesh(geometrySampler, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+		//	const texture3D = createData3DTextureFromMesh(mesh11);
+
+
+
+			const texture = new THREE.Data3DTexture(data, size, size, size);
+			texture.format = THREE.RedFormat;
+			texture.minFilter = THREE.LinearFilter;
+			texture.magFilter = THREE.LinearFilter;
+			texture.unpackAlignment = 1;
+			texture.needsUpdate = true;
+			
+			// Material
+
+			const vertexShader = /* glsl */`
 					in vec3 position;
 
 					uniform mat4 modelMatrix;
@@ -131,7 +241,7 @@
 					}
 				`;
 
-				const fragmentShader = /* glsl */`
+			const fragmentShader = /* glsl */`
 					precision highp float;
 					precision highp sampler3D;
 
@@ -143,29 +253,10 @@
 
 					out vec4 color;
 
-					uniform vec3 base;
 					uniform sampler3D map;
 
 					uniform float threshold;
-					uniform float range;
-					uniform float opacity;
 					uniform float steps;
-					uniform float frame;
-
-					uint wang_hash(uint seed)
-					{
-							seed = (seed ^ 61u) ^ (seed >> 16u);
-							seed *= 9u;
-							seed = seed ^ (seed >> 4u);
-							seed *= 0x27d4eb2du;
-							seed = seed ^ (seed >> 15u);
-							return seed;
-					}
-
-					float randomFloat(inout uint seed)
-					{
-							return float(wang_hash(seed)) / 4294967296.;
-					}
 
 					vec2 hitBox( vec3 orig, vec3 dir ) {
 						const vec3 box_min = vec3( - 0.5 );
@@ -184,16 +275,26 @@
 						return texture( map, p ).r;
 					}
 
-					float shading( vec3 coord ) {
-						float step = 0.01;
-						return sample1( coord + vec3( - step ) ) - sample1( coord + vec3( step ) );
-					}
+					#define epsilon .0001
 
-					vec4 linearToSRGB( in vec4 value ) {
-						return vec4( mix( pow( value.rgb, vec3( 0.41666 ) ) * 1.055 - vec3( 0.055 ), value.rgb * 12.92, vec3( lessThanEqual( value.rgb, vec3( 0.0031308 ) ) ) ), value.a );
+					vec3 normal( vec3 coord ) {
+						if ( coord.x < epsilon ) return vec3( 1.0, 0.0, 0.0 );
+						if ( coord.y < epsilon ) return vec3( 0.0, 1.0, 0.0 );
+						if ( coord.z < epsilon ) return vec3( 0.0, 0.0, 1.0 );
+						if ( coord.x > 1.0 - epsilon ) return vec3( - 1.0, 0.0, 0.0 );
+						if ( coord.y > 1.0 - epsilon ) return vec3( 0.0, - 1.0, 0.0 );
+						if ( coord.z > 1.0 - epsilon ) return vec3( 0.0, 0.0, - 1.0 );
+
+						float step = 0.01;
+						float x = sample1( coord + vec3( - step, 0.0, 0.0 ) ) - sample1( coord + vec3( step, 0.0, 0.0 ) );
+						float y = sample1( coord + vec3( 0.0, - step, 0.0 ) ) - sample1( coord + vec3( 0.0, step, 0.0 ) );
+						float z = sample1( coord + vec3( 0.0, 0.0, - step ) ) - sample1( coord + vec3( 0.0, 0.0, step ) );
+
+						return normalize( vec3( x, y, z ) );
 					}
 
 					void main(){
+
 						vec3 rayDir = normalize( vDirection );
 						vec2 bounds = hitBox( vOrigin, rayDir );
 
@@ -206,115 +307,84 @@
 						float delta = min( inc.x, min( inc.y, inc.z ) );
 						delta /= steps;
 
-						// Jitter
-
-						// Nice little seed from
-						// https://blog.demofox.org/2020/05/25/casual-shadertoy-path-tracing-1-basic-camera-diffuse-emissive/
-						uint seed = uint( gl_FragCoord.x ) * uint( 1973 ) + uint( gl_FragCoord.y ) * uint( 9277 ) + uint( frame ) * uint( 26699 );
-						vec3 size = vec3( textureSize( map, 0 ) );
-						float randNum = randomFloat( seed ) * 2.0 - 1.0;
-						p += rayDir * randNum * ( 1.0 / size );
-
-						//
-
-						vec4 ac = vec4( base, 0.0 );
-
 						for ( float t = bounds.x; t < bounds.y; t += delta ) {
 
 							float d = sample1( p + 0.5 );
 
-							d = smoothstep( threshold - range, threshold + range, d ) * opacity;
+							if ( d > threshold ) {
 
-							float col = shading( p + 0.5 ) * 3.0 + ( ( p.x + p.y ) * 0.25 ) + 0.2;
+								color.rgb = normal( p + 0.5 ) * 0.5 + ( p * 1.5 + 0.25 );
+								color.a = 1.;
+								break;
 
-							ac.rgb += ( 1.0 - ac.a ) * d * col;
-
-							ac.a += ( 1.0 - ac.a ) * d;
-
-							if ( ac.a >= 0.95 ) break;
+							}
 
 							p += rayDir * delta;
 
 						}
 
-						color = linearToSRGB( ac );
-
-						if ( color.a == 0.0 ) discard;
-
+						if ( color.a == 0.0 ) color.rgb = vec3(1.,0.,0.);
+					
 					}
 				`;
 
-				const geometry = new THREE.BoxGeometry( 1, 1, 1 );
-				const material = new THREE.RawShaderMaterial( {
-					glslVersion: THREE.GLSL3,
-					uniforms: {
-						base: { value: new THREE.Color( 0x798aa0 ) },
-						map: { value: texture },
-						cameraPos: { value: new THREE.Vector3() },
-						threshold: { value: 0.25 },
-						opacity: { value: 0.25 },
-						range: { value: 0.1 },
-						steps: { value: 100 },
-						frame: { value: 0 }
-					},
-					vertexShader,
-					fragmentShader,
-					side: THREE.BackSide,
-					transparent: true
-				} );
+			const geometry = new THREE.BoxGeometry(1, 1, 1);
+			const material = new THREE.RawShaderMaterial({
+				glslVersion: THREE.GLSL3,
+				uniforms: {
+					map: { value: texturedd },
+					cameraPos: { value: new THREE.Vector3() },
+					threshold: { value: 0.6 },
+					steps: { value: 200 }
+				},
+				vertexShader,
+				fragmentShader,
+				side: THREE.BackSide,
+				
+			});
+	
+			mesh = new THREE.Mesh(geometry, material);
+			scene.add(mesh);
 
-				mesh = new THREE.Mesh( geometry, material );
-				scene.add( mesh );
+			//
 
-				//
+			const parameters = { threshold: 0.6, steps: 200 };
 
-				const parameters = {
-					threshold: 0.25,
-					opacity: 0.25,
-					range: 0.1,
-					steps: 100
-				};
+			function update() {
 
-				function update() {
-
-					material.uniforms.threshold.value = parameters.threshold;
-					material.uniforms.opacity.value = parameters.opacity;
-					material.uniforms.range.value = parameters.range;
-					material.uniforms.steps.value = parameters.steps;
-
-				}
-
-				const gui = new GUI();
-				gui.add( parameters, 'threshold', 0, 1, 0.01 ).onChange( update );
-				gui.add( parameters, 'opacity', 0, 1, 0.01 ).onChange( update );
-				gui.add( parameters, 'range', 0, 1, 0.01 ).onChange( update );
-				gui.add( parameters, 'steps', 0, 200, 1 ).onChange( update );
-
-				window.addEventListener( 'resize', onWindowResize );
+				material.uniforms.threshold.value = parameters.threshold;
+				material.uniforms.steps.value = parameters.steps;
 
 			}
 
-			function onWindowResize() {
+			const gui = new GUI();
+			gui.add(parameters, 'threshold', 0, 1, 0.01).onChange(update);
+			gui.add(parameters, 'steps', 0, 300, 1).onChange(update);
 
-				camera.aspect = window.innerWidth / window.innerHeight;
-				camera.updateProjectionMatrix();
+			window.addEventListener('resize', onWindowResize);
 
-				renderer.setSize( window.innerWidth, window.innerHeight );
+		}
 
-			}
+		function onWindowResize() {
 
-			function animate() {
-                stats.update();
-				mesh.material.uniforms.cameraPos.value.copy( camera.position );
-				//mesh.rotation.y = - performance.now() / 7500;
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
 
-				mesh.material.uniforms.frame.value ++;
+			renderer.setSize(window.innerWidth, window.innerHeight);
 
-				renderer.render( scene, camera );
+		}
 
-			}
+		function animate() {
+			stats.update();
+			mesh.material.uniforms.cameraPos.value.copy(camera.position);
 
-		</script>
+			renderer.render(scene, camera);
 
-	</body>
+		}
+
+
+	</script>
+
+</body>
+
 </html>
