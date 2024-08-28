@@ -12,6 +12,10 @@
 				margin:0;
 				padding:0;
 			}		
+			#container {
+				position: relative;
+				z-index: 9999;
+			}
 			.hidden {
 				opacity: 0;
 				position: absolute;
@@ -24,6 +28,17 @@
 			font-size: 16px;
 			margin: 4px 2px;
 			cursor: pointer;
+		}
+		.info {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width:500px;
+			height: 500px;
+			z-index: 9;
+		}
+		#infomesh {
+			color: white;
 		}
 		</style>	
 	</head>
@@ -39,24 +54,25 @@
 			<span id = "numTets">0</span> tets&nbsp;&nbsp;
 			Compliance:
 			<input type = "range" min = "0" max = "10" value = "0" id = "complianceSlider" class = "slider"> 
-	
-	
 		</div>	
+		<div class="info">
+			<p id="infomesh"></p>
+		</div>
         <div id="container"></div>
         
      
     <script type="importmap">
 		{
 			"imports": {
-				"three": "./three.module.js",
-				"three/addons/": "./jsm/"
+				"three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.167.1/three.module.js",
+				"three/addons/": "./jsm/",
+				"orbit" : "https://unpkg.com/three@0.126.1/examples/jsm/controls/OrbitControls.js"
 			}
 		}
 	</script>
 		<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { OBJLoader } from 'three/addons/OBJLoader.js';
+			import * as THREE from 'three';
+			import { OrbitControls } from 'orbit';
 
 			// ----- math on vector arrays -------------------------------------------------------------
 
@@ -355,6 +371,7 @@ import { OBJLoader } from 'three/addons/OBJLoader.js';
 				{
 					if (this.grabId >= 0) {
 						var p = [pos.x, pos.y, pos.z];
+						console.log(pos)
 						vecCopy(this.pos,this.grabId, p,0);
 					}
 				}
@@ -636,38 +653,9 @@ import { OBJLoader } from 'three/addons/OBJLoader.js';
 				requestAnimationFrame(update);
 			}
 
-			const loader = new OBJLoader();
-
-// load a resource
-loader.load(
-	// resource URL
-	'models/monkeyOrigin.obj',
-	// called when resource is loaded
-	function ( object ) {
-
-		//console.log((object.children[0].geometry.attributes.position.array).toString())
-		console.log(object.children[0])
-		modelNew = object.children[0].geometry.attributes.position.array
-		object.position.z = -5
-		gThreeScene.add(object)
-	},
-	// called when loading is in progresses
-	function ( xhr ) {
-
-		console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
-
-	},
-	// called when loading has errors
-	function ( error ) {
-
-		console.log( 'An error happened' );
-
-	}
-);
 
 
-
-			function initVert() {
+			function visualizeVertex() {
 			
 				let i = 0;
 
@@ -680,51 +668,110 @@ loader.load(
 
 						gThreeScene.add(meshSampler);
 
-						i += 3; // Tăng i để nhảy đến đỉnh tiếp theo
+						i += 3; 
 
-						setTimeout(addVertex, 200); // Gọi lại hàm này sau 1 giây
+						setTimeout(addVertex, 200); 
 					}
 				}
 
-				addVertex(); // Bắt đầu quá trình
+				addVertex();
 			}
-			function initTetIds() {
-				for (let i = 0; i < bunnyMesh.tetIds.length; i+=4) {
-					const vertices = new Float32Array([
-						bunnyMesh.verts[bunnyMesh.tetIds[i] * 3], bunnyMesh.verts[bunnyMesh.tetIds[i] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[i] * 3 + 2],  // A
-						bunnyMesh.verts[bunnyMesh.tetIds[i+1] * 3], bunnyMesh.verts[bunnyMesh.tetIds[i+1] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[i+1] * 3 + 2],  // A
-						bunnyMesh.verts[bunnyMesh.tetIds[i+2] * 3], bunnyMesh.verts[bunnyMesh.tetIds[i+2] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[i+2] * 3 + 2],  // A
-						bunnyMesh.verts[bunnyMesh.tetIds[i+3] * 3], bunnyMesh.verts[bunnyMesh.tetIds[i+3] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[i+3] * 3 + 2],  // A
-					]);
+			function visualizeTetIds() {
+				
+				let j = 0;
 
-					// Chỉ số của các đỉnh để tạo ra các mặt (faces) của tứ diện
-					const indices = [
-						0, 1, 2, // ABC
-						0, 1, 3, // ABD
-						0, 2, 3, // ACD
-						1, 2, 3  // BCD
-					];
+				function addTetIds() {
+					if (j < bunnyMesh.tetIds.length) {
+						const vertices = new Float32Array([
+							bunnyMesh.verts[bunnyMesh.tetIds[j] * 3], bunnyMesh.verts[bunnyMesh.tetIds[j] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[j] * 3 + 2],  // A
+							bunnyMesh.verts[bunnyMesh.tetIds[j+1] * 3], bunnyMesh.verts[bunnyMesh.tetIds[j+1] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[j+1] * 3 + 2],  // B
+							bunnyMesh.verts[bunnyMesh.tetIds[j+2] * 3], bunnyMesh.verts[bunnyMesh.tetIds[j+2] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[j+2] * 3 + 2],  // C
+							bunnyMesh.verts[bunnyMesh.tetIds[j+3] * 3], bunnyMesh.verts[bunnyMesh.tetIds[j+3] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[j+3] * 3 + 2],  // D
+						]);
 
-					// Tạo BufferGeometry
-					const geometry = new THREE.BufferGeometry();
-					geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-					geometry.setIndex(indices);
-					geometry.computeVertexNormals(); // Tính toán mặt phẳng bình thường cho ánh sáng
 
-					// Tạo vật liệu
-					const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true,transparent:true,opacity:.01 });
+						const indices = [
+							0, 1, 2, // ABC
+							0, 1, 3, // ABD
+							0, 2, 3, // ACD
+							1, 2, 3  // BCD
+						];
+						let geometry = new THREE.BufferGeometry();
+						geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+						geometry.setIndex(indices);
+						geometry.computeVertexNormals(); 
 
-					// Tạo lưới từ hình học và vật liệu
-					const tetrahedron = new THREE.Mesh(geometry, material);
-					tetrahedron.position.multiplyScalar(.5)
-					// Thêm tứ diện vào scene
-					gThreeScene.add(tetrahedron);
+						let material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true,transparent:true,opacity:.1 });
+						let tetrahedron = new THREE.Mesh(geometry, material);
+
+						tetrahedron.position.multiplyScalar(.5)
+						gThreeScene.add(tetrahedron);
+
+						j += 4; 
+
+						setTimeout(addTetIds, 20); 
+					}
 				}
+
+				addTetIds(); 
+
 				
 			}
+
+			function visualizeSurfaceIds() {
+				let m = 0;
+				function addSurfaceIds() {
+					if(m < bunnyMesh.tetSurfaceTriIds.length) {
+						const vertices = new Float32Array([
+							bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m] * 3], bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m] * 3 + 2],  // A
+							bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m+1] * 3], bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m+1] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m+1] * 3 + 2],  // A
+							bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m+2] * 3], bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m+2] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetSurfaceTriIds[m+2] * 3 + 2], 
+						]);
+
+
+						let geometry = new THREE.BufferGeometry();
+						geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+						let material = new THREE.MeshBasicMaterial({ color: 0xff0000, side:2, transparent:true,opacity:.2 });
+						let triangleMesh = new THREE.Mesh(geometry, material);
+						gThreeScene.add(triangleMesh);
+
+						m += 3; 
+
+						setTimeout(addSurfaceIds, 200); 
+					}
+				}
+				addSurfaceIds()
+			}
+			function visualizeTetEdgeIds() {
+				let n = 0
+				function addTetEdgeIds(){
+					if(n < bunnyMesh.tetEdgeIds.length) {
+
+						let pointA = new THREE.Vector3(bunnyMesh.verts[bunnyMesh.tetEdgeIds[n] * 3], bunnyMesh.verts[bunnyMesh.tetEdgeIds[n] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetEdgeIds[n] * 3 + 2]);
+						let pointB = new THREE.Vector3(bunnyMesh.verts[bunnyMesh.tetEdgeIds[n+1] * 3], bunnyMesh.verts[bunnyMesh.tetEdgeIds[n+1] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetEdgeIds[n+1] * 3 + 2]);
+
+						let points = [];
+						points.push(pointA);
+						points.push(pointB);
+
+						let geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+						let material = new THREE.LineBasicMaterial({ color: 0x0000ff });
+						let line = new THREE.Line(geometry, material);
+
+						// Thêm đường thẳng vào cảnh
+						gThreeScene.add(line);
+						n += 2
+						setTimeout(addTetEdgeIds, 20); 
+					}
+				}
+				addTetEdgeIds()
+			}
 			function initVisual() {
-				initVert()
-				initTetIds()
+				// visualizeVertex()
+				visualizeTetIds()
+				//visualizeSurfaceIds()
+				visualizeTetEdgeIds()
 				
 			}
 			var bunnyMesh = 
@@ -1311,6 +1358,15 @@ loader.load(
 					278,259,275,278,292,287,308,287,292,312,308,287,312,297,292,312,292,297,316,292,
 					308,312,312,292,316,297,312,316],
 			};
+
+			document.getElementById("infomesh").innerHTML =  `
+                length Verts : ${bunnyMesh.verts.length}<br/>
+                  length Ids : ${bunnyMesh.tetIds.length}<br/>
+				  ==> total tets : 1351 *3 = Ids<br/>
+                    length EdgeIds : ${bunnyMesh.tetEdgeIds.length}<br/>
+                      length SurfaceTriIds : ${bunnyMesh.tetSurfaceTriIds.length}<br/>
+                ` 
+			
             console.log(
                 `
                 length Verts : ${bunnyMesh.verts.length}\n
