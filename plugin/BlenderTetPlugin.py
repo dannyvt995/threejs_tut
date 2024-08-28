@@ -28,6 +28,7 @@ import bmesh
 import math
 import mathutils
 import json
+import numpy as np
 from random import random
 from bpy_extras.object_utils import AddObjectHelper
 from mathutils.bvhtree import BVHTree
@@ -339,18 +340,19 @@ def createTetIds(verts, tree, minQuality):
                     edges.append((id0, id2, newTetNr, 3))
                 
 
-             
+        
               
             # next neighbor
         # next violating tet
 
         # fix neighbors
-
+        print(len(edges), "length edges in loop ",(i))
+        tetEdgesIds.extend(edges)
         sortedEdges = sorted(edges, key = cmp_to_key(compareEdges))
 
         nr = 0
         numEdges = len(sortedEdges)
-        print(len(sortedEdges), "length sortedEdges in loop ",(i))
+        
         while nr < numEdges:
             e0 = sortedEdges[nr]
             nr = nr + 1
@@ -418,7 +420,7 @@ def createTetIds(verts, tree, minQuality):
     print(int(len(tetIds) / 4),"tets created")
 
     # Đường dẫn đến file bạn muốn tạo
-    file_path = r"D:\CODE2024\threejs_tut\plugin\outdata\tet_data_output.txt"
+    file_path = r"D:\CODE2024\threejs_tut\plugin\outdata\tetIdsVStetEdgesIds.txt"
 
     # Mở file ở chế độ ghi ('w')
     with open(file_path, "w") as file:
@@ -427,15 +429,15 @@ def createTetIds(verts, tree, minQuality):
     
         file.write("tetIds:\n")
         file.write(str(tetIds) + "\n")
-        
-        file.write("\n")  # Tạo khoảng cách giữa các phần
-
-        # Ghi toàn bộ mảng edges vào file
-        file.write("tetEdgeIds:\n")
+        file.write("\n") 
+        file.write("\n") 
+        file.write("\n") 
+        file.write("tetEdgesIds:\n")
         file.write(str(tetEdgesIds) + "\n")
+       
     
     # In ra thông báo rằng việc ghi file đã hoàn thành
-    print(f"Data has been written to {file_path}")
+    print(f"======>tetIds has been written to {file_path}")
 
     print(len(tetIds), "length tetIds ( is face val return)")
     print(len(tetEdgesIds), "length tetEdgesIds")
@@ -539,8 +541,18 @@ def createTets(resolution, minQuality, oneFacePerTet, scale = 1.0):
 
     nr = 0
      
+    file_path = r"D:\CODE2024\threejs_tut\plugin\outdata\tetVerts.txt"
+
+    # Mở file ở chế độ ghi ('w')
+    with open(file_path, "w") as file:
+        # Ghi toàn bộ mảng tetIds vào file
+        file.write("tetVerts:\n")
+        file.write(str(tetVerts) + "\n")
+  
+    # In ra thông báo rằng việc ghi file đã hoàn thành
+    print(f"======>tetVerts has been written to {file_path}")
  
-    print(len(tetVerts), "length tetVerts")
+
     print(len(faces), "length faces")
     for i in range(numTets):
         if oneFacePerTet:
