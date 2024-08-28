@@ -9,7 +9,13 @@
 				font-family: verdana; 
 				font-size: 15px;
 				overflow: hidden;
-			}			
+				margin:0;
+				padding:0;
+			}		
+			.hidden {
+				opacity: 0;
+				position: absolute;
+			}	
 			.button {
 			background-color: #606060;
 			border: none;
@@ -23,19 +29,19 @@
 	</head>
 	
 	<body>
-
-        <h1>Soft Body Simulation</h1> 
-		<button id = "buttonRun" onclick="run()" class="button">Run</button>
-		<button onclick="restart()" class="button">Restart</button>
-		<button onclick="squash()" class="button">Squash</button>
-		<button onclick="newBody()" class="button">Bodies++</button>&nbsp;&nbsp;
-		<br><br>
-		<span id = "numTets">0</span> tets&nbsp;&nbsp;
-		Compliance:
-		<input type = "range" min = "0" max = "10" value = "0" id = "complianceSlider" class = "slider"> 
-
-
-		<br><br>		
+		<div class="hidden">
+			<h1>Soft Body Simulation</h1> 
+			<button id = "buttonRun" onclick="run()" class="button">Run</button>
+			<button onclick="restart()" class="button">Restart</button>
+			<button onclick="squash()" class="button">Squash</button>
+			<button onclick="newBody()" class="button">Bodies++</button>&nbsp;&nbsp;
+			<br><br>
+			<span id = "numTets">0</span> tets&nbsp;&nbsp;
+			Compliance:
+			<input type = "range" min = "0" max = "10" value = "0" id = "complianceSlider" class = "slider"> 
+	
+	
+		</div>	
         <div id="container"></div>
         
      
@@ -478,6 +484,9 @@ import { OBJLoader } from 'three/addons/OBJLoader.js';
 				container.addEventListener( 'pointerdown', onPointer, false );
 				container.addEventListener( 'pointermove', onPointer, false );
 				container.addEventListener( 'pointerup', onPointer, false );
+
+				//visuallize
+				initVisual(bunnyMesh,gThreeScene)
 			}
 
 			// ------- grabber -----------------------------------------------------------
@@ -656,6 +665,68 @@ loader.load(
 	}
 );
 
+
+
+			function initVert() {
+			
+				let i = 0;
+
+				function addVertex() {
+					if (i < bunnyMesh.verts.length) {
+						let pointSample = new THREE.SphereGeometry(0.0067, 5, 5);
+						let matSample = new THREE.MeshBasicMaterial({color: 'red'});
+						let meshSampler = new THREE.Mesh(pointSample, matSample);
+						meshSampler.position.set(bunnyMesh.verts[i], bunnyMesh.verts[i + 1], bunnyMesh.verts[i + 2]);
+
+						gThreeScene.add(meshSampler);
+
+						i += 3; // Tăng i để nhảy đến đỉnh tiếp theo
+
+						setTimeout(addVertex, 200); // Gọi lại hàm này sau 1 giây
+					}
+				}
+
+				addVertex(); // Bắt đầu quá trình
+			}
+			function initTetIds() {
+				for (let i = 0; i < bunnyMesh.tetIds.length; i+=4) {
+					const vertices = new Float32Array([
+						bunnyMesh.verts[bunnyMesh.tetIds[i] * 3], bunnyMesh.verts[bunnyMesh.tetIds[i] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[i] * 3 + 2],  // A
+						bunnyMesh.verts[bunnyMesh.tetIds[i+1] * 3], bunnyMesh.verts[bunnyMesh.tetIds[i+1] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[i+1] * 3 + 2],  // A
+						bunnyMesh.verts[bunnyMesh.tetIds[i+2] * 3], bunnyMesh.verts[bunnyMesh.tetIds[i+2] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[i+2] * 3 + 2],  // A
+						bunnyMesh.verts[bunnyMesh.tetIds[i+3] * 3], bunnyMesh.verts[bunnyMesh.tetIds[i+3] * 3 + 1], bunnyMesh.verts[bunnyMesh.tetIds[i+3] * 3 + 2],  // A
+					]);
+
+					// Chỉ số của các đỉnh để tạo ra các mặt (faces) của tứ diện
+					const indices = [
+						0, 1, 2, // ABC
+						0, 1, 3, // ABD
+						0, 2, 3, // ACD
+						1, 2, 3  // BCD
+					];
+
+					// Tạo BufferGeometry
+					const geometry = new THREE.BufferGeometry();
+					geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+					geometry.setIndex(indices);
+					geometry.computeVertexNormals(); // Tính toán mặt phẳng bình thường cho ánh sáng
+
+					// Tạo vật liệu
+					const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true,transparent:true,opacity:.01 });
+
+					// Tạo lưới từ hình học và vật liệu
+					const tetrahedron = new THREE.Mesh(geometry, material);
+					tetrahedron.position.multiplyScalar(.5)
+					// Thêm tứ diện vào scene
+					gThreeScene.add(tetrahedron);
+				}
+				
+			}
+			function initVisual() {
+				initVert()
+				initTetIds()
+				
+			}
 			var bunnyMesh = 
 			{
 				name : "bunnyTets",
