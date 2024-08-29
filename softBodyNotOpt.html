@@ -80,7 +80,7 @@
 	<script type="module">
 		import * as THREE from 'three';
 		import { OrbitControls } from 'three/addons/OrbitControls.js';
-		import {bunnyMesh,textTet}  from 'pluginTet'
+		import {bunnyMesh,textTet,tetBox,monkeyTet}  from 'pluginTet'
 		import { OBJLoader } from 'three/addons/OBJLoader.js';
 		// ----- math on vector arrays -------------------------------------------------------------
 		let outVertsCC = []
@@ -90,6 +90,7 @@
 			outVertsCC.push(Number(textTet.verts[vv].toFixed(5)))
 			
 		}
+		
 		function vecSetZero(a, anr) {
 			anr *= 3;
 			a[anr++] = 0.0;
@@ -201,7 +202,7 @@
 	
 				geometry.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
 				geometry.setIndex(tetMesh.tetSurfaceTriIds);
-				var material = new THREE.MeshPhongMaterial({ color: 'blue', wireframe: true });
+				var material = new THREE.MeshPhongMaterial({ color: 'blue', wireframe: false });
 				material.flatShading = true;
 				this.surfaceMesh = new THREE.Mesh(geometry, material);
 				this.surfaceMesh.geometry.computeVertexNormals();
@@ -393,7 +394,7 @@
 
 		// ------------------------------------------------------------------
 		function initPhysics() {
-			var body = new SoftBody(bunnyMesh, gThreeScene);
+			var body = new SoftBody(monkeyTet, gThreeScene);
 			
 			gPhysicsScene.objects.push(body);
 			document.getElementById("numTets").innerHTML = body.numTets;
@@ -435,7 +436,7 @@
 			var spotLight = new THREE.SpotLight(0xffffff);
 			spotLight.angle = Math.PI / 5;
 			spotLight.penumbra = 0.2;
-			spotLight.position.set(2, 3, 3);
+			spotLight.position.set(0, 3, 0);
 			spotLight.castShadow = true;
 			spotLight.shadow.camera.near = 3;
 			spotLight.shadow.camera.far = 10;
@@ -444,7 +445,7 @@
 			gThreeScene.add(spotLight);
 
 			var dirLight = new THREE.DirectionalLight(0x55505a, 1);
-			dirLight.position.set(0, 3, 0);
+			dirLight.position.set(0, 1, 0);
 			dirLight.castShadow = true;
 			dirLight.shadow.camera.near = 1;
 			dirLight.shadow.camera.far = 10;
@@ -700,8 +701,10 @@
 					geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
 					geometry.setIndex(indices);
 					geometry.computeVertexNormals();
-
-					let material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: .1 });
+					var colorH = new THREE.Color( Math.random() * 0xffffff );
+				
+					let material = new THREE.MeshPhongMaterial({ color: colorH, wireframe: false, transparent: false, opacity: .5,side:2 });
+					material.flatShading = true
 					let tetrahedron = new THREE.Mesh(geometry, material);
 
 					tetrahedron.position.multiplyScalar(.5)
@@ -756,7 +759,7 @@
 
 					let geometry = new THREE.BufferGeometry().setFromPoints(points);
 
-					let material = new THREE.LineBasicMaterial({ color: 0x0000ff });
+					let material = new THREE.LineBasicMaterial({ color: 0xffffff });
 					let line = new THREE.Line(geometry, material);
 
 					// Thêm đường thẳng vào cảnh
@@ -815,30 +818,43 @@
 
 			}
 		);
-
+	
 		function initVisual() {
-			// visualizeVertex({tetMeshVal: textTet,time:0})
-			// visualizeTetIds({tetMeshVal: bunnyMesh,time:200})
-			// visualizeSurfaceIds({tetMeshVal: bunnyMesh,time:100})
-			const outEdge = calcEdgeIds()
-			
-			visualizeTetEdgeIds({ tetMeshVal: textTet, time: 0 })
-			console.log(textTet.tetIds,textTet.tetIds.length/4)
+			////// --------------  Calc another props
+			calcEdgeIds(monkeyTet.tetIds)
+			//calcSurfaceTris(monkeyTet.tetIds)
+
+
+			////// --------------  Visualize props
+			//visualizeVertex({tetMeshVal: monkeyTet,time:0})
+			//visualizeTetIds({tetMeshVal: monkeyTet,time:10})
+			visualizeSurfaceIds({tetMeshVal: monkeyTet,time:0})
+			//visualizeTetEdgeIds({ tetMeshVal: monkeyTet, time: 0 })
+
+			////// --------------  check props depen
+			//console.log(textTet.tetIds,textTet.verts.length/3)
+			for (let rrr = 0; rrr < textTet.tetIds.length; rrr++) {
+				if(textTet.tetIds[rrr] > textTet.verts.length/3 - 3) {
+					console.log("!!Warring tetIds !~ verts_l with 3")
+				}else{
+					console.log("tetIds ~~ verts_l")
+				}
+				
+			}
+
+			////// --------------  clean props
 			let outVerts = []
-		
-		
 			for (let vv = 0; vv < textTet.verts.length; vv++) {
 				outVerts.push(Number(textTet.verts[vv].toFixed(5)))
-				
 			}
 			
 
-			// remove pin tet plugin
+			//remove pin tet plugin
 			// let arr = []
 			// for (let b = 0; b < textTet.verts.length; b++) {
-			// 	if( textTet.verts[b] > 1.5 || textTet.verts[b] < -1.5) {
+			// 	if( textTet.verts[b] === 0 ) {
 				
-			// 		arr.push(0)
+			// 		//arr.push(0)
 			// 	}else{
 			// 		arr.push(textTet.verts[b])
 			// 	}
@@ -848,19 +864,92 @@
 	
 		}
 
-		function calcEdgeIds() {
+		function calcEdgeIds(tetIdTemp) {
 			// temp = [0,1,2,3]
-			// out = [0,1,1,2,2,3,3,0]
-			let temp = textTet.tetIds
+			// out = [(0,1),(1,2),(2,3),(3,0)]
+			let temp = tetIdTemp
 			let out = []
 			let count = 4
-			for (let t = 0; t < textTet.tetIds.length; t+=count) {
+			for (let t = 0; t < tetIdTemp.length; t+=count) {
 				out.push(temp[t],temp[t+1],temp[t+1],temp[t+2],temp[t+2],temp[t+3],temp[t+3],temp[t+0])
 			}
-			console.log(out,out.length/2)
+			console.log("calcEdgeIds =>",out.toString(),out.length/2)
 			return out
 		}
+		function sliceArray(arr, size) {
+			let result = [];
+			for (let i = 0; i < arr.length; i += size) {
+				result.push(arr.slice(i, i + size));
+			}
+			return result;
+		}
+		function calcSurfaceTris(tetIdTemp) {
+			//temp = [0,1,2,3]
+			//out = [(0,1,2),(1,2,3),(0,1,3),(0,2,3)]
+			let count = 4
+			let temp = tetIdTemp
+			let out = []
+			// sort nó
+			for (let t = 0; t < tetIdTemp.length; t+=count) {
+				let rls1 = [
+					temp[t+0],temp[t+1],temp[t+2],
+					temp[t+1],temp[t+2],temp[t+3],
+					temp[t+0],temp[t+1],temp[t+3],
+					temp[t+0],temp[t+2],temp[t+3],
+				]
+				let rls2 = []
+				for (let z = 0; z < rls1.length; z+=3) {
+					let tri = [rls1[z], rls1[z + 1], rls1[z + 2]];
+					tri.sort((a, b) => a - b);
+					rls2.push(tri[0], tri[1], tri[2]);
+					
+				}
+				out.push(...rls2);
+			}
+			console.log("outTris",out)
+			// check tris count exsist
+			let triCount = {};
+			for (let i = 0; i < out.length; i += 3) {
+				let tri = [out[i], out[i + 1], out[i + 2]].join(',');
+				if (triCount[tri]) {
+					triCount[tri]++;
+				} else {
+					triCount[tri] = 1;
+				}
+			}
+			console.log(triCount)
+			// fill tris exsist once time
+			let uniqueTris = [];
+			const EPSILON = 1e-6;
+			for (let i = 0; i < out.length; i += 3) {
+				let tri = [out[i], out[i + 1], out[i + 2]].join(',');
+				if (triCount[tri] === 1) {
 
+					// remove pytago
+					let d1 = Math.pow(out[i + 1] - out[i + 0], 2) + Math.pow(out[i + 2] - out[i + 1], 2); // Khoảng cách giữa c[0] và c[1]
+					let d2 = Math.pow(out[i + 2] - out[i + 1], 2) + Math.pow(out[i + 1] - out[i + 2], 2); // Khoảng cách giữa c[1] và c[2]
+					let d3 = Math.pow(out[i + 2] - out[i + 0], 2) + Math.pow(out[i + 1] - out[i + 2], 2); // Khoảng cách giữa c[0] và c[2]
+
+		
+					let sides = [d1, d2, d3].sort((x, y) => x - y);
+					console.log(Math.abs(sides[0] + sides[1] - sides[2]))
+					// Check Pytago
+					if (Math.abs(sides[0] + sides[1] - sides[2]) < EPSILON) {
+						
+						console.log("tam giác vuông")
+						continue;
+					}
+
+					uniqueTris.push(out[i], out[i + 1], out[i + 2]);
+				}
+			}
+			
+			
+			
+			console.log("calcSurfaceTris =>",uniqueTris.toString(),uniqueTris.length/3)
+
+			return out
+		}
 		document.getElementById("infomesh").innerHTML = `
                 length Verts : ${bunnyMesh.verts.length}<br/>
                   length Ids : ${bunnyMesh.tetIds.length}<br/>
