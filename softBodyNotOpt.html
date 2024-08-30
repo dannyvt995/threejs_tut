@@ -216,7 +216,7 @@
 				//					console.log(JSON.stringify(tetMesh.verts));
 
  
-
+this.randPos()
 
 
 
@@ -224,11 +224,11 @@
 
 randPos(){
 
-
+setTimeout(() => {
 vecCopy(this.pos,
 Math.abs(Math.floor(Math.random()*30))
 ,[Math.random()*2,0,0],0);
-
+},1000)
 
 }
 
@@ -417,7 +417,7 @@ Math.abs(Math.floor(Math.random()*30))
 			var body = new SoftBody(monkeyTet, gThreeScene);
 			
 			gPhysicsScene.objects.push(body);
-		gPhysicsScene.objects.randPos()	document.getElementById("numTets").innerHTML = body.numTets;
+		document.getElementById("numTets").innerHTML = body.numTets;
 		}
 
 		// ------------------------------------------------------------------
