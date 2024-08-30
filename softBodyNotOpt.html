@@ -373,6 +373,12 @@
 					vecCopy(this.pos, this.grabId, p, 0);
 				}
 			}
+   
+
+  setTimeout(() => {
+
+vecCopy(this.pos, 20, [Math.random(),0,0], 0);
+},1000)
 
 			moveGrabbed(pos, vel) {
 				if (this.grabId >= 0) {
