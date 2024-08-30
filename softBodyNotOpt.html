@@ -62,6 +62,7 @@
 	</div>
 	<div class="info">
 		<p id="infomesh"></p>
+<span id="treck"></span>
 	</div>
 	<div id="container"></div>
 
@@ -397,7 +398,7 @@ Math.abs(Math.floor(Math.random()*30))
 			moveGrabbed(pos, vel) {
 				if (this.grabId >= 0) {
 					var p = [pos.x, pos.y, pos.z];
-
+                document.getElementById("treck").innerHTML = `${this.grabId}<br/>${p.toString()}`
 					vecCopy(this.pos, this.grabId, p, 0);
 				}
 			}
