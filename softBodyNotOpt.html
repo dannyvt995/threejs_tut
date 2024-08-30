@@ -202,7 +202,7 @@
 	
 				geometry.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
 				geometry.setIndex(tetMesh.tetSurfaceTriIds);
-				var material = new THREE.MeshPhongMaterial({ color: 'blue', wireframe: false });
+				var material = new THREE.MeshPhongMaterial({ color: 'white', wireframe: false });
 				material.flatShading = true;
 				this.surfaceMesh = new THREE.Mesh(geometry, material);
 				this.surfaceMesh.geometry.computeVertexNormals();
