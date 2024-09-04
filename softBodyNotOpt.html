@@ -161,7 +161,7 @@
 
 		var gPhysicsScene =
 		{
-			gravity: [0.0, -10.0, 0.0],
+			gravity: [0.0, -1.0, 0.0],
 			dt: 1.0 / 60.0,
 			numSubsteps: 10,
 			paused: true,
@@ -210,7 +210,7 @@
 				this.surfaceMesh.layers.enable(1);
 
 				scene.add(this.surfaceMesh);
-				console.log(this.surfaceMesh)
+				
 				this.volIdOrder = [[1, 3, 2], [0, 2, 3], [0, 3, 1], [0, 1, 2]];
 
 				//					console.log(JSON.stringify(tetMesh.verts));
@@ -259,6 +259,12 @@
 					var id1 = this.edgeIds[2 * i + 1];
 					this.edgeLengths[i] = Math.sqrt(vecDistSquared(this.pos, id0, this.pos, id1));
 				}
+
+				//lock mass
+				this.invMass[0] = 0
+				this.invMass[49] = 0
+				this.invMass[116] = 0
+				this.invMass[84] = 0
 			}
 
 			preSolve(dt, gravity) {
@@ -267,7 +273,7 @@
 						continue;
 					vecAdd(this.vel, i, gravity, 0, dt);
 					vecCopy(this.prevPos, i, this.pos, i);
-					vecAdd(this.pos, i, this.vel, i, dt);
+					//vecAdd(this.pos, i, this.vel, i, dt);
 					var y = this.pos[3 * i + 1];
 					if (y < 0.0) {
 						vecCopy(this.pos, i, this.prevPos, i);
@@ -368,6 +374,7 @@
 				}
 
 				if (this.grabId >= 0) {
+					console.log(this.grabId)
 					this.grabInvMass = this.invMass[this.grabId];
 					this.invMass[this.grabId] = 0.0;
 					vecCopy(this.pos, this.grabId, p, 0);
@@ -394,7 +401,7 @@
 
 		// ------------------------------------------------------------------
 		function initPhysics() {
-			var body = new SoftBody(monkeyTet, gThreeScene);
+			var body = new SoftBody(bunnyMesh, gThreeScene);
 			
 			gPhysicsScene.objects.push(body);
 			document.getElementById("numTets").innerHTML = body.numTets;
@@ -421,6 +428,7 @@
 			}
 
 			gGrabber.increaseTime(gPhysicsScene.dt);
+			
 		}
 
 		// ------------------------------------------
@@ -828,7 +836,7 @@
 			////// --------------  Visualize props
 			//visualizeVertex({tetMeshVal: monkeyTet,time:0})
 			//visualizeTetIds({tetMeshVal: monkeyTet,time:10})
-			visualizeSurfaceIds({tetMeshVal: monkeyTet,time:0})
+		//	visualizeSurfaceIds({tetMeshVal: monkeyTet,time:0})
 			//visualizeTetEdgeIds({ tetMeshVal: monkeyTet, time: 0 })
 
 			////// --------------  check props depen
@@ -873,7 +881,7 @@
 			for (let t = 0; t < tetIdTemp.length; t+=count) {
 				out.push(temp[t],temp[t+1],temp[t+1],temp[t+2],temp[t+2],temp[t+3],temp[t+3],temp[t+0])
 			}
-			console.log("calcEdgeIds =>",out.toString(),out.length/2)
+			//console.log("calcEdgeIds =>",out.toString(),out.length/2)
 			return out
 		}
 		function sliceArray(arr, size) {

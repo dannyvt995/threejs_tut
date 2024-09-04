@@ -24,17 +24,17 @@
                 }
             }
 		</script>
-		<canvas id="myCanvas"></canvas>
+	<canvas id="myCanvas"></canvas>
 	<script type="module">
 		import Stats from 'three/addons/stats.module.js';
 		import * as THREE from 'three';
 		import { OrbitControls } from 'three/addons/OrbitControls.js';
 		import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
-
+		import { OBJLoader } from 'three/addons/OBJLoader.js';
 		import { GUI } from 'three/addons/lil-gui.module.min.js';
 
 		let renderer, scene, camera, stats;
-		let mesh,texturedd;
+		let mesh, texturedd;
 		const size = 81;
 
 		const radius = 5;
@@ -42,43 +42,43 @@
 		init();
 		const texSDF = new THREE.Texture
 		function createData3DTextureFromMesh(mesh) {
-				const box = new THREE.Box3().setFromObject(mesh);
-				const size = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).y, box.getSize(new THREE.Vector3()).z);
-				const step = size / (size - 1); // Bước quét để bao phủ toàn bộ kích thước
-				
-				// Loop qua từng lớp cắt (z)
-				for (let z = 0; z < size; z++) {
-					for (let y = 0; y < size; y++) {
-						for (let x = 0; x < size; x++) {
-							const position = new THREE.Vector3(
-								x * step - size / 2,
-								y * step - size / 2,
-								z * step - size / 2
-							);
-							
-							// Tạo một điểm trong không gian 3D
-							const point = new THREE.Vector3(position.x, position.y, position.z);
-							
-							// Kiểm tra xem điểm có nằm trong mesh không
-							const isInMesh = mesh.geometry.boundingBox.containsPoint(point);
-							
-							// Gán giá trị cho điểm dựa trên việc nó nằm trong mesh
-							data[z * size * size + y * size + x] = isInMesh  * Math.random() * z ? 255 : 0;
-							
-						}
+			const box = new THREE.Box3().setFromObject(mesh);
+			const size = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).y, box.getSize(new THREE.Vector3()).z);
+			const step = size / (size - 1); // Bước quét để bao phủ toàn bộ kích thước
+
+			// Loop qua từng lớp cắt (z)
+			for (let z = 0; z < size; z++) {
+				for (let y = 0; y < size; y++) {
+					for (let x = 0; x < size; x++) {
+						const position = new THREE.Vector3(
+							x * step - size / 2,
+							y * step - size / 2,
+							z * step - size / 2
+						);
+
+						// Tạo một điểm trong không gian 3D
+						const point = new THREE.Vector3(position.x, position.y, position.z);
+
+						// Kiểm tra xem điểm có nằm trong mesh không
+						const isInMesh = mesh.geometry.boundingBox.containsPoint(point);
+
+						// Gán giá trị cho điểm dựa trên việc nó nằm trong mesh
+						data[z * size * size + y * size + x] = isInMesh * Math.random() * z ? 255 : 0;
+
 					}
 				}
-				
-				const texture3D = new THREE.Data3DTexture(data, size, size, size);
-				texture3D.format = THREE.RedFormat;
-		
-				texture3D.minFilter = THREE.LinearFilter;
-				texture3D.magFilter = THREE.LinearFilter;
-				texture3D.unpackAlignment = 1;
-				texture3D.needsUpdate = true;
-				
-				return texture3D;
 			}
+
+			const texture3D = new THREE.Data3DTexture(data, size, size, size);
+			texture3D.format = THREE.RedFormat;
+
+			texture3D.minFilter = THREE.LinearFilter;
+			texture3D.magFilter = THREE.LinearFilter;
+			texture3D.unpackAlignment = 1;
+			texture3D.needsUpdate = true;
+
+			return texture3D;
+		}
 		function init() {
 
 			renderer = new THREE.WebGLRenderer();
@@ -97,7 +97,7 @@
 			// Texture
 			stats = new Stats();
 			document.body.appendChild(stats.dom);
-			
+
 
 			// Tạo giá trị cho mỗi điểm trong Data3DTexture
 			let i = 0;
@@ -123,91 +123,118 @@
 					}
 				}
 			}
-	
-			
+
+			const loader = new OBJLoader();
+
+			// load a resource
+			loader.load(
+				// resource URL
+				'/models/eisbar/eisbar.obj',
+				// called when resource is loaded
+				function (object) {
+					const light = new THREE.AmbientLight(0x404040); // soft white light
+					scene.add(light);
+					let a = object
+					a.position.x = -.2
+					scene.add(a);
+
+				},
+				// called when loading is in progresses
+				function (xhr) {
+
+					console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+
+				},
+				// called when loading has errors
+				function (error) {
+
+					console.log('An error happened');
+
+				}
+			);
+
 			const img = new Image();
-img.src = '/textures/sdf.jpg';
- img.onload = () => {
-	const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
+			img.src = '/models/eisbar/sdf.png';
+			img.onload = () => {
+				const canvas = document.createElement('canvas');
+				const context = canvas.getContext('2d');
 
-    // Set canvas dimensions to match the image
-    canvas.width = img.width;
-    canvas.height = img.height;
-    context.drawImage(img, 0, 0);
-	
-    // Get image data
+				// Set canvas dimensions to match the image
+				canvas.width = img.width;
+				canvas.height = img.height;
+				context.drawImage(img, 0, 0);
+
+				// Get image data
+				const imageData = context.getImageData(0, 0, img.width, img.height);
+				const data = imageData.data;
+
+				// Assume 128 layers and a 16x8 grid of layers in the image
+				const layers = 128;
+				const gridX = 16; // Number of layers in x direction
+				const gridY = 8;  // Number of layers in y direction
+				const layerWidth = img.width / gridX; // Width of each layer
+				const layerHeight = img.height / gridY; // Height of each layer
+				const layerSize = layerWidth * layerHeight;
+
+				// Initialize 3D data array
+				const textureData = new Float32Array(layers * layerSize);
+
+				// Loop through each pixel and organize data into 3D array
+				for (let z = 0; z < layers; z++) {
+					const sliceXOffset = (z % gridX) * layerWidth;
+					const sliceYOffset = Math.floor(z / gridX) * layerHeight;
+
+					for (let y = 0; y < layerHeight; y++) {
+						for (let x = 0; x < layerWidth; x++) {
+							const sliceX = sliceXOffset + x;
+							const sliceY = sliceYOffset + y;
+							const pixelIndex = (sliceY * img.width + sliceX) * 4;
+							// Here, we assume the SDF value is stored in the red channel
+							const sdfValue = data[pixelIndex] / 255; // Normalize to [0, 1]
+							textureData[z * layerSize + y * layerWidth + x] = sdfValue;
+						}
+					}
+				}
+
+				// Create DataTexture3D from textureData
+				const dataTexture3D = new THREE.Data3DTexture(textureData, layerWidth, layerHeight, layers);
+				dataTexture3D.format = THREE.RedFormat;
+				dataTexture3D.type = THREE.FloatType;
+				dataTexture3D.minFilter = THREE.LinearFilter;
+				dataTexture3D.magFilter = THREE.LinearFilter;
+				dataTexture3D.unpackAlignment = 1;
+				dataTexture3D.needsUpdate = true;
+
+				material.uniforms.map.value = dataTexture3D
+			};
 
 
-    const imageData = context.getImageData(0, 0, img.width, img.height);
 
-    const data = imageData.data;
-	console.log(data)
-    // Assume 81 layers and 9x9 grid of layers in the image
-    const layers = 81;
-    const gridX = 9; // Number of layers in x direction
-    const gridY = 9; // Number of layers in y direction
-    const layerWidth = img.width/9; // Width of each layer
-    const layerHeight = img.height/9; // Height of each layer
-    const layerSize = layerWidth * layerHeight;
+			// const img2 = new Image();
+			// img2.src = '/textures/sdf.jpg';
+			// img2.onload = () => {
+			//     const canvas = document.getElementById('myCanvas');
+			//     const context = canvas.getContext('2d');
 
-    // Initialize 3D data array
-    const textureData = new Float32Array(layers * layerSize);
+			//     // Cài đặt kích thước của canvas theo kích thước của hình ảnh.
+			//     canvas.width = img.width;
+			//     canvas.height = img.height;
 
-    // Loop through each pixel and organize data into 3D array
-    for (let z = 0; z < layers; z++) {
-        const sliceXOffset = (z % gridX) * layerWidth;
-        const sliceYOffset = Math.floor(z / gridX) * layerHeight;
+			//     // Vẽ hình ảnh lên canvas.
+			//     context.drawImage(img, 0, 0);
 
-        for (let y = 0; y < layerHeight; y++) {
-            for (let x = 0; x < layerWidth; x++) {
-                const sliceX = sliceXOffset + x;
-                const sliceY = sliceYOffset + y;
-                const pixelIndex = (sliceY * img.width + sliceX) * 4;
-                const sdfValue = data[pixelIndex]; // Normalize to [0, 1]
-                textureData[z * layerSize + y * layerWidth + x] = sdfValue;
-            }
-        }
-    }
-    // Create DataTexture3D from textureData
-    const dataTexture3D = new THREE.Data3DTexture(textureData, layerWidth, layerHeight, layers);
-    dataTexture3D.format = THREE.RedFormat;
-    dataTexture3D.type = THREE.FloatType;
-    dataTexture3D.minFilter = THREE.LinearFilter;
-    dataTexture3D.magFilter = THREE.LinearFilter;
-    dataTexture3D.unpackAlignment = 1;
-    dataTexture3D.needsUpdate = true;
+			//     // Lấy dữ liệu hình ảnh từ canvas.
+			//     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
-	material.uniforms.map.value = dataTexture3D
-};
-
-			
-
-// const img2 = new Image();
-// img2.src = '/textures/sdf.jpg';
-// img2.onload = () => {
-//     const canvas = document.getElementById('myCanvas');
-//     const context = canvas.getContext('2d');
-
-//     // Cài đặt kích thước của canvas theo kích thước của hình ảnh.
-//     canvas.width = img.width;
-//     canvas.height = img.height;
-
-//     // Vẽ hình ảnh lên canvas.
-//     context.drawImage(img, 0, 0);
-
-//     // Lấy dữ liệu hình ảnh từ canvas.
-//     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-
-//     // Vẽ lại dữ liệu hình ảnh (hoặc thao tác với dữ liệu hình ảnh nếu cần).
-//     context.putImageData(imageData, 0, 0);
-// };
-// img2.onerror = () => {
-//     console.error('Hình ảnh không thể tải được.');
-// };
-			const geometrySampler = new THREE.BoxGeometry(1, 5, 2); 
+			//     // Vẽ lại dữ liệu hình ảnh (hoặc thao tác với dữ liệu hình ảnh nếu cần).
+			//     context.putImageData(imageData, 0, 0);
+			// };
+			// img2.onerror = () => {
+			//     console.error('Hình ảnh không thể tải được.');
+			// };
+			const geometrySampler = new THREE.BoxGeometry(1, 5, 2);
 			const mesh11 = new THREE.Mesh(geometrySampler, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-		//	const texture3D = createData3DTextureFromMesh(mesh11);
+			//	const texture3D = createData3DTextureFromMesh(mesh11);
 
 
 
@@ -217,7 +244,7 @@ img.src = '/textures/sdf.jpg';
 			texture.magFilter = THREE.LinearFilter;
 			texture.unpackAlignment = 1;
 			texture.needsUpdate = true;
-			
+
 			// Material
 
 			const vertexShader = /* glsl */`
@@ -227,10 +254,11 @@ img.src = '/textures/sdf.jpg';
 					uniform mat4 modelViewMatrix;
 					uniform mat4 projectionMatrix;
 					uniform vec3 cameraPos;
-
+	
 					out vec3 vOrigin;
 					out vec3 vDirection;
 
+				
 					void main() {
 						vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
 
@@ -238,11 +266,130 @@ img.src = '/textures/sdf.jpg';
 						vDirection = position - vOrigin;
 
 						gl_Position = projectionMatrix * mvPosition;
+						
 					}
 				`;
 
 			const fragmentShader = /* glsl */`
-					precision highp float;
+					// Fragment Shader
+precision highp float;
+precision highp sampler3D;
+
+uniform sampler3D map;
+uniform float threshold;
+uniform float steps;
+		
+in vec3 vOrigin;
+in vec3 vDirection;
+
+out vec4 color;
+		
+#define epsilon 0.01
+
+float sample1(vec3 p) {
+    return texture(map, p).r;
+}
+
+vec3 normal(vec3 coord) {
+    float step = 0.01;
+    float x = sample1(coord + vec3(-step, 0.0, 0.0)) - sample1(coord + vec3(step, 0.0, 0.0));
+    float y = sample1(coord + vec3(0.0, -step, 0.0)) - sample1(coord + vec3(0.0, step, 0.0));
+    float z = sample1(coord + vec3(0.0, 0.0, -step)) - sample1(coord + vec3(0.0, 0.0, step));
+    return normalize(vec3(x, y, z));
+}
+
+void main() {
+    vec3 rayDir = normalize(vDirection);
+    vec3 p = vOrigin;
+    float tMin = 0.0;
+    float tMax = 100.0;
+    float delta = (tMax - tMin) / steps;
+    color = vec4(0.0);
+
+    for (float t = tMin; t < tMax; t += delta) {
+        p = vOrigin + t * rayDir;
+        float d = sample1(p);
+
+        if (d < threshold) {
+            vec3 n = normal(p);
+            color.rgb = (n * 0.5 + 0.5) * 1.0; // Ánh sáng Lambert với ánh sáng trắng
+            color.a = 1.0;
+            return;
+        }
+    }
+
+    color.rgb = vec3(1.0, 0.0, 0.0); // Màu nền nếu không có va chạm
+    color.a = 0.0;
+
+
+}
+				`;
+
+			const geometry = new THREE.BoxGeometry(1, 1, 1);
+			const material = new THREE.RawShaderMaterial({
+				glslVersion: THREE.GLSL3,
+				uniforms: {
+					map: { value: texturedd },
+					cameraPos: { value: new THREE.Vector3() },
+					threshold: { value: 0.6 },
+					steps: { value: 200 }
+				},
+				vertexShader,
+				fragmentShader,
+				side: THREE.BackSide,
+
+			});
+
+			mesh = new THREE.Mesh(geometry, material);
+			scene.add(mesh);
+
+			//
+
+			const parameters = { threshold: 0.6, steps: 200 };
+
+			function update() {
+
+				material.uniforms.threshold.value = parameters.threshold;
+				material.uniforms.steps.value = parameters.steps;
+
+			}
+
+			const gui = new GUI();
+			gui.add(parameters, 'threshold', 0, 1, 0.01).onChange(update);
+			gui.add(parameters, 'steps', 0, 300, 1).onChange(update);
+
+			window.addEventListener('resize', onWindowResize);
+
+		}
+
+		function onWindowResize() {
+
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+
+			renderer.setSize(window.innerWidth, window.innerHeight);
+
+		}
+
+		function animate() {
+			stats.update();
+			mesh.material.uniforms.cameraPos.value.copy(camera.position);
+
+			renderer.render(scene, camera);
+
+		}
+
+
+	</script>
+
+</body>
+
+</html>
+
+
+<!-- 
+
+	precision highp float;
 					precision highp sampler3D;
 
 					uniform mat4 modelViewMatrix;
@@ -326,65 +473,4 @@ img.src = '/textures/sdf.jpg';
 						if ( color.a == 0.0 ) color.rgb = vec3(1.,0.,0.);
 					
 					}
-				`;
-
-			const geometry = new THREE.BoxGeometry(1, 1, 1);
-			const material = new THREE.RawShaderMaterial({
-				glslVersion: THREE.GLSL3,
-				uniforms: {
-					map: { value: texturedd },
-					cameraPos: { value: new THREE.Vector3() },
-					threshold: { value: 0.6 },
-					steps: { value: 200 }
-				},
-				vertexShader,
-				fragmentShader,
-				side: THREE.BackSide,
-				
-			});
-	
-			mesh = new THREE.Mesh(geometry, material);
-			scene.add(mesh);
-
-			//
-
-			const parameters = { threshold: 0.6, steps: 200 };
-
-			function update() {
-
-				material.uniforms.threshold.value = parameters.threshold;
-				material.uniforms.steps.value = parameters.steps;
-
-			}
-
-			const gui = new GUI();
-			gui.add(parameters, 'threshold', 0, 1, 0.01).onChange(update);
-			gui.add(parameters, 'steps', 0, 300, 1).onChange(update);
-
-			window.addEventListener('resize', onWindowResize);
-
-		}
-
-		function onWindowResize() {
-
-			camera.aspect = window.innerWidth / window.innerHeight;
-			camera.updateProjectionMatrix();
-
-			renderer.setSize(window.innerWidth, window.innerHeight);
-
-		}
-
-		function animate() {
-			stats.update();
-			mesh.material.uniforms.cameraPos.value.copy(camera.position);
-
-			renderer.render(scene, camera);
-
-		}
-
-
-	</script>
-
-</body>
-
-</html>
+-->

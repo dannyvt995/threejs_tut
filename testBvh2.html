@@ -76,6 +76,7 @@
     // https://github.com/KhronosGroup/glTF-Sample-Models/blob/master/2.0/DragonAttenuation/glTF-Binary/DragonAttenuation.glb
     loader.load("./models/DragonAttenuation.glb", (gltf) => {
       let model = gltf.scene.children[1];
+    
       model.material = new THREE.MeshLambertMaterial({
         side: THREE.DoubleSide,
         wireframe: false,
@@ -91,10 +92,17 @@
       let bboxHelper = new THREE.Box3Helper(bbox, "yellow");
       scene.add(bboxHelper);
 
-      let samples = getDataTexture3D(model);
+    
+      console.time('getDataTexture3D');
 
+// Gọi hàm và lưu kết quả
+let samples = getDataTexture3D(model);
+
+// Kết thúc đo thời gian và in ra thời gian đã trôi qua
+console.timeEnd('getDataTexture3D');
+      console.log(samples.texture)
       let pg = new THREE.BufferGeometry().setFromPoints(samples.points);
-      let pm = new THREE.PointsMaterial({ size: 0.005, color: "aqua" });
+      let pm = new THREE.PointsMaterial({ size: 0.05, color: "aqua" });
       let p = new THREE.Points(pg, pm);
       p.visible = false;
       scene.add(p);
@@ -113,7 +121,7 @@
       };
       let lg = makeGrid(5, 100);
       let lm = new THREE.LineBasicMaterial({
-        color: "magenta",
+        color: "red",
         onBeforeCompile: (shader) => {
           shader.uniforms.spatialTex = uniforms.spatialTex;
           shader.uniforms.bbox = uniforms.bbox;
@@ -240,11 +248,12 @@
             ori.add(steps);
             let inside = isInside(ori, dir);
             data.push(inside ? 1 : 0);
+
             if (inside) pts.push(ori.clone());
           }
         }
       }
-
+ 
       let texture = new THREE.Data3DTexture(
         new Float32Array(data),
         size32.x,

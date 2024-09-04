@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+
+	<head>
+		<title>Surface Floater Lus</title>
+		<meta charset="utf-8">
+		<meta name="viewport"
+			content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+		<style>
+		body {
+			background-color: #fff;
+			color: #444;
+			margin:0;
+			padding:0;
+			width: 100vw;
+			height: 100vh;
+			overflow: hidden;
+		}
+
+		a {
+			color: #08f;
+		}
+	</style>
+	</head>
+
+	<body>
+
+		<script id="fragmentShaderPosition" type="x-shader/x-fragment">
+
+			uniform float time;
+			uniform float delta;
+
+			void main()	{
+
+				vec2 uv = gl_FragCoord.xy / resolution.xy;
+				vec4 tmpPos = texture2D( texturePosition, uv );
+				vec3 position = tmpPos.xyz;
+				vec3 velocity = texture2D( textureVelocity, uv ).xyz;
+				position += velocity;
+				gl_FragColor = vec4( position , 1. );
+
+			}
+
+		</script>
+
+		<script id="fragmentShaderVelocity" type="x-shader/x-fragment">
+
+			uniform float time;
+
+			
+			uniform float u_noiseFrequence; //2
+			uniform float u_noiseTime; //0
+			uniform float u_noiseAmplitude; //0.001
+			// uniform float u_dtRatio;
+			
+			uniform sampler2D u_sdfTexture;
+			
+			
+			//uniform float u_sdfScale;
+			//uniform vec3 u_sdfOffset;
+			//uniform float u_sdfVoxelSize;
+			//uniform vec4 u_sdfSliceInfo;
+			const float u_sdfScale = 1.;
+			const vec3 u_sdfOffset = vec3(0.5000, 0.5000, 0.5000);
+			const float u_sdfVoxelSize = 128.;
+			const vec4 u_sdfSliceInfo = vec4(128., 16., 0.0625, 0.1250);
+			
+			uniform float u_sdfOutBoundForce; //0.1
+			uniform float u_sdfInBoundForce; //0.01
+			uniform float u_sdfThreshold; //0.05
+	
+			
+			vec4 mod289(vec4 x) {
+				return x - floor(x * (1.0 / 289.0)) * 289.0;
+			}
+			
+			float mod289(float x) {
+				return x - floor(x * (1.0 / 289.0)) * 289.0;
+			}
+			
+			vec4 permute(vec4 x) {
+				return mod289(((x*34.0)+1.0)*x);
+			}
+			
+			float permute(float x) {
+				return mod289(((x*34.0)+1.0)*x);
+			}
+			
+			vec4 taylorInvSqrt(vec4 r) {
+				return 1.79284291400159 - 0.85373472095314 * r;
+			}
+			
+			float taylorInvSqrt(float r) {
+				return 1.79284291400159 - 0.85373472095314 * r;
+			}
+			
+			vec4 grad4(float j, vec4 ip) {
+				const vec4 ones = vec4(1.0, 1.0, 1.0, -1.0);
+				vec4 p,s;
+			
+				p.xyz = floor( fract (vec3(j) * ip.xyz) * 7.0) * ip.z - 1.0;
+				p.w = 1.5 - dot(abs(p.xyz), ones.xyz);
+				s = vec4(lessThan(p, vec4(0.0)));
+				p.xyz = p.xyz + (s.xyz*2.0 - 1.0) * s.www;
+			
+				return p;
+			}
+			
+			#define F4 0.309016994374947451
+			
+			vec4 simplexNoiseDerivatives (vec4 v) {
+				const vec4  C = vec4( 0.138196601125011,0.276393202250021,0.414589803375032,-0.447213595499958);
+			
+				vec4 i  = floor(v + dot(v, vec4(F4)) );
+				vec4 x0 = v -   i + dot(i, C.xxxx);
+			
+				vec4 i0;
+				vec3 isX = step( x0.yzw, x0.xxx );
+				vec3 isYZ = step( x0.zww, x0.yyz );
+				i0.x = isX.x + isX.y + isX.z;
+				i0.yzw = 1.0 - isX;
+				i0.y += isYZ.x + isYZ.y;
+				i0.zw += 1.0 - isYZ.xy;
+				i0.z += isYZ.z;
+				i0.w += 1.0 - isYZ.z;
+			
+				vec4 i3 = clamp( i0, 0.0, 1.0 );
+				vec4 i2 = clamp( i0-1.0, 0.0, 1.0 );
+				vec4 i1 = clamp( i0-2.0, 0.0, 1.0 );
+			
+				vec4 x1 = x0 - i1 + C.xxxx;
+				vec4 x2 = x0 - i2 + C.yyyy;
+				vec4 x3 = x0 - i3 + C.zzzz;
+				vec4 x4 = x0 + C.wwww;
+			
+				i = mod289(i);
+				float j0 = permute( permute( permute( permute(i.w) + i.z) + i.y) + i.x);
+				vec4 j1 = permute( permute( permute( permute (
+						 i.w + vec4(i1.w, i2.w, i3.w, 1.0 ))
+					   + i.z + vec4(i1.z, i2.z, i3.z, 1.0 ))
+					   + i.y + vec4(i1.y, i2.y, i3.y, 1.0 ))
+					   + i.x + vec4(i1.x, i2.x, i3.x, 1.0 ));
+			
+			
+				vec4 ip = vec4(1.0/294.0, 1.0/49.0, 1.0/7.0, 0.0) ;
+			
+				vec4 p0 = grad4(j0,   ip);
+				vec4 p1 = grad4(j1.x, ip);
+				vec4 p2 = grad4(j1.y, ip);
+				vec4 p3 = grad4(j1.z, ip);
+				vec4 p4 = grad4(j1.w, ip);
+			
+				vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+				p0 *= norm.x;
+				p1 *= norm.y;
+				p2 *= norm.z;
+				p3 *= norm.w;
+				p4 *= taylorInvSqrt(dot(p4,p4));
+			
+				vec3 values0 = vec3(dot(p0, x0), dot(p1, x1), dot(p2, x2)); //value of contributions from each corner at point
+				vec2 values1 = vec2(dot(p3, x3), dot(p4, x4));
+			
+				vec3 m0 = max(0.5 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2)), 0.0); //(0.5 - x^2) where x is the distance
+				vec2 m1 = max(0.5 - vec2(dot(x3,x3), dot(x4,x4)), 0.0);
+			
+				vec3 temp0 = -6.0 * m0 * m0 * values0;
+				vec2 temp1 = -6.0 * m1 * m1 * values1;
+			
+				vec3 mmm0 = m0 * m0 * m0;
+				vec2 mmm1 = m1 * m1 * m1;
+			
+				float dx = temp0[0] * x0.x + temp0[1] * x1.x + temp0[2] * x2.x + temp1[0] * x3.x + temp1[1] * x4.x + mmm0[0] * p0.x + mmm0[1] * p1.x + mmm0[2] * p2.x + mmm1[0] * p3.x + mmm1[1] * p4.x;
+				float dy = temp0[0] * x0.y + temp0[1] * x1.y + temp0[2] * x2.y + temp1[0] * x3.y + temp1[1] * x4.y + mmm0[0] * p0.y + mmm0[1] * p1.y + mmm0[2] * p2.y + mmm1[0] * p3.y + mmm1[1] * p4.y;
+				float dz = temp0[0] * x0.z + temp0[1] * x1.z + temp0[2] * x2.z + temp1[0] * x3.z + temp1[1] * x4.z + mmm0[0] * p0.z + mmm0[1] * p1.z + mmm0[2] * p2.z + mmm1[0] * p3.z + mmm1[1] * p4.z;
+				float dw = temp0[0] * x0.w + temp0[1] * x1.w + temp0[2] * x2.w + temp1[0] * x3.w + temp1[1] * x4.w + mmm0[0] * p0.w + mmm0[1] * p1.w + mmm0[2] * p2.w + mmm1[0] * p3.w + mmm1[1] * p4.w;
+			
+				return vec4(dx, dy, dz, dw) * 49.0;
+			}
+			
+			vec3 curl( in vec3 p, in float noiseTime, in float persistence ) {
+			
+				vec4 xNoisePotentialDerivatives = vec4(0.0);
+				vec4 yNoisePotentialDerivatives = vec4(0.0);
+				vec4 zNoisePotentialDerivatives = vec4(0.0);
+			
+				for (int i = 0; i < 3; ++i) {
+			
+					float twoPowI = pow(2.0, float(i));
+					float scale = 0.5 * twoPowI * pow(persistence, float(i));
+			
+					xNoisePotentialDerivatives += simplexNoiseDerivatives(vec4(p * twoPowI, noiseTime)) * scale;
+					yNoisePotentialDerivatives += simplexNoiseDerivatives(vec4((p + vec3(123.4, 129845.6, -1239.1)) * twoPowI, noiseTime)) * scale;
+					zNoisePotentialDerivatives += simplexNoiseDerivatives(vec4((p + vec3(-9519.0, 9051.0, -123.0)) * twoPowI, noiseTime)) * scale;
+				}
+			
+				return vec3(
+					zNoisePotentialDerivatives[1] - yNoisePotentialDerivatives[2],
+					xNoisePotentialDerivatives[2] - zNoisePotentialDerivatives[0],
+					yNoisePotentialDerivatives[0] - xNoisePotentialDerivatives[1]
+				);
+			
+			}
+			vec2 computeSliceOffset(float slice, vec4 sliceInfo) {
+				return sliceInfo.zw * vec2(mod(slice, sliceInfo.y), floor(slice * sliceInfo.z));
+			}
+			
+			vec4 sampleAs3DTexture(sampler2D tex, vec3 texCoord, vec4 sliceInfo) {
+			
+				float slice = texCoord.z * sliceInfo.x;
+				float sliceZ = floor(slice);
+	
+				vec2 slice0Offset = computeSliceOffset(sliceZ, sliceInfo);
+				vec2 slice1Offset = computeSliceOffset(sliceZ + 1.0, sliceInfo);
+			
+				vec2 slicePixelSize = sliceInfo.zw / sliceInfo.x;
+			
+				vec2 uv = slicePixelSize * 0.5 + texCoord.xy * (sliceInfo.zw - slicePixelSize);
+				vec4 slice0Color = texture2D(tex, slice0Offset + uv);
+				vec4 slice1Color = texture2D(tex, slice1Offset + uv);
+				return mix(slice0Color, slice1Color, fract(slice));
+			}
+			
+			void main () {
+				vec2 v_uv = gl_FragCoord.xy / resolution.xy;
+			  vec4 velocityInfo = texture2D(textureVelocity, v_uv);
+			  vec4 positionInfo = texture2D(texturePosition, v_uv);
+			
+			  velocityInfo.xyz *= 0.5;
+			
+		//	  velocityInfo.xyz += curl((positionInfo.xyz + velocityInfo.xyz) * u_noiseFrequence, u_noiseTime, 0.02) * u_noiseAmplitude;
+			
+			  // sdf force is based on the updated position. Allow error here.
+			  positionInfo.xyz += velocityInfo.xyz;
+			
+			  // sample 3d linear interpolated texture
+			  vec3 voxelTextureCoordOri = positionInfo.xyz / u_sdfScale + u_sdfOffset;
+			  vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 / u_sdfVoxelSize), vec3(1.0 - 0.5 / u_sdfVoxelSize));
+			  vec4 distanceInfo = sampleAs3DTexture(u_sdfTexture, voxelTextureCoord, u_sdfSliceInfo) * 2.0 - 1.0;
+			
+			  // estimation for the blocks go off the known sdf range
+			  vec3 offSDF = step(vec3(0.001), abs(voxelTextureCoordOri - voxelTextureCoord));
+			  distanceInfo.xyz = normalize(distanceInfo.xyz + positionInfo.xyz * offSDF);
+			  distanceInfo.a -= u_sdfThreshold;
+			  distanceInfo.a = sign(distanceInfo.a) * max(abs(distanceInfo.a), length(positionInfo.xyz) * step(0.5, offSDF.x + offSDF.y + offSDF.z));
+			
+			  // only apply the sdf force
+			  velocityInfo.xyz += distanceInfo.xyz * distanceInfo.a * -mix(u_sdfOutBoundForce, u_sdfInBoundForce, step(0.0, distanceInfo.a));
+			
+			  gl_FragColor = velocityInfo;
+			
+			}
+		</script>
+
+		<script type="x-shader/x-vertex" id="birdVS">
+
+			attribute vec2 reference;
+
+			uniform sampler2D texturePosition;
+			uniform sampler2D textureVelocity;
+
+			varying vec4 vColor;
+			varying float z;
+			varying vec3 vNormal;
+			varying vec3 vViewPosition;
+			 
+			uniform float time;
+
+			void main() {
+
+				vec4 tmpPos = texture2D( texturePosition, reference );
+				vec3 pos = tmpPos.xyz;
+				vec3 velocity = normalize(texture2D( textureVelocity, reference ).xyz);
+
+				gl_Position = projectionMatrix *  viewMatrix  * vec4( pos, 1.0 );
+				vNormal = normal;
+				//vViewPosition =  newPosition;
+			}
+
+		</script>
+
+		<!-- bird geometry shader -->
+		<script type="x-shader/x-fragment" id="birdFS">
+
+			varying vec4 vColor;
+			varying float z;
+
+			uniform vec3 color;
+
+			void main() {
+				gl_FragColor = vec4( vec3(1.,.5,.5), 1. );
+
+			}
+
+		</script>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "./three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+		import * as THREE from 'three';
+
+		import Stats from 'three/addons/stats.module.js';
+		import { GUI } from 'three/addons/lil-gui.module.min.js';
+		import { OrbitControls } from 'three/addons/OrbitControls.js';
+		import { OBJLoader } from 'three/addons/OBJLoader.js';
+		import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
+		import { InstancesMaterial, INSTANCE_POSITION, InstancesDepthMaterial } from './instances_material.js';
+		/* TEXTURE WIDTH FOR SIMULATION */
+		const WIDTH = 20;
+
+		const BIRDS = WIDTH * WIDTH;
+
+		// Custom Geometry - using 3 triangles each. No UVs, no normals currently.
+
+
+		class BirdGeometry extends THREE.BufferGeometry {
+
+			constructor() {
+
+				super();
+				let v = 0;
+				let indices = []
+				
+				const b = new THREE.BoxGeometry(1, 1, 1);
+				const pPos = b.attributes.position.array
+				const nPos = b.attributes.position.array
+				const uvPos = b.attributes.uv.array
+				console.log(b)
+				const trianglesPerBird = 12;
+				const triangles = BIRDS * trianglesPerBird;
+				const points = triangles * 3;
+
+				const vertices = new THREE.BufferAttribute(new Float32Array(points * 3), 3);
+				//const normal = new THREE.BufferAttribute(new Float32Array(points * 3), 3);
+				const references = new THREE.BufferAttribute(new Float32Array(points * 2), 2);
+				const uv = new THREE.BufferAttribute(new Float32Array(points * 2), 2);
+				this.setAttribute('position', vertices);
+				this.setAttribute('reference', references);
+				this.setAttribute('uv', uv);
+				//this.setAttribute('normal', normal);
+	
+				console.log(`Trigs Num:${trianglesPerBird}`, `All Trigs::${triangles}`, `All point::${points}`)
+				console.log(vertices.count, references.count)
+			
+				function verts_push() {
+					for (let i = 0; i < pPos.length; i++) {
+						//get thẳng
+						vertices.array[v++] = pPos[i];
+					}
+				}
+
+				function uv_push() {
+					for (let i = 0; i < uvPos.length; i++) {
+						uv.array[v++] = uvPos[i];
+					}
+				}
+
+				for (let f = 0; f < BIRDS; f++) {
+					uv_push()
+					verts_push(
+						// arr tuần tự , điểm kết thúc 1 triggle là điểm bắt đầu
+						// need compute normal when apply material
+						// Front face
+						0.5, 0.5, 0.5,
+						-0.5, 0.5, 0.5,
+						-0.5, -0.5, 0.5,
+
+						-0.5, -0.5, 0.5,
+						0.5, -0.5, 0.5,
+						0.5, 0.5, 0.5,
+
+						// Back face
+						0.5, 0.5, -0.5,
+						0.5, -0.5, -0.5,
+						-0.5, -0.5, -0.5,
+
+						-0.5, -0.5, -0.5,
+						-0.5, 0.5, -0.5,
+						0.5, 0.5, -0.5,
+
+						// Top face
+						0.5, 0.5, -0.5,
+						-0.5, 0.5, -0.5,
+						-0.5, 0.5, 0.5,
+
+						-0.5, 0.5, 0.5,
+						0.5, 0.5, 0.5,
+						0.5, 0.5, -0.5,
+
+						// Bottom face
+						0.5, -0.5, -0.5,
+						0.5, -0.5, 0.5,
+						-0.5, -0.5, 0.5,
+
+						-0.5, -0.5, 0.5,
+						-0.5, -0.5, -0.5,
+						0.5, -0.5, -0.5,
+
+						// Right face
+						0.5, 0.5, -0.5,
+						0.5, -0.5, -0.5,
+						0.5, -0.5, 0.5,
+
+						0.5, -0.5, 0.5,
+						0.5, 0.5, 0.5,
+						0.5, 0.5, -0.5,
+
+						// Left face
+						-0.5, 0.5, -0.5,
+						-0.5, 0.5, 0.5,
+						-0.5, -0.5, 0.5,
+
+						-0.5, -0.5, 0.5,
+						-0.5, -0.5, -0.5,
+						-0.5, 0.5, -0.5
+					);
+				
+				//	verts_push()
+	
+				}
+
+		
+				for (let v = 0; v < triangles * 3; v++) {
+
+					const triangleIndex = ~ ~(v / 3);
+					const birdIndex = ~ ~(triangleIndex / trianglesPerBird);
+					const x = (birdIndex % WIDTH) / WIDTH;
+					const y = ~ ~(birdIndex / WIDTH) / WIDTH;
+
+
+					references.array[v * 2] = x;
+					references.array[v * 2 + 1] = y;
+
+
+
+				}
+				//Đối với các kiểu sắn xếp triganle ko tuần tự , thì tính indices , còn tuần tự thì khỏi
+				//
+				for ( let i = 0; i < b.index.array.length * BIRDS; i ++ ) {
+					const offset = Math.floor( i / b.index.array.length ) * ( b.getAttribute( 'position' ).count );
+					indices.push( b.index.array[ i % b.index.array.length ] + offset );
+				}
+				this.setIndex( indices );
+				this.scale(.02,.02,.02);
+
+				saverefence = references
+				console.log(references)
+
+			}
+
+		}
+
+
+
+		let container, stats;
+		let camera, scene, renderer;
+		let mouseX = 0, mouseY = 0;
+
+		let windowHalfX = window.innerWidth / 2;
+		let windowHalfY = window.innerHeight / 2;
+
+		const BOUNDS = 800, BOUNDS_HALF = BOUNDS / 2;
+
+		let last = performance.now();
+
+		let gpuCompute;
+		let velocityVariable;
+		let positionVariable;
+		let positionUniforms;
+		let velocityUniforms;
+		let birdUniforms;
+
+		let monitorPos
+		let monitorVel
+		let meshDemo
+		let materialShader
+		let pointLightMNouse
+		let groundMesh
+		let materialInstanceCustom2
+		let materialInstancecustomDepthMaterial
+		let saverefence
+		let textureSDF
+		
+		init();
+		animate();
+
+		function init() {
+
+			container = document.createElement('div');
+			document.body.appendChild(container);
+
+			camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
+			camera.position.z = 2;
+			//camera.position.y = 250
+			scene = new THREE.Scene();
+		//scene.background = new THREE.Color(0xffffff);
+			 scene.fog = new THREE.Fog( 0x353535, 100, 1000 );
+			 textureSDF = new THREE.TextureLoader().load('/models/eisbar/sdf.png' ); 
+
+		
+			 const axesHelper = new THREE.AxesHelper( window.innerHeight );
+scene.add( axesHelper );
+const loader = new OBJLoader();
+
+// load a resource
+loader.load(
+	// resource URL
+	'models/eisbar/eisbar.obj',
+	// called when resource is loaded
+	function ( object ) {
+
+		scene.add( object );
+
+	},
+	// called when loading is in progresses
+	function ( xhr ) {
+
+		console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+	},
+	// called when loading has errors
+	function ( error ) {
+
+		console.log( 'An error happened' );
+
+	}
+);
+
+
+			pointLightMNouse = new THREE.PointLight( 0xc61a09, 700000, 700 );
+			pointLightMNouse.position.set( 0, 0, 0 );
+			//pointLightMNouse.castShadow = true; 
+			scene.add( pointLightMNouse );
+
+
+			renderer = new THREE.WebGLRenderer();
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.shadowMap.enabled = true
+
+			renderer.shadowMap.type = THREE.PCFSoftShadowMap
+			//renderer.shadowMap.type = THREE.VSMShadowMap
+
+			container.appendChild(renderer.domElement);
+
+			initComputeRenderer();
+
+			stats = new Stats();
+			container.appendChild(stats.dom);
+
+			container.style.touchAction = 'none';
+			container.addEventListener('pointermove', onPointerMove);
+
+			//
+			const controls = new OrbitControls( camera, renderer.domElement );
+			// add monitor
+			monitorPos = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshBasicMaterial({ map: null }))
+			scene.add(monitorPos)
+			monitorVel = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshBasicMaterial({ map: null }))
+			monitorVel.position.x = -300
+			monitorVel.position.y = 100
+			monitorPos.position.x = -300
+			monitorPos.position.y = -100
+			scene.add(monitorVel)
+			window.addEventListener('resize', onWindowResize);
+
+			const gui = new GUI();
+
+
+			const effectController = {
+				u_sdfOutBoundForce:0.1,
+				u_sdfInBoundForce:0.01,
+				u_sdfThreshold: 0.05,
+			};
+
+			const valuesChanger = function () {
+				velocityUniforms['u_sdfOutBoundForce'].value = effectController.u_sdfOutBoundForce;
+				velocityUniforms['u_sdfInBoundForce'].value = effectController.u_sdfInBoundForce;
+				velocityUniforms['u_sdfThreshold'].value = effectController.u_sdfThreshold;
+
+			};
+
+			valuesChanger();
+
+			gui.add(effectController, 'u_sdfOutBoundForce', 0.0, 1.0, 0.001 ).onChange(valuesChanger);
+			gui.add(effectController, 'u_sdfInBoundForce', 0.0, 1., 0.001).onChange(valuesChanger);
+			gui.add(effectController, 'u_sdfThreshold', 0.0, 1., 0.001).onChange(valuesChanger);
+			gui.close();
+
+			initBirds();
+
+		}
+
+		function initComputeRenderer() {
+
+			gpuCompute = new GPUComputationRenderer(WIDTH, WIDTH, renderer);
+
+			const dtPosition = gpuCompute.createTexture();
+			const dtVelocity = gpuCompute.createTexture();
+			fillPositionTexture(dtPosition);
+			fillVelocityTexture(dtVelocity);
+
+			velocityVariable = gpuCompute.addVariable('textureVelocity', document.getElementById('fragmentShaderVelocity').textContent, dtVelocity);
+			positionVariable = gpuCompute.addVariable('texturePosition', document.getElementById('fragmentShaderPosition').textContent, dtPosition);
+
+			gpuCompute.setVariableDependencies(velocityVariable, [positionVariable, velocityVariable]);
+			gpuCompute.setVariableDependencies(positionVariable, [positionVariable, velocityVariable]);
+
+			positionUniforms = positionVariable.material.uniforms;
+			velocityUniforms = velocityVariable.material.uniforms;
+
+			positionUniforms['time'] = { value: 0.0 };
+			positionUniforms['delta'] = { value: 0.0 };
+			velocityUniforms['time'] = { value: 1.0 };
+			velocityUniforms['delta'] = { value: 0.0 };
+		
+
+	velocityUniforms['u_noiseFrequence'] = { value: 2 };
+	velocityUniforms['u_noiseTime'] = { value: 0 };
+	velocityUniforms['u_noiseAmplitude'] = { value: 0.00 };
+	velocityUniforms['u_sdfOutBoundForce'] = { value: 0.1 };
+	velocityUniforms['u_sdfInBoundForce'] = { value: 0.01 };
+	velocityUniforms['u_sdfThreshold'] = { value: 0.05 };
+
+	
+	velocityUniforms['u_sdfTexture'] = { value: textureSDF };
+
+	
+			velocityVariable.material.defines.BOUNDS = BOUNDS.toFixed(2);
+
+			velocityVariable.wrapS = THREE.RepeatWrapping;
+			velocityVariable.wrapT = THREE.RepeatWrapping;
+			positionVariable.wrapS = THREE.RepeatWrapping;
+			positionVariable.wrapT = THREE.RepeatWrapping;
+
+			const error = gpuCompute.init();
+
+			if (error !== null) {
+
+				console.error(error);
+
+			}
+
+		}
+
+		function initBirds() {
+
+			const geometry = new BirdGeometry();
+
+			// For Vertex and Fragment
+			birdUniforms = {
+				'color': { value: new THREE.Color(0xfffff) },
+				'texturePosition': { value: null },
+				'textureVelocity': { value: null },
+				'time': { value: 1.0 },
+				'delta': { value: 0.0 },
+				'diffuse': { value: new THREE.Color(0xff2200) },
+				'specular': { value: new THREE.Color(0x111111) },
+				'shininess': { value: Math.max(50, 1e-4) }
+			};
+
+			// THREE.ShaderMaterial
+			const material = new THREE.ShaderMaterial({
+				uniforms: birdUniforms,
+				vertexShader: document.getElementById('birdVS').textContent,
+				//vertexShader:THREE.ShaderChunk['meshphong_vert'],
+				//fragmentShader: document.getElementById( 'birdFS' ).textContent,
+				fragmentShader: THREE.ShaderChunk['meshlambert_frag'],
+				//fragmentShader: THREE.ShaderChunk['meshnormal_frag'],
+				//side: THREE.DoubleSide
+				//wireframe:true,
+
+			});
+			const materialCustom = new THREE.MeshStandardMaterial( {
+					vertexColors: false,
+					flatShading: true,
+					roughness: .5,
+					metalness: .5,
+					color: 0x00000
+				} );
+				materialCustom.light = true
+		
+				materialCustom.onBeforeCompile = ( shader ) => {
+
+					shader.uniforms.texturePosition = { value: null };
+					shader.uniforms.textureVelocity = { value: null };
+					shader.uniforms.time = { value: 1.0 };
+					shader.uniforms.delta = { value: 0.0 };
+
+					let token = '#define STANDARD';
+
+					let insert = /* glsl */`
+						varying vec3 uPos;
+						varying vec2 vUv;
+						attribute vec2 reference;
+
+						uniform sampler2D texturePosition;
+						uniform sampler2D textureVelocity;
+						
+						uniform float time;
+					`;
+
+					shader.vertexShader = shader.vertexShader.replace( token, token + insert );
+
+					token = '#include <begin_vertex>';
+
+					insert = /* glsl */`
+						vec4 tmpPos = texture2D( texturePosition, reference );
+						vec3 pos = tmpPos.xyz;
+						vec3 velocity = normalize(texture2D( textureVelocity,reference ).xyz);
+
+						vec3 newPosition = position;
+
+					//	if ( birdVertex == 4.0 || birdVertex == 7.0 ) {
+					//		// flap wings
+					//		newPosition.y = sin( tmpPos.w ) * 5.;
+					//	}
+
+						newPosition = mat3( modelMatrix ) * newPosition;
+
+
+						velocity.z *= -1.;
+						float xz = length( velocity.xz );
+						float xyz = 1.;
+						float x = sqrt( 1. - velocity.y * velocity.y );
+
+						float cosry = velocity.x / xz;
+						float sinry = velocity.z / xz;
+
+						float cosrz = x / xyz;
+						float sinrz = velocity.y / xyz;
+
+						mat3 maty =  mat3(
+							cosry, 0, -sinry,
+							0    , 1, 0     ,
+							sinry, 0, cosry
+
+						);
+
+						mat3 matz =  mat3(
+							cosrz , sinrz, 0,
+							-sinrz, cosrz, 0,
+							0     , 0    , 1
+						);
+
+						newPosition =  maty * matz * newPosition;
+						newPosition += vec3(pos.z,pos.y,pos.x);
+
+						vec3 transformed = vec3( newPosition );
+						uPos = transformed;
+						vUv = uv;
+					`;
+
+					shader.vertexShader = shader.vertexShader.replace( token, insert );
+					//fragemnt
+					token = '#define STANDARD'
+					insert = `
+						varying vec3 uPos;
+						varying vec2 vUv;
+					`
+					shader.fragmentShader = shader.fragmentShader.replace( token, insert );
+					token = '#include <dithering_fragment>'
+					insert = `
+					
+				
+						gl_FragColor = vec4(vec3(vUv,outgoingLight.x) ,1.);
+					`
+					shader.fragmentShader = shader.fragmentShader.replace( token, insert );
+					materialShader = shader;
+
+				};
+			const birdMesh = new THREE.Mesh(geometry, materialCustom);
+			// calc normal base vertices 
+			birdMesh.geometry.computeVertexNormals()
+
+			birdMesh.rotation.y = Math.PI / 2;
+			birdMesh.matrixAutoUpdate = false;
+			birdMesh.updateMatrix();
+		
+
+			groundMesh = new THREE.Mesh(
+				new THREE.PlaneGeometry(16/16*2,8/16*2),
+				new THREE.MeshPhongMaterial({map:textureSDF,transparent:true,side:2})
+			)
+	
+			groundMesh.rotateX(-Math.PI / 7.2)
+			groundMesh.position.y = -1
+		
+			groundMesh.receiveShadow = true
+
+
+			scene.add(birdMesh,groundMesh);
+
+		}
+
+		function fillPositionTexture(texture) {
+
+			const theArray = texture.image.data;
+
+			for (let k = 0, kl = theArray.length; k < kl; k += 4) {
+
+				const x = Math.random();
+				const y = Math.random();
+				const z = Math.random();
+
+				theArray[k + 0] = x;
+				theArray[k + 1] = y;
+				theArray[k + 2] = z;
+				theArray[k + 3] = 1;
+
+			}
+
+		}
+
+		function fillVelocityTexture(texture) {
+
+			const theArray = texture.image.data;
+
+			for (let k = 0, kl = theArray.length; k < kl; k += 4) {
+
+				const x = Math.random() - 0.5;
+				const y = Math.random() - 0.5;
+				const z = Math.random() - 0.5;
+
+				theArray[k + 0] = x * 1;
+				theArray[k + 1] = y * 1;
+				theArray[k + 2] = z * 1;
+				theArray[k + 3] = 1;
+
+			}
+
+		}
+
+		function onWindowResize() {
+
+			windowHalfX = window.innerWidth / 2;
+			windowHalfY = window.innerHeight / 2;
+
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+
+			renderer.setSize(window.innerWidth, window.innerHeight);
+
+		}
+
+		function onPointerMove(event) {
+
+			if (event.isPrimary === false) return;
+
+			mouseX = event.clientX - windowHalfX;
+			mouseY = event.clientY - windowHalfY;
+
+		}
+
+		//
+
+		function animate() {
+
+			requestAnimationFrame(animate);
+
+			render();
+			stats.update();
+
+		}
+
+		function render() {
+
+			const now = performance.now();
+			let delta = (now - last) / 1000;
+
+			if (delta > 1) delta = 1; // safety cap on large deltas
+			last = now;
+
+			positionUniforms['time'].value = now;
+			positionUniforms['delta'].value = delta;
+			velocityUniforms['time'].value = now;
+			velocityUniforms['u_noiseTime'].value = now;
+			velocityUniforms['delta'].value = delta;
+
+			pointLightMNouse.position.x = mouseX
+			pointLightMNouse.position.y = -mouseY
+	
+			
+			// mouseX = 10000;
+			// mouseY = 10000;
+
+			gpuCompute.compute();
+		
+			// birdUniforms['texturePosition'].value = gpuCompute.getCurrentRenderTarget(positionVariable).texture;
+			// birdUniforms['textureVelocity'].value = gpuCompute.getCurrentRenderTarget(velocityVariable).texture;
+			if ( materialShader ) materialShader.uniforms[ 'texturePosition' ].value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
+			if ( materialShader ) materialShader.uniforms[ 'textureVelocity' ].value = gpuCompute.getCurrentRenderTarget( velocityVariable ).texture;
+				
+			
+	
+			
+			monitorPos.material.map = gpuCompute.getCurrentRenderTarget(positionVariable).texture;
+			monitorVel.material.map = gpuCompute.getCurrentRenderTarget(velocityVariable).texture;
+			renderer.render(scene, camera);
+
+		}
+
+	</script>
+	</body>
+
+</html>
