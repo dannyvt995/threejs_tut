@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Depth And GPGGU</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <link type="text/css" rel="stylesheet" href="main.css">
+
+</head>
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+</style>
+
+<body>
+    <script id="viewDf-vert" type="x-shader/x-vertex">
+        varying vec2 vUv;
+
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    </script>
+    <script id="viewDepth-frag" type="x-shader/x-fragment">
+        #include <packing>
+
+        varying vec2 vUv;
+        
+        uniform sampler2D tNormalFont;
+        uniform sampler2D tDepthFont;
+        uniform sampler2D tNormalBack;
+        uniform sampler2D tDepthBack;
+        uniform float cameraNear;
+        uniform float cameraFar;
+
+        // Function to convert depth texture value to linear depth
+        float getLinearDepth(float depth) {
+            float z = depth * 2.0 - 1.0; // Convert to NDC
+            return (2.0 * cameraNear * cameraFar) / (cameraFar + cameraNear - z * (cameraFar - cameraNear));
+        }
+        float readDepth( sampler2D depthSampler, vec2 coord ) {
+            float fragCoordZ = texture2D( depthSampler, coord ).x;
+            float viewZ = perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );
+            return viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
+        }
+        float getEnhanceDepthFromNormal(sampler2D depthTexture,sampler2D normalTexture,float intensityDepth,float intensityNormal) {
+                float depth = texture2D(depthTexture, vUv).r;
+                vec3 normal = texture2D(normalTexture, vUv).rgb;
+                // normal = normalize(normal * 2.0 - 1.0); // Chuyển normal từ [0, 1] sang [-1, 1]
+                // Tăng cường độ sâu dựa trên giá trị của normal
+                float normalVal = dot(normal, vec3(0.0, 0.0, 1.0)); // So với hướng z
+                // Điều chỉnh cường độ của normal
+                float outEnhancedDepth = (1.-depth) * intensityDepth + normalVal * intensityNormal;
+            
+                // Đảm bảo giá trị depth nằm trong khoảng [0, 1]
+                outEnhancedDepth = clamp(outEnhancedDepth, 0.0, 1.0);
+                return outEnhancedDepth;
+        }
+        void main() {
+      
+            //float depth = readDepth( tDepthFont, vUv );
+
+            vec3 outD = vec3(getEnhanceDepthFromNormal(tDepthBack,tNormalBack,1.,0.3));
+            if(vUv.x < 0.01 || vUv.y < 0.01 || vUv.x > 0.99 || vUv.y > 0.99 ) {
+                outD = vec3(1.,0.,0.);
+            }
+            gl_FragColor.rgb =   outD;
+            gl_FragColor.a = 1.0;
+        }
+    </script>
+    <script id="viewFbo1-frag" type="x-shader/x-fragment">
+        #include <packing>
+
+        varying vec2 vUv;
+        uniform sampler2D tNormalFont;
+        uniform sampler2D tNormalBack;
+        void main() {
+            vec3 diffuse = texture2D( tNormalFont, vUv ).rgb;
+            if (diffuse == vec3(0.0, 0.0, 0.0)) {
+                diffuse = vec3(1.0, 1.0, 1.0); // Chuyển thành màu trắng
+            }
+            if(vUv.x < 0.01 || vUv.y < 0.01 || vUv.x > 0.99 || vUv.y > 0.99 ) {
+                diffuse.xyz = vec3(1.,0.,0.);
+            }
+            gl_FragColor.rgb = 1. - diffuse;
+            gl_FragColor.a = 1.0;
+        }
+    </script>
+    <script id="viewGPGPU_Pos-frag" type="x-shader/x-fragment">
+        varying vec2 vUv;
+        uniform sampler2D tPos;
+        void main() {
+            vec4 outColor = texture2D( tPos, vUv );
+            if(vUv.x < 0.01 || vUv.y < 0.01 || vUv.x > 0.99 || vUv.y > 0.99 ) {
+                outColor.xyz = vec3(1.,0.,0.);
+            }
+            gl_FragColor =  vec4(outColor.xyz,1.);
+        }
+    </script>
+    <script id="viewGPGPU_Vel-frag" type="x-shader/x-fragment">
+        varying vec2 vUv;
+        uniform sampler2D tVel;
+        void main() {
+            vec4 outColor = texture2D( tVel, vUv );
+            if(vUv.x < 0.01 || vUv.y < 0.01 || vUv.x > 0.99 || vUv.y > 0.99 ) {
+                outColor.xyz = vec3(1.,0.,0.);
+            }
+            gl_FragColor =  vec4(outColor.xyz ,1.);
+        }
+    </script>
+
+
+    <script id="frag_Pos_GPGPU" type="x-shader/x-fragment">
+
+        uniform float time;
+        uniform float delta;
+        uniform sampler2D tNormalFont;
+        uniform sampler2D tDepthFont;
+        uniform sampler2D tNormalBack;
+        uniform sampler2D tDepthBack;
+        uniform mat4 uShadowMatrix0;
+        uniform mat4 uShadowMatrix1;
+        uniform mat4 uProjInvert0;
+        uniform mat4 uProjInvert1;
+        uniform mat4 uViewInvert0;
+        uniform mat4 uViewInvert1;
+        float rand(vec2 co){
+            return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
+
+        vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
+        
+        vec4 permute(vec4 x) {  return mod289(((x*34.0)+1.0)*x);  }
+        
+        vec4 taylorInvSqrt(vec4 r) {  return 1.79284291400159 - 0.85373472095314 * r;}
+        
+        float snoise(vec3 v) { 
+            const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+            const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+        
+            vec3 i  = floor(v + dot(v, C.yyy) );
+            vec3 x0 =   v - i + dot(i, C.xxx) ;
+        
+            vec3 g = step(x0.yzx, x0.xyz);
+            vec3 l = 1.0 - g;
+            vec3 i1 = min( g.xyz, l.zxy );
+            vec3 i2 = max( g.xyz, l.zxy );
+        
+            vec3 x1 = x0 - i1 + C.xxx;
+            vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+            vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
+        
+            i = mod289(i); 
+            vec4 p = permute( permute( permute( 
+                                 i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                             + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                             + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+        
+            float n_ = 0.142857142857; // 1.0/7.0
+            vec3  ns = n_ * D.wyz - D.xzx;
+        
+            vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
+        
+            vec4 x_ = floor(j * ns.z);
+            vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+        
+            vec4 x = x_ *ns.x + ns.yyyy;
+            vec4 y = y_ *ns.x + ns.yyyy;
+            vec4 h = 1.0 - abs(x) - abs(y);
+        
+            vec4 b0 = vec4( x.xy, y.xy );
+            vec4 b1 = vec4( x.zw, y.zw );
+        
+            vec4 s0 = floor(b0)*2.0 + 1.0;
+            vec4 s1 = floor(b1)*2.0 + 1.0;
+            vec4 sh = -step(h, vec4(0.0));
+        
+            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+        
+            vec3 p0 = vec3(a0.xy,h.x);
+            vec3 p1 = vec3(a0.zw,h.y);
+            vec3 p2 = vec3(a1.xy,h.z);
+            vec3 p3 = vec3(a1.zw,h.w);
+        
+            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+            p0 *= norm.x;
+            p1 *= norm.y;
+            p2 *= norm.z;
+            p3 *= norm.w;
+        
+            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+            m = m * m;
+            return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                                                        dot(p2,x2), dot(p3,x3) ) );
+        }
+        
+        vec3 snoiseVec3( vec3 x ){
+        
+            float s  = snoise(vec3( x ));
+            float s1 = snoise(vec3( x.y - 19.1 , x.z + 33.4 , x.x + 47.2 ));
+            float s2 = snoise(vec3( x.z + 74.2 , x.x - 124.5 , x.y + 99.4 ));
+            vec3 c = vec3( s , s1 , s2 );
+            return c;
+        
+        }
+        
+        vec3 curlNoise( vec3 p ){
+            
+            const float e = .1;
+            vec3 dx = vec3( e   , 0.0 , 0.0 );
+            vec3 dy = vec3( 0.0 , e   , 0.0 );
+            vec3 dz = vec3( 0.0 , 0.0 , e   );
+        
+            vec3 p_x0 = snoiseVec3( p - dx );
+            vec3 p_x1 = snoiseVec3( p + dx );
+            vec3 p_y0 = snoiseVec3( p - dy );
+            vec3 p_y1 = snoiseVec3( p + dy );
+            vec3 p_z0 = snoiseVec3( p - dz );
+            vec3 p_z1 = snoiseVec3( p + dz );
+        
+            float x = p_y1.z - p_y0.z - p_z1.y + p_z0.y;
+            float y = p_z1.x - p_z0.x - p_x1.z + p_x0.z;
+            float z = p_x1.y - p_x0.y - p_y1.x + p_y0.x;
+        
+            const float divisor = 1.0 / ( 2.0 * e );
+            return normalize( vec3( x , y , z ) * divisor );
+        
+        }
+        float getDistToCamera(mat4 shadowMatrix, sampler2D textureNormal, vec3 position, mat4 invertProj, mat4 invertView, sampler2D textureDepth, inout float outside, inout vec3 normal) {
+            vec4 vShadowCoord = shadowMatrix * vec4(position, 1.0);
+            vec4 shadowCoord  = vShadowCoord / vShadowCoord.w;
+            vec2 uvS = shadowCoord.xy;
+            vec4 color = texture2D(textureNormal, uvS);
+            if(color.a <= 0.0) {
+                outside = 0.7;
+            }
+            float depth = texture2D(textureDepth, uvS).r;
+            float z = depth * 2.0 - 1.0;
+        
+            vec4 clipSpacePosition = vec4(uvS * 2.0 - 1.0, z, 1.0);
+            vec4 viewSpacePosition = invertProj * clipSpacePosition;
+            viewSpacePosition /= viewSpacePosition.w;
+        
+            vec4 worldSpacePosition = invertView * viewSpacePosition;
+        
+            normal = color.rgb * 2.0 - 1.0;
+        
+            return worldSpacePosition.z;
+        }
+        void main()	{
+
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec4 tmpPos = texture2D( texturePosition, uv );
+            vec3 posSelf = tmpPos.xyz;
+            vec3 posSelfVersionRefect = tmpPos.xyz;
+            vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
+            float dist = length(posSelf);
+            float radius = 2.0;
+        
+         
+            vec3 acc        = curlNoise(posSelf + time);
+            float o0 = 1.0;
+            float o1 = 1.0;
+            
+            const float lifeDecrease = 0.0;
+            vec3 n0, n1, n; 
+            n = vec3(0.0);
+            float z0 = getDistToCamera(uShadowMatrix0, tNormalFont, posSelf, uProjInvert0, uViewInvert0, tDepthFont, o0, n0);
+            float z1 = getDistToCamera(uShadowMatrix1, tNormalBack, posSelf, uProjInvert1, uViewInvert1, tDepthBack, o1, n1);
+            float outside = o0 * o1;
+            float d0 = posSelf.z - z0;
+            float d1 = posSelf.z - z1;
+            n = d0 < d1 ? n0 : n1;
+        
+            vec3 dir = normalize(posSelf);
+            if(outside > 0.5) {
+    
+                if(posSelf.z > z0) {
+                    posSelf.z = z0;
+                    n = n0;
+                } else if(posSelf.z < z1) {
+                    posSelf.z = z1;
+                    n = n1;
+                } else {
+             
+                }
+        
+            }else {
+				
+           
+                acc -= dir * 3.0;
+            }
+            posSelfVersionRefect += velSelf * delta;
+            gl_FragColor = vec4(  posSelfVersionRefect, ((radius - dist)/100.) * 1. + .02 * 0. );
+
+        }
+
+    </script>
+
+   
+    <script id="frag_Vel_GPGPU" type="x-shader/x-fragment">
+
+        uniform float time;
+        uniform float delta;
+        uniform sampler2D tNormalFont;
+        uniform sampler2D tDepthFont;
+        uniform sampler2D tNormalBack;
+        uniform sampler2D tDepthBack;
+        uniform mat4 uShadowMatrix0;
+        uniform mat4 uShadowMatrix1;
+        uniform mat4 uProjInvert0;
+        uniform mat4 uProjInvert1;
+        uniform mat4 uViewInvert0;
+        uniform mat4 uViewInvert1;
+        float rand(vec2 co){
+            return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+      
+        void main() {
+            
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+
+            vec3 posSelf = texture2D( texturePosition, uv ).xyz;
+            vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
+
+            float dist = length(posSelf);
+            float radius = 2.0;
+           
+            vec3 sVel = vec3(0.);
+            bool openReflect = true;
+            if (dist > radius && openReflect == true) {
+                // set vel = 0
+                sVel = vec3(0.);
+                // tính pháp tuyến tại pos
+                vec3 normalPos = normalize(posSelf);
+                // tính vec đảo ngược dựa trên pos và pháp tuyến
+                vec3 reflectedVelocity = reflect(posSelf, normalPos);
+                // sau khi vel = 0 , cập nhật vel mới
+                sVel = reflectedVelocity ;
+            }else{
+                sVel = velSelf;
+            }
+
+
+
+            const float decrease = 1.;
+	        sVel *= decrease;
+
+            gl_FragColor = vec4( sVel,1.);
+
+        }
+
+    </script>
+    <script type="importmap">
+		{
+			"imports": {
+				"three": "./three.module.js",
+				"three/addons/": "./jsm/"
+			}
+		}
+	</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import { OBJLoader } from 'three/addons/OBJLoader.js';
+        import { DRACOLoader } from 'three/addons/DRACOLoader.js';
+        import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { radixSort } from 'three/addons/SortUtils.js';
+        //glsl
+        import { curl4Noise } from './glsl/curl4Noise.js'
+        import { getDisFromDepth } from './glsl/getDisFromDepth.js'
+
+        //MAIN SCENE
+        let renderer, controls, stats, cameraMain, sceneDisplay;
+
+        //MONITOR
+        let sceneMonitor, camMonitor, points, PointMat;
+        let viewFBODepth_Mat, viewFboNormal_Mat, viewGPGPU_Pos,viewGPGPU_Vel
+
+        //UTILS
+        let now,last,delta
+        let wView = window.innerWidth
+        let hView = window.innerHeight
+        let ratioView = window.innerWidth / window.innerHeight
+        let marginScissor = 2
+
+        //FBO DEPTH
+        //common
+        let sceneFboDepth
+        //fbo target
+        let FboTarget_DepthFont,FboTarget_DepthBack
+        //cam fbo
+        let pointSource0,pointSource1
+        let cameraLight0,cameraLight1
+        let shadowMatrix0,projInvert0,viewInvert0
+        let shadowMatrix1,projInvert1,viewInvert1
+     
+        //GPGPU
+        let gpuCompute
+        let widthTexture = 128
+        let velocityVariable, positionVariable,positionUniforms,velocityUniforms
+
+        //CONFIG DEPTH RENDER
+        const params = {
+            format: THREE.DepthFormat,
+            type: THREE.FloatType,
+            samples: 0,
+        };
+
+        const formats = { DepthFormat: THREE.DepthFormat, DepthStencilFormat: THREE.DepthStencilFormat };
+        const types = { UnsignedShortType: THREE.UnsignedShortType, UnsignedIntType: THREE.UnsignedIntType, FloatType: THREE.FloatType };
+
+        init();
+
+        function init() {
+
+            renderer = new THREE.WebGLRenderer({alpha: true});
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(wView, hView);
+            renderer.setAnimationLoop(animate);
+            document.body.appendChild(renderer.domElement);
+
+            //
+
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            cameraMain = new THREE.PerspectiveCamera(70, wView / hView, 0.01, 400);
+            cameraMain.position.z = 4;
+
+
+            controls = new OrbitControls(cameraMain, renderer.domElement);
+            controls.enableDamping = true;
+
+
+            sceneDisplay = new THREE.Scene();
+            const axesHelper = new THREE.AxesHelper( 5 );
+            sceneDisplay.add( axesHelper );
+
+            initFboDepthTexture();
+      
+            initSceneFboDepth();
+            initViewDisplay()
+      
+            initViewMonitor();
+            initComputeRenderer()
+            onWindowResize();
+            window.addEventListener('resize', onWindowResize);
+
+            //
+            const gui = new GUI({ width: 300 });
+
+            gui.add(params, 'format', formats).onChange(initFboDepthTexture);
+            gui.add(params, 'type', types).onChange(initFboDepthTexture);
+            gui.add(params, 'samples', 0, 16, 1).onChange(initFboDepthTexture);
+            gui.open();
+
+        }
+       
+        function initComputeRenderer() {
+
+            gpuCompute = new GPUComputationRenderer(widthTexture, widthTexture, renderer);
+
+            const dtPosition = gpuCompute.createTexture();
+            const dtVelocity = gpuCompute.createTexture();
+
+            fillPosTexture(dtPosition);
+            fillVelTexture(dtVelocity);
+
+            velocityVariable = gpuCompute.addVariable('textureVelocity', document.getElementById('frag_Vel_GPGPU').textContent, dtVelocity);
+            positionVariable = gpuCompute.addVariable('texturePosition', document.getElementById('frag_Pos_GPGPU').textContent, dtPosition);
+          
+            velocityVariable.wrapS = THREE.RepeatWrapping;
+            velocityVariable.wrapT = THREE.RepeatWrapping;
+            positionVariable.wrapS = THREE.RepeatWrapping;
+            positionVariable.wrapT = THREE.RepeatWrapping;
+
+            gpuCompute.setVariableDependencies(velocityVariable, [positionVariable, velocityVariable]);
+            gpuCompute.setVariableDependencies(positionVariable, [positionVariable, velocityVariable]);
+
+            positionUniforms = positionVariable.material.uniforms;
+            velocityUniforms = velocityVariable.material.uniforms;
+
+            positionUniforms['time'] = { value: 0.0 };
+            positionUniforms['delta'] = { value: 0.0 };
+            velocityUniforms['time'] = { value: 0.0 };
+            velocityUniforms['delta'] = { value: 0.0 };
+
+            // for fbo depth
+            positionUniforms['tDepthFont'] = { value: null };
+            positionUniforms['tNormalFont'] = { value: null };
+            velocityUniforms['tDepthFont'] = { value: null };
+            velocityUniforms['tNormalFont'] = { value: null };
+            
+            positionUniforms['tDepthBack'] = { value: null };
+            positionUniforms['tNormalBack'] = { value: null };
+            velocityUniforms['tDepthBack'] = { value: null };
+            velocityUniforms['tNormalBack'] = { value: null };
+
+            positionUniforms['shadowMatrix0'] = { value: new THREE.Matrix4() };
+            positionUniforms['projInvert0'] = { value: new THREE.Matrix4() };
+            positionUniforms['viewInvert0'] = { value: new THREE.Matrix4() };
+            positionUniforms['shadowMatrix1'] = { value: new THREE.Matrix4() };
+            positionUniforms['projInvert1'] = { value: new THREE.Matrix4() };
+            positionUniforms['viewInvert1'] = { value: new THREE.Matrix4() };
+            
+            velocityUniforms['shadowMatrix0'] = { value: new THREE.Matrix4() };
+            velocityUniforms['projInvert0'] = { value: new THREE.Matrix4() };
+            velocityUniforms['viewInvert0'] = { value: new THREE.Matrix4() };
+            velocityUniforms['shadowMatrix1'] = { value: new THREE.Matrix4() };
+            velocityUniforms['projInvert1'] = { value: new THREE.Matrix4() };
+            velocityUniforms['viewInvert1'] = { value: new THREE.Matrix4() };
+
+
+
+
+            const error = gpuCompute.init();
+
+            if (error !== null) {
+
+                console.error(error);
+
+            }
+
+        }
+       
+        function fillPosTexture(texture) {
+            const arrT = texture.image.data;
+            for (let k = 0, kl = arrT.length; k < kl; k += 4) {
+                const x = Math.random()*2-1;
+                const y = Math.random()*2-1;
+                const z = Math.random()*2-1;
+                arrT[k + 0] = x
+                arrT[k + 1] = y
+                arrT[k + 2] = z
+                arrT[k + 3] = 1
+            }
+        }
+       
+        function fillVelTexture(texture) {
+            const arrT = texture.image.data;
+            for (let k = 0, kl = arrT.length; k < kl; k += 4) {
+                const x = Math.random()*2-1;
+                const y = Math.random()*2-1;
+                const z = Math.random()*2-1;
+                arrT[k + 0] = x
+                arrT[k + 1] = y
+                arrT[k + 2] = z
+                arrT[k + 3] = 1
+            }
+        }
+       
+        function initFboDepthTexture() {
+
+            if (FboTarget_DepthFont) FboTarget_DepthFont.dispose();
+            if (FboTarget_DepthBack) FboTarget_DepthBack.dispose();
+
+            const format = parseInt(params.format);
+            const type = parseInt(params.type);
+            const samples = parseInt(params.samples);
+            const dpr = renderer.getPixelRatio();
+
+            FboTarget_DepthFont = new THREE.WebGLRenderTarget(wView * dpr, hView * dpr, { format: THREE.RGBAFormat });
+            FboTarget_DepthFont.texture.minFilter = THREE.NearestFilter;
+            FboTarget_DepthFont.texture.magFilter = THREE.NearestFilter;
+            FboTarget_DepthFont.stencilBuffer = (format === THREE.DepthStencilFormat) ? true : false;
+            FboTarget_DepthFont.samples = samples;
+            FboTarget_DepthFont.depthTexture = new THREE.DepthTexture();
+            FboTarget_DepthFont.depthTexture.format = format;
+            FboTarget_DepthFont.depthTexture.type = type;
+
+            FboTarget_DepthBack = new THREE.WebGLRenderTarget(wView * dpr, hView * dpr, { format: THREE.RGBAFormat });
+            FboTarget_DepthBack.texture.minFilter = THREE.NearestFilter;
+            FboTarget_DepthBack.texture.magFilter = THREE.NearestFilter;
+            FboTarget_DepthBack.stencilBuffer = (format === THREE.DepthStencilFormat) ? true : false;
+            FboTarget_DepthBack.samples = samples;
+            FboTarget_DepthBack.depthTexture = new THREE.DepthTexture();
+            FboTarget_DepthBack.depthTexture.format = format;
+            FboTarget_DepthBack.depthTexture.type = type;
+        }
+       
+        function initViewDisplay() {
+            
+            const gridSize = widthTexture; // Số điểm theo mỗi chiều
+            const spacing = 1.0 / (gridSize - 1); // Khoảng cách giữa các điểm
+
+            // Tạo dữ liệu điểm cho lưới
+            const vertices = [];
+            const extra = [];
+            const uvs = [];
+
+            for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    // Tính toán tọa độ UV cho điểm
+                    const u = x * spacing;
+                    const v = y * spacing;
+
+                    let posX = u * 2.0 - 1.0;
+                    let posY = v * 2.0 - 1.0;
+                    let extraX = Math.random() * 2 - 1
+                    let extraY = Math.random() * 2 - 1
+                    vertices.push(posX * 2., posY * 2., 0);
+                    extra.push(extraX, extraY, 0);
+                    uvs.push(u, v);
+                }
+            }
+            const PointGeo = new THREE.BufferGeometry();
+            const positionAttribute = new THREE.BufferAttribute(new Float32Array(vertices), 3);
+            const extraAttribute = new THREE.BufferAttribute(new Float32Array(extra), 3);
+            const uvAttribute = new THREE.BufferAttribute(new Float32Array(uvs), 2);
+            PointGeo.setAttribute('position', positionAttribute);
+            PointGeo.setAttribute('extra', extraAttribute);
+            PointGeo.setAttribute('uv', uvAttribute);
+
+
+            const vertexShader = `
+                precision highp float;
+                uniform float time;
+                attribute vec3 extra;
+                uniform sampler2D depthTexture;
+                uniform sampler2D tPos_gpu;
+                uniform sampler2D tVel_gpu;
+                varying vec3 vPos;
+                varying vec2 vUv;
+                varying float life;
+                void main() {
+                    vec4 depthData = texture2D(depthTexture,uv).rgba;
+                    vec4 posGpu = texture2D(tPos_gpu,uv).rgba;
+                    //  float zDepth = mix(0.0, 1.0, (depthData.b)/2. );
+                    //  pos.z = zDepth ;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(posGpu.xyz, 1.0);
+              
+                    vPos = extra;
+                    vUv = uv;
+                    life = posGpu.w;
+                    gl_PointSize  = 2. *  ( posGpu.w * 100. );
+                }
+            `;
+
+            const fragmentShader = `
+
+                   varying vec3 vPos;
+                      uniform sampler2D depthTexture;
+                      varying vec2 vUv;
+                        varying float life;
+                void main() {
+                
+                    vec4 qq = texture2D(depthTexture,vUv).xyzw;
+                    gl_FragColor = qq * 5.;
+                    float lifeHiddenOutCircle = life*100.;
+                    gl_FragColor = vec4(qq.xyz ,1.);
+                }
+            `;
+            const texture = new THREE.TextureLoader().load('textures/depth.png');
+            PointMat = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                transparent: true,
+                uniforms: {
+                    time: {
+                        value: 0
+                    },
+                    depthTexture: {
+                        value: texture
+                    },
+                    tPos_gpu : {
+                        value: null
+                    },
+                    tVel_gpu : {
+                        value: null
+                    }
+                }
+            });
+
+            // Tạo điểm từ geometry và material
+            points = new THREE.Points(PointGeo, PointMat);
+          
+            const vSphere = new THREE.Mesh(new THREE.SphereGeometry(2,32,32),new THREE.MeshNormalMaterial({wireframe:true,transparent:true,opacity:.1}))
+            sceneDisplay.add(points,vSphere)
+        }
+
+        function initViewMonitor() {
+            sceneMonitor = new THREE.Scene();
+            sceneMonitor.background = new THREE.Color(0x000000);
+            // set cam ortho
+            const aspectRatio = 0.3; // vì đã sisscor
+            const  vZ = 2.
+            camMonitor = new THREE.OrthographicCamera(- ratioView * vZ, ratioView * vZ, 1 * vZ, - 1 * vZ, 0, 1);
+            viewFBODepth_Mat = new THREE.ShaderMaterial({
+                vertexShader: document.querySelector('#viewDf-vert').textContent.trim(),
+                fragmentShader: document.querySelector('#viewDepth-frag').textContent.trim(),
+                uniforms: {
+                    cameraNear: { value: 0.0001 },
+                    cameraFar: { value: .1 },
+                    tDepthFont: { value: null },
+                    tNormalFont: { value:null},
+                    tDepthBack: { value: null },
+                    tNormalBack: { value:null}
+                }
+            });
+            viewFboNormal_Mat = new THREE.ShaderMaterial({
+                vertexShader: document.querySelector('#viewDf-vert').textContent.trim(),
+                fragmentShader: document.querySelector('#viewFbo1-frag').textContent.trim(),
+                uniforms: {
+                    tNormalFont: { value: null },
+                    tNormalBack: { value:null}
+                }
+            });
+            viewGPGPU_Pos = new THREE.ShaderMaterial({
+                vertexShader: document.querySelector('#viewDf-vert').textContent.trim(),
+                fragmentShader: document.querySelector('#viewGPGPU_Pos-frag').textContent.trim(),
+                uniforms: {
+                    tPos: { value: null }
+                }
+            });
+            viewGPGPU_Vel = new THREE.ShaderMaterial({
+                vertexShader: document.querySelector('#viewDf-vert').textContent.trim(),
+                fragmentShader: document.querySelector('#viewGPGPU_Vel-frag').textContent.trim(),
+                uniforms: {
+                    tVel: { value: null }
+                }
+            });
+     
+            let vMesh1 = new THREE.Mesh(new THREE.PlaneGeometry(2,2), viewFBODepth_Mat);
+            let vMesh2 = new THREE.Mesh(new THREE.PlaneGeometry(1,1), viewFboNormal_Mat);
+            let vMesh3 = new THREE.Mesh(new THREE.PlaneGeometry(1,1), viewGPGPU_Pos);
+            let vMesh4 = new THREE.Mesh(new THREE.PlaneGeometry(1,1), viewGPGPU_Vel);
+            vMesh1.position.set( ratioView * vZ - 1,.6,0)
+            vMesh2.position.set( ratioView * vZ - 1,-.6,0)
+            vMesh3.position.set(- ratioView * vZ + 1,.6,0)
+            vMesh4.position.set(- ratioView * vZ + 1,-.6,0)
+            sceneMonitor.add(vMesh1, vMesh2,vMesh3, vMesh4);
+
+        }
+       
+        function initCamFboDepth(){
+            const r = 10;
+            pointSource0 = new THREE.Vector3(0, 0, r);
+            pointSource1 = new THREE.Vector3(0, 0, -r);
+            const s = 2;
+
+            // Tạo camera trực giao đầu tiên
+            cameraLight0 = new THREE.OrthographicCamera(-s, s, s, -s, 1, 50);
+            cameraLight0.position.copy(pointSource0);
+            cameraLight0.lookAt(new THREE.Vector3(0, 0, 0));
+            cameraLight0.updateMatrixWorld(); // Cập nhật ma trận sau khi di chuyển camera
+
+            // Tạo camera trực giao thứ hai
+            cameraLight1 = new THREE.OrthographicCamera(-s, s, s, -s, 1, 50);
+            cameraLight1.position.copy(pointSource1);
+            cameraLight1.lookAt(new THREE.Vector3(0, 0, 0));
+            cameraLight1.updateMatrixWorld(); // Cập nhật ma trận
+
+            // Inverse projection matrix cho camera 0
+            projInvert0 = new THREE.Matrix4();
+            projInvert0.copy(cameraLight0.projectionMatrix).invert();
+
+            // Inverse view matrix cho camera 0
+            viewInvert0 = new THREE.Matrix4();
+            viewInvert0.copy(cameraLight0.matrixWorld).invert();
+
+            // Inverse projection matrix cho camera 1
+            projInvert1 = new THREE.Matrix4();
+            projInvert1.copy(cameraLight1.projectionMatrix).invert();
+
+            // Inverse view matrix cho camera 1
+            viewInvert1 = new THREE.Matrix4();
+            viewInvert1.copy(cameraLight1.matrixWorld).invert();
+
+            const biasMatrix = new THREE.Matrix4().set(
+            0.5, 0.0, 0.0, 0.0,
+            0.0, 0.5, 0.0, 0.0,
+            0.0, 0.0, 0.5, 0.0,
+            0.5, 0.5, 0.5, 1.0
+            );
+
+            // Shadow matrix cho camera 0
+            shadowMatrix0 = new THREE.Matrix4();
+            shadowMatrix0.multiplyMatrices(cameraLight0.projectionMatrix, cameraLight0.matrixWorldInverse);
+            shadowMatrix0.multiply(biasMatrix);
+
+            // Shadow matrix cho camera 1
+            shadowMatrix1 = new THREE.Matrix4();
+            shadowMatrix1.multiplyMatrices(cameraLight1.projectionMatrix, cameraLight1.matrixWorldInverse);
+            shadowMatrix1.multiply(biasMatrix);
+
+            console.log(">>> CamOrtho0:",shadowMatrix0,projInvert0,viewInvert0)
+            console.log(">>> CamOrtho1:",shadowMatrix1,projInvert1,viewInvert1)
+        }
+       
+        function initSceneFboDepth() {
+            initCamFboDepth()
+            sceneFboDepth = new THREE.Scene();
+       
+            const light = new THREE.AmbientLight(0x404040); // soft white light
+            sceneFboDepth.add(light);
+
+            const loader = new OBJLoader();
+
+            // load a resource
+            loader.load(
+                // resource URL
+                'models/eisbar/model.obj',
+                // called when resource is loaded
+                function (object) {
+                    object.scale.set(1, 1, 1)
+                    console.log(object)
+                    object.traverse(function (child) {
+                        if (child.isMesh) {
+
+                            // Áp dụng material
+                            child.material = new THREE.MeshNormalMaterial();
+                        }
+                    });
+                    sceneFboDepth.add(object);
+
+                },
+                // called when loading is in progresses
+                function (xhr) {
+
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+
+                },
+                // called when loading has errors
+                function (error) {
+
+                    console.log('An error happened');
+
+                }
+            );
+
+
+        }
+
+        function onWindowResize() {
+
+            const aspect = wView / hView;
+            cameraMain.aspect = aspect;
+            cameraMain.updateProjectionMatrix();
+            const dpr = renderer.getPixelRatio();
+            FboTarget_DepthFont.setSize(wView * dpr, hView * dpr);
+            FboTarget_DepthBack.setSize(wView * dpr, hView * dpr);
+            renderer.setSize(wView, hView);
+
+        }
+
+        function updateFboDepth() {
+          
+            points.material.uniforms.time.value = now / 1000;
+
+            // 
+          
+            renderer.setRenderTarget(FboTarget_DepthFont);
+            renderer.clear();
+            renderer.render(sceneFboDepth, cameraLight0);
+            // render 2 fbo từ 2 cam ortho cameraLight0 vs cameraLight1
+            // 
+            viewFBODepth_Mat.uniforms.tDepthFont.value = FboTarget_DepthFont.depthTexture;
+            viewFBODepth_Mat.uniforms.tNormalFont.value = FboTarget_DepthFont.texture;
+            
+            viewFboNormal_Mat.uniforms.tNormalFont.value = FboTarget_DepthFont.texture;
+            PointMat.uniforms.depthTexture.value = FboTarget_DepthFont.texture;
+
+            positionUniforms['tDepthFont'].value =  FboTarget_DepthFont.depthTexture;
+            positionUniforms['tNormalFont'].value = FboTarget_DepthFont.texture;
+
+            velocityUniforms['tDepthFont'].value =  FboTarget_DepthFont.depthTexture;
+            velocityUniforms['tNormalFont'].value = FboTarget_DepthFont.texture;
+            // 
+            renderer.setRenderTarget(null);
+         
+            renderer.clear();
+
+            renderer.setRenderTarget(FboTarget_DepthBack);
+            renderer.clear();
+            renderer.render(sceneFboDepth, cameraLight1);
+            viewFBODepth_Mat.uniforms.tDepthBack.value = FboTarget_DepthBack.depthTexture;
+            viewFBODepth_Mat.uniforms.tNormalBack.value = FboTarget_DepthBack.texture;
+            viewFboNormal_Mat.uniforms.tNormalBack.value = FboTarget_DepthBack.texture;
+
+            renderer.setRenderTarget(null);
+           
+
+
+        }
+      
+        function renderMain() {
+            //Display
+            renderer.setScissorTest(true)
+
+            const leftPer = .2
+            const leftWidth = wView * leftPer - marginScissor;
+            const leftX = 0;
+
+            renderer.setScissor(0, 0, wView, hView);
+            renderer.setScissor(0, 0, wView, hView);
+            renderer.clear();
+            renderer.render(sceneMonitor, camMonitor);
+
+            // Phần bên phải (70%)
+            const rightWidth = wView * (1-leftPer) - marginScissor;
+            const rightX = wView * leftPer + marginScissor;
+
+            renderer.setViewport(0, 0, wView,hView);
+            renderer.setScissor(0, 0, wView, hView);
+            renderer.render(sceneDisplay, cameraMain);
+            renderer.setScissorTest(false); 
+        }
+      
+        function runGPGPU() {
+           
+            if(now && delta && last && now > 1000) {
+                positionUniforms['time'].value = now;
+                positionUniforms['delta'].value = delta;
+                
+                velocityUniforms['time'].value = now;
+                velocityUniforms['delta'].value = delta;
+            }
+            
+            gpuCompute.compute();
+            viewGPGPU_Vel.uniforms.tVel.value =  gpuCompute.getCurrentRenderTarget( velocityVariable ).texture;
+            viewGPGPU_Pos.uniforms.tPos.value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
+            PointMat.uniforms.tPos_gpu.value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
+        }
+        
+        function updateNotReady() {
+            positionUniforms['shadowMatrix0'].value = shadowMatrix0
+            positionUniforms['projInvert0'].value = projInvert0
+            positionUniforms['viewInvert0'].value = viewInvert0
+            positionUniforms['shadowMatrix1'].value = shadowMatrix1
+            positionUniforms['projInvert1'].value = projInvert1
+            positionUniforms['viewInvert1'].value = viewInvert1
+            
+            velocityUniforms['shadowMatrix0'].value = shadowMatrix0
+            velocityUniforms['projInvert0'].value = projInvert0
+            velocityUniforms['viewInvert0'].value = viewInvert0
+            velocityUniforms['shadowMatrix1'].value = shadowMatrix1
+            velocityUniforms['projInvert1'].value = projInvert1
+            velocityUniforms['viewInvert1'].value = viewInvert1
+
+        }
+
+        function animate() {
+            now = performance.now();
+            
+            delta = (now - last) / 4200;
+            // delta = 1/60 
+            if (delta > 1) delta = 1; // safety cap on large deltas
+            last = now;
+            renderer.autoClear = false;
+            runGPGPU()
+            updateFboDepth()
+            updateNotReady()
+            renderMain()
+
+            controls.update();
+            stats.update();
+        }
+ 
+ </script>
+
+</body>
+
+</html>
