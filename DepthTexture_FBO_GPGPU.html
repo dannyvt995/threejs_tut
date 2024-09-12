@@ -14,21 +14,23 @@
         padding: 0;
         overflow: hidden;
     }
-.note {
+    .note {
 position:fixed;
 top:50px;
-left:0;
+left:50%;
 width:100%;
 height:100px;
-color:black;
+color:rgb(255, 255, 255);
 font-size:.5rem;
+z-index: 99;
 }
 </style>
 
 <body>
     <div class="note">
-      Now just use ping pong texture by gpgpu , so new solution is merge pos and vel texture to 1 , and progress it by cluster
-    </div>
+        Now just use ping pong texture by gpgpu , so new solution is merge pos and vel texture to 1 , and progress it by cluster
+      </div>
+      <div id="canvas"></div>
     <script id="viewDf-vert" type="x-shader/x-vertex">
         varying vec2 vUv;
 
@@ -325,7 +327,15 @@ font-size:.5rem;
             float posOffset = mix(extraSelf.x, 1.0, .1) * 0.25;
             float speedOffset = mix(extraSelf.y, 1.0, .25);
             vec3 acc        = curlNoise(posSelf * speedOffset + delta);
-            posSelf += velSelf * delta   + acc * .007;
+            acc += 0.2;
+            acc *= 0.01;
+            bool openReflect = true;
+            if (dist > radius && openReflect == true) {
+                acc =  vec3(0.);
+           
+            }
+            vec3 total = velSelf * delta + acc ;
+            posSelf += total ;
 
             gl_FragColor = vec4(  posSelf, life  );
 
@@ -485,25 +495,12 @@ font-size:.5rem;
             float radius = 2.0;
            
             vec3 sVel = vec3(0.);
-            bool openReflect = false;
-            if (dist > radius && openReflect == true) {
-                // set vel = 0
-                sVel = vec3(0.);
-                // tính pháp tuyến tại pos
-                vec3 normalPos = normalize(posSelf);
-                // tính vec đảo ngược dựa trên pos và pháp tuyến
-                vec3 reflectedVelocity = reflect(posSelf, normalPos);
-                // sau khi vel = 0 , cập nhật vel mới
-                sVel = reflectedVelocity ;
-           
-            }else{
-                sVel = velSelf;
-            }
+          
 
             // surface
             float posOffset = mix(extraSelf.x, 1.0, .1) * 0.85;
             float speedOffset = mix(extraSelf.y, 1.0, .25);
-            vec3 acc        = curlNoise(posSelf + delta);
+            vec3 acc        = curlNoise(posSelf * posOffset + delta);
             float o0 = 1.0;
             float o1 = 1.0;
             
@@ -519,7 +516,6 @@ font-size:.5rem;
         
             vec3 dir = normalize(posSelf);
             if(outside > 0.5) {
-    
                 if(posSelf.z > z0) {
                     n = n0;
                 } else if(posSelf.z < z1) {
@@ -527,18 +523,31 @@ font-size:.5rem;
                 } else {
              
                 }
-        
             }else{
-                acc -= dir * 3.0;
+               acc -= dir * 3.0;
             }
-           
-            acc -= n * 1.2 * speedOffset;
-            sVel += acc * .0005;
             
+            acc -= n * 1.2 * speedOffset;
+           
+           //sVel += acc * 0.05;
 
             const float decrease = 1.;
 	        sVel *= decrease;
 
+            bool openReflect = true;
+            if (dist > radius && openReflect == true) {
+                // set vel = 0
+                sVel = vec3(0.);
+                // tính pháp tuyến tại pos
+                vec3 normalPos = normalize(posSelf);
+                // tính vec đảo ngược dựa trên pos và pháp tuyến
+                vec3 reflectedVelocity = reflect(posSelf, normalPos);
+                // sau khi vel = 0 , cập nhật vel mới
+                sVel = reflectedVelocity ;
+           
+            }else{
+                sVel = velSelf;
+            }
 
             gl_FragColor = vec4( sVel,1.);
 
@@ -628,7 +637,8 @@ font-size:.5rem;
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(wView, hView);
             renderer.setAnimationLoop(animate);
-            document.body.appendChild(renderer.domElement);
+            const canvasDom = document.getElementById("canvas")
+            canvasDom.appendChild(renderer.domElement);
 
             //
 
@@ -636,7 +646,7 @@ font-size:.5rem;
             document.body.appendChild(stats.dom);
 
             cameraMain = new THREE.PerspectiveCamera(70, wView / hView, 0.01, 400);
-            cameraMain.position.z = 2;
+            cameraMain.position.z = 4;
 
 
             controls = new OrbitControls(cameraMain, renderer.domElement);
@@ -650,7 +660,7 @@ font-size:.5rem;
             sceneDisplay.add( directionalLight )
 
             const axesHelper = new THREE.AxesHelper( 5 );
-            //sceneDisplay.add( axesHelper );
+           // sceneDisplay.add( axesHelper );
             initViewDisplay()
             initComputeRenderer()
             initFboDepthTexture();
@@ -665,7 +675,7 @@ font-size:.5rem;
             gui.add(params, 'format', formats).onChange(initFboDepthTexture);
             gui.add(params, 'type', types).onChange(initFboDepthTexture);
             gui.add(params, 'samples', 0, 16, 1).onChange(initFboDepthTexture);
-            gui.open();
+            gui.close();
 
         }
        
@@ -752,7 +762,7 @@ font-size:.5rem;
                 const y = Math.random()*2-1;
                 const z = Math.random()*2-1;
                 let vp = new THREE.Vector3(x,y,z)
-                vp.multiplyScalar(1)
+                vp.multiplyScalar(0.1)
                 arrT[k + 0] = vp.x
                 arrT[k + 1] = vp.y
                 arrT[k + 2] = vp.z
@@ -925,7 +935,7 @@ font-size:.5rem;
                 'models/eisbar/bear.obj',
                 function (object) {
                     object.scale.set(1,1,1)
-                
+                   
                     object.traverse(function (child) {
                         if (child.isMesh) {
 
@@ -933,7 +943,7 @@ font-size:.5rem;
                             child.material = new THREE.MeshPhongMaterial({ flatShading: true ,transparent:true,opacity:.9,side:0,color:'blue'});
                         }
                     });
-                    sceneDisplay.add(object);
+                   sceneDisplay.add(object);
                    
 
                 },
