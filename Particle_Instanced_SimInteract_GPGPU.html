@@ -247,6 +247,7 @@
 
         uniform float time;
         uniform float delta;
+        uniform vec2 mouse;
         uniform sampler2D tNormalFont;
         uniform sampler2D tDepthFont;
         uniform sampler2D tNormalBack;
@@ -399,11 +400,20 @@
             float life = 1.;
             float maxYSet = 8.;
             
+
+
+            // hit 
+            float dHit = distance(mouse * 2.,posSelf.xy);
+            vec3 normal = normalize(posSelf); // Normal của mặt phẳng
+            vec3 reflectedVel = reflect(velSelf, normal);
+
+            if(dHit < .5) velSelf = reflectedVel;
+
+
+
             float dowSpeed = 1.;
             if(time > 7.2) dowSpeed = .72;
             const float decrease = .96;
-
-            
             velSelf                  *= decrease;
             velSelf *= dowSpeed;
 
@@ -556,6 +566,13 @@
 
 
         init();
+        let mouseX = 0;
+        let mouseY = 0;
+
+        window.addEventListener('mousemove', (event) => {
+            mouseX =  (event.clientX / wView) * 2 - 1;
+            mouseY =  - (event.clientY / hView) * 2 + 1;
+        });
 
         function init() {
             loaderObjModel = new OBJLoader();
@@ -640,6 +657,10 @@
             velocityUniforms['delta'] = { value: 0.0 };
             extraUniforms['time'] = { value: 0.0 };
             extraUniforms['delta'] = { value: 0.0 };
+
+            //mouse
+            positionUniforms['mouse'] = { value: new THREE.Vector2(10000,10000) };
+            velocityUniforms['mouse'] = { value: new THREE.Vector2(10000,10000) };
 
             // for fbo depth
             positionUniforms['tDepthFont'] = { value: null };
@@ -1048,10 +1069,10 @@
             const vSphere = new THREE.Mesh(new THREE.SphereGeometry(2, 32, 32), new THREE.MeshNormalMaterial({ wireframe: true, transparent: true, opacity: .1 }))
              sceneDisplay.add(points)
 
-
+            
 
         }
-
+    
         function initViewMonitor() {
             sceneMonitor = new THREE.Scene();
             sceneMonitor.background = new THREE.Color(0x000000);
@@ -1103,9 +1124,10 @@
             renderer.setSize(wView, hView);
 
         }
-
-
+    
         function renderMain() {
+    
+
             if (viewFboNormal_Mat) {
                 //Display
                 renderer.setScissorTest(true)
@@ -1144,6 +1166,10 @@
                 velocityUniforms['time'].value = now/1000;
                 velocityUniforms['delta'].value = delta;
 
+                positionUniforms['mouse'].value = new THREE.Vector2(mouseX,mouseY)
+                velocityUniforms['mouse'].value = new THREE.Vector2(mouseX,mouseY)
+
+       
                 // extraUniforms['time'].value = now;
                 // extraUniforms['delta'].value = delta;
             }
@@ -1155,6 +1181,7 @@
             if (viewGPGPU_Vel) {
                 viewGPGPU_Vel.uniforms.tVel.value = textureVelOut
                 viewGPGPU_Pos.uniforms.tPos.value = texturePosOut
+            
                 viewGPGPU_Extra.uniforms.tExtra.value = textureExtraOut
             }
 
@@ -1165,7 +1192,7 @@
             }
         }
 
-
+   
 
         function animate() {
             now = performance.now();
@@ -1178,7 +1205,7 @@
             runGPGPU()
 
             renderMain()
-
+   
             controls.update();
             stats.update();
         }
