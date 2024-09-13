@@ -14,23 +14,24 @@
         padding: 0;
         overflow: hidden;
     }
+
     .note {
-    position:fixed;
-    top:50px;
-    left:50%;
-    width:100%;
-    height:100px;
-    color:rgb(255, 255, 255);
-    font-size:.5rem;
-    z-index: 99;
-}
+        position: fixed;
+        top: 50px;
+        left: 50%;
+        width: 100%;
+        height: 100px;
+        color: rgb(255, 255, 255);
+        font-size: .5rem;
+        z-index: 99;
+    }
 </style>
 
 <body>
     <div class="note">
-        
-      </div>
-      <div id="canvas"></div>
+
+    </div>
+    <div id="canvas"></div>
     <script id="viewDf-vert" type="x-shader/x-vertex">
         varying vec2 vUv;
 
@@ -39,7 +40,7 @@
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
     </script>
-  
+
     <script id="viewGPGPU_Pos-frag" type="x-shader/x-fragment">
         varying vec2 vUv;
         uniform sampler2D tPos;
@@ -210,19 +211,33 @@
             float posOffset    = mix(extraSelf.g, 1.0, .9);
             vec3 acc             = curlNoise(posSelf * posOffset + delta);
       
-            
+            float life = tmpPos.w;
+   
+            float maxYSet = 8.;
+            float activeOnYSet = 7.;
 
-            if(posSelf.y > 7.) {
-                posSelf.y = -7.;
-                posSelf.x /= 10.;
-                posSelf.z /= 10.;
+            if(posSelf.y > maxYSet) {
+                posSelf.y = -maxYSet;
+                
+            }
+         
+         
+        
+
+      
+            if (posSelf.y >= activeOnYSet && posSelf.y < maxYSet) {
+                life = 1.0 - ((posSelf.y - activeOnYSet) / 2.0);
+               
+
+            } else if (posSelf.y >= maxYSet) {
+                life = 0.0;
+                posSelf.y = -maxYSet;
+            } else if (posSelf.y >= -maxYSet && posSelf.y < -activeOnYSet) {
+                life = (posSelf.y + maxYSet) / 2.0;
             }
         
-         
-            posSelf   += velSelf * 0.05;
-        
-
-            gl_FragColor = vec4(  posSelf, 1.  );
+            posSelf   += velSelf * 0.2;
+            gl_FragColor = vec4(  posSelf, life  );
 
         }
 
@@ -365,7 +380,7 @@
            acc.y 				 += 1.0;
             acc.y 				 *= 0.85;
             float speedOffset    = mix(extraSelf.g, 1.0, .9);
-            float life 			 = extraSelf.r;
+       
         
             //	rotation 
             vec2 dir = normalize(posSelf.xz);
@@ -373,22 +388,25 @@
             acc.xz   += dir * 0.5;
         
            
-            velSelf                  += acc * .07 * speedOffset;
+            velSelf                  += acc * .01 * speedOffset;
 
-            const float decrease = .96;
-            velSelf                  *= decrease;
-
+           
             //rand dir
 
             vec2 dirRand = normalize(extraSelf.xz);
             dirRand      = rotate(dirRand, PI * 0.75);
 
+            float life = 1.;
+            float maxYSet = 8.;
+            
+            float dowSpeed = 1.;
+            if(time > 7.2) dowSpeed = .72;
+            const float decrease = .96;
 
-            if(posSelf.y > 7.){
-                acc.xz   += dirRand * 0.5;
-                velSelf += acc;
-                velSelf /= 2.;
-            }
+            
+            velSelf                  *= decrease;
+            velSelf *= dowSpeed;
+
             gl_FragColor = vec4( velSelf,1.);
 
         }
@@ -403,7 +421,94 @@
         }
     </script>
 
-    
+
+    <!-- main obj -->
+    <script id="frag_point" type="x-shader/x-fragment">
+        varying vec3 vPos;
+        uniform sampler2D texturePoint;
+        varying vec2 vUv;
+        varying float life;
+
+        #define uMapSize vec2(1024.0)
+        #define FOG_DENSITY 0.001
+        #define LIGHT_POS vec3(0.0, 10.0, 0.0)
+
+
+        float rand(vec4 seed4) {
+            float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
+            return fract(sin(dot_product) * 43758.5453);
+        }
+
+
+        float PCFShadow(sampler2D depths, vec2 size, vec4 shadowCoord) {
+            float result = 0.0;
+            float bias = 0.005;
+            vec2 uv = shadowCoord.xy;
+
+            for(int x=-1; x<=1; x++){
+                for(int y=-1; y<=1; y++){
+                    vec2 off = vec2(x,y) + rand(vec4(gl_FragCoord.xy, float(x), float(y)));
+                    off /= size;
+
+                    float d = texture2D(depths, uv + off).r;
+                    if(d < shadowCoord.z - bias) {
+                        result += 1.0;
+                    }
+
+                }
+            }
+            return 1.0 -result/9.0;
+
+        }
+
+        float fogFactorExp2(const float dist, const float density) {
+            const float LOG2 = -1.442695;
+            float d = density * dist;
+            return 1.0 - clamp(exp2(d * d * LOG2), 0.0, 1.0);
+        }
+
+
+        float diffuse(vec3 N, vec3 L) {
+            return max(dot(N, normalize(L)), 0.0);
+        }
+
+
+        vec3 diffuse(vec3 N, vec3 L, vec3 C) {
+            return diffuse(N, L) * C;
+        }
+        float sdCircle( vec2 p, float r )
+        {
+            return length(p) - r;
+        }
+        void main() {
+        
+            vec2 uv = gl_PointCoord;
+            float cc = sdCircle(vec2(uv.x-.5,uv.y-.5),.2);    
+            cc = step(cc,.15);
+            uv.y = 1.0 - uv.y;
+            
+            vec4 colorMap = texture2D(texturePoint, uv);
+            if(colorMap.r <= 0.0) {
+                discard;
+            }
+            vec3 N = colorMap.rgb * 2.0 - 1.0;
+
+
+            float d = diffuse(N, LIGHT_POS);
+            vec3 finalColor = mix(vec3(d), vPos.xyz, .5);
+
+            vec4 color = vec4(finalColor, 1.0);
+
+
+            float fogDistance = gl_FragCoord.z / gl_FragCoord.w;
+            float fogAmount = fogFactorExp2(fogDistance - 4.5, FOG_DENSITY);
+            const vec4 fogColor = vec4(0.0, 0.0, 0.0, 1.0); // white
+
+            vec4 mixOut = mix(color, fogColor, fogAmount);
+            gl_FragColor = color;
+            gl_FragColor = vec4(vec3(cc) * colorMap.xyz / 0.92,cc);
+        }
+    </script>
     <script type="importmap">
 		{
 			"imports": {
@@ -428,26 +533,26 @@
 
         //MAIN SCENE
         let renderer, controls, stats, cameraMain, sceneDisplay;
-
+        let matCubeInstanced
         //MONITOR
         let sceneMonitor, camMonitor, points, PointMat;
-        let viewFBODepth_Mat, viewFboNormal_Mat, viewGPGPU_Pos,viewGPGPU_Vel,viewGPGPU_Extra
-        let loaderObjModel 
+        let viewFBODepth_Mat, viewFboNormal_Mat, viewGPGPU_Pos, viewGPGPU_Vel, viewGPGPU_Extra
+        let loaderObjModel
 
         //UTILS
-        let now,last,delta
+        let now, last, delta
         let wView = window.innerWidth
         let hView = window.innerHeight
         let ratioView = window.innerWidth / window.innerHeight
         let marginScissor = 2
 
-      
-     
+
+
         //GPGPU
         let gpuCompute
         let widthTexture = 258
-        let velocityVariable, positionVariable,extraVariable
-        let positionUniforms,velocityUniforms,extraUniforms
+        let velocityVariable, positionVariable, extraVariable
+        let positionUniforms, velocityUniforms, extraUniforms
 
 
         init();
@@ -455,7 +560,7 @@
         function init() {
             loaderObjModel = new OBJLoader();
 
-            renderer = new THREE.WebGLRenderer({alpha: true});
+            renderer = new THREE.WebGLRenderer({ alpha: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(wView, hView);
             renderer.setAnimationLoop(animate);
@@ -477,25 +582,27 @@
 
             sceneDisplay = new THREE.Scene();
             sceneDisplay.background = new THREE.Color(0x000000);
-            const ambienLight = new THREE.AmbientLight( 0x404040 ); // soft white light
-            sceneDisplay.add( ambienLight );
-            const directionalLight = new THREE.DirectionalLight( 0xffffff, 0.5 );
-            sceneDisplay.add( directionalLight )
+            const ambienLight = new THREE.AmbientLight(0x404040, 5); // soft white light
+            sceneDisplay.add(ambienLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(-2,0,1)
+            sceneDisplay.add(directionalLight)
 
-            const axesHelper = new THREE.AxesHelper( 5 );
-            sceneDisplay.add( axesHelper );
+            const axesHelper = new THREE.AxesHelper(5);
+          //  sceneDisplay.add(axesHelper);
             initViewDisplay()
             initComputeRenderer()
-            
-       
-            if(wView > 568) initViewMonitor()
+
+            initInstancedMesh()
+
+            if (wView > 568) initViewMonitor()
             onWindowResize();
             window.addEventListener('resize', onWindowResize);
 
-           
+
 
         }
-       
+
         function initComputeRenderer() {
 
             gpuCompute = new GPUComputationRenderer(widthTexture, widthTexture, renderer);
@@ -519,9 +626,9 @@
             extraVariable.wrapS = THREE.RepeatWrapping;
             extraVariable.wrapT = THREE.RepeatWrapping;
 
-            gpuCompute.setVariableDependencies(velocityVariable, [positionVariable, velocityVariable,extraVariable]);
-            gpuCompute.setVariableDependencies(positionVariable, [positionVariable, velocityVariable,extraVariable]);
-            gpuCompute.setVariableDependencies(extraVariable, [positionVariable, velocityVariable,extraVariable]);
+            gpuCompute.setVariableDependencies(velocityVariable, [positionVariable, velocityVariable, extraVariable]);
+            gpuCompute.setVariableDependencies(positionVariable, [positionVariable, velocityVariable, extraVariable]);
+            gpuCompute.setVariableDependencies(extraVariable, [positionVariable, velocityVariable, extraVariable]);
 
             positionUniforms = positionVariable.material.uniforms;
             velocityUniforms = velocityVariable.material.uniforms;
@@ -539,7 +646,7 @@
             positionUniforms['tNormalFont'] = { value: null };
             velocityUniforms['tDepthFont'] = { value: null };
             velocityUniforms['tNormalFont'] = { value: null };
-            
+
             positionUniforms['tDepthBack'] = { value: null };
             positionUniforms['tNormalBack'] = { value: null };
             velocityUniforms['tDepthBack'] = { value: null };
@@ -551,7 +658,7 @@
             positionUniforms['shadowMatrix1'] = { value: new THREE.Matrix4() };
             positionUniforms['projInvert1'] = { value: new THREE.Matrix4() };
             positionUniforms['viewInvert1'] = { value: new THREE.Matrix4() };
-            
+
             velocityUniforms['shadowMatrix0'] = { value: new THREE.Matrix4() };
             velocityUniforms['projInvert0'] = { value: new THREE.Matrix4() };
             velocityUniforms['viewInvert0'] = { value: new THREE.Matrix4() };
@@ -571,14 +678,14 @@
             }
 
         }
-       
+
         function fillPosTexture(texture) {
             const arrT = texture.image.data;
             for (let k = 0, kl = arrT.length; k < kl; k += 4) {
-                const x = Math.random()*2-1;
-                const y = Math.random()*2-1;
-                const z = Math.random()*2-1;
-                let vp = new THREE.Vector3(x,y,z)
+                const x = Math.random() * 2 - 1;
+                const y = Math.random() * 2 - 1;
+                const z = Math.random() * 2 - 1;
+                let vp = new THREE.Vector3(x, y, z)
                 vp.multiplyScalar(0.1)
                 arrT[k + 0] = vp.x
                 arrT[k + 1] = vp.y
@@ -586,15 +693,15 @@
                 arrT[k + 3] = 1
             }
         }
-       
+
         function fillVelTexture(texture) {
             const arrT = texture.image.data;
             for (let k = 0, kl = arrT.length; k < kl; k += 4) {
-                const x = Math.random()*2-1;
-                const y = Math.random()*2-1;
-                const z = Math.random()*2-1;
-                let vv = new THREE.Vector3(x,y,z)
-               
+                const x = Math.random() * 2 - 1;
+                const y = Math.random() * 2 - 1;
+                const z = Math.random() * 2 - 1;
+                let vv = new THREE.Vector3(x, y, z)
+
                 arrT[k + 0] = vv.x
                 arrT[k + 1] = vv.y
                 arrT[k + 2] = vv.z
@@ -604,9 +711,9 @@
         function fillExtraTexture(texture) {
             const arrT = texture.image.data;
             for (let k = 0, kl = arrT.length; k < kl; k += 4) {
-                const x = Math.random()*2-1;
-                const y = Math.random()*2-1;
-                const z = Math.random()*2-1;
+                const x = Math.random() * 2 - 1;
+                const y = Math.random() * 2 - 1;
+                const z = Math.random() * 2 - 1;
                 arrT[k + 0] = x
                 arrT[k + 1] = y
                 arrT[k + 2] = z
@@ -614,8 +721,245 @@
             }
         }
 
+        function initInstancedMesh() {
+            const count = 4500;
+            const dummy = new THREE.Object3D();
+            const sizeCube = {
+                x: 0.05,
+                y: .5,
+                z: 0.05
+            }
+            const geometry = new THREE.BoxGeometry(sizeCube.x, sizeCube.y, sizeCube.z);
+            const textureCube = new THREE.TextureLoader().load('textures/colorMap.jpg');
+
+            const offsets = new Float32Array(count * 3);
+
+            for (let i = 0; i < count; i++) {
+
+                offsets[i * 3 + 0] = Math.random() * 2 - 1; // X
+                offsets[i * 3 + 1] = Math.random() * 2 - 1; // Y
+                offsets[i * 3 + 2] = Math.random() * 2 - 1; // Z
+            }
+
+
+            geometry.setAttribute('offset', new THREE.InstancedBufferAttribute(offsets, 3));
+
+            // matCubeInstanced = new THREE.ShaderMaterial({
+            //     vertexShader: `
+            //          attribute vec3 offset;
+            //     uniform sampler2D tPos_gpu;
+            //     uniform sampler2D tVel_gpu;
+            //     uniform vec3 sizeCube;
+            //     uniform vec2 tSize;
+            //        varying vec3 vColor;
+            //     varying vec4 vPos;
+            //              varying vec2 vUv;
+            //     vec2 rotate(vec2 v, float a) {
+            //         float s = sin(a);
+            //         float c = cos(a);
+            //         mat2 m = mat2(c, s, -s, c);
+            //         return m * v;
+            //     }
+
+            //     mat4 rotationMatrix(vec3 axis, float angle) {
+            //         axis = normalize(axis);
+            //         float s = sin(angle);
+            //         float c = cos(angle);
+            //         float oc = 1.0 - c;
+                    
+            //         return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+            //                     oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+            //                     oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+            //                     0.0,                                0.0,                                0.0,                                1.0);
+            //     }
+
+            //     vec3 rotate(vec3 v, vec3 axis, float angle) {
+            //         mat4 m = rotationMatrix(axis, angle);
+            //         return (m * vec4(v, 1.0)).xyz;
+            //     }
+                    
+            //     #define axisX vec3(0.0, 1.0, 0.0)
+                
+            //     void main() {
+            //         vec3 pos = position * max(.4,abs(offset.x));
+                    
+
+            //         vec2 uvT = vec2(
+            //             mod(float(gl_InstanceID), tSize.x) / tSize.x, // Tính chỉ số cột
+            //             floor(float(gl_InstanceID) / tSize.x) / tSize.y  // Tính chỉ số hàng
+            //         );
+            //         vec4 posGpu = texture2D(tPos_gpu, uvT);
+            //         vec3 velGpu = texture2D(tVel_gpu, uvT).xyz;
+
+            //         vec3 dir = normalize(velGpu);
+            //         vec3 axis = cross(dir, axisX);
+            //         float angle = acos(dot(dir, axisX));
+
+
+                
+                
+            //         pos = rotate(pos, axis, angle);
+            //         pos += posGpu.xyz;
+                
+
+            //         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos , 1.0);
+
+            //         vPos = vec4(pos,posGpu.w);
+            //         vColor = offset;
+            //         vUv = uvT;
+            //     }
+            // `,
+
+            //     fragmentShader: `
+            //          varying vec3 vColor;
+            //        varying vec4 vPos;
+            //                varying vec2 vUv;
+            //           uniform sampler2D texturePoint;
+            //     void main() {
+            //      vec4 colorMap = texture2D(texturePoint, vUv);
+            //         gl_FragColor = vec4(colorMap.xyz,1.);
+            //     }
+            // `,
+
+            //     uniforms: {
+            //         time: {
+            //             value: 0
+            //         },
+            //         texturePoint: {
+            //             value: textureCube
+            //         },
+            //         tPos_gpu: {
+            //             value: null
+            //         },
+            //         tVel_gpu: {
+            //             value: null
+            //         },
+            //         tSize: {
+            //             value: new THREE.Vector2(widthTexture, widthTexture)
+            //         },
+            //         sizeCube: {
+            //             value: new THREE.Vector3(sizeCube.x, sizeCube.y, sizeCube.z)
+            //         }
+            //     }
+            // });
+
+
+            const materialChunk = new THREE.MeshPhongMaterial({
+                color: 0x595959,
+                specular : 0x2c2a2a,
+                shininess: 100,
+            });
+            materialChunk.onBeforeCompile = (shader) => {
+                shader.uniforms.time = { value: 0 };
+                shader.uniforms.texturePoint = { value: textureCube };
+                shader.uniforms.tPos_gpu = { value: null };
+                shader.uniforms.tVel_gpu = { value: null };
+                shader.uniforms.tSize = { value: new THREE.Vector2(widthTexture, widthTexture) };
+                shader.uniforms.sizeCube = { value: new THREE.Vector3(sizeCube.x, sizeCube.y, sizeCube.z) };
+
+                // Sửa đổi vertex shader
+                shader.vertexShader = `
+                    attribute vec3 offset;
+                    uniform sampler2D tPos_gpu;
+                    uniform sampler2D tVel_gpu;
+                    uniform vec3 sizeCube;
+                    uniform vec2 tSize;
+                    varying vec3 vColor;
+                    varying vec4 vPos;
+                          varying vec2 vUv;
+                    vec2 rotate(vec2 v, float a) {
+                        float s = sin(a);
+                        float c = cos(a);
+                        mat2 m = mat2(c, s, -s, c);
+                        return m * v;
+                    }
+
+                    mat4 rotationMatrix(vec3 axis, float angle) {
+                        axis = normalize(axis);
+                        float s = sin(angle);
+                        float c = cos(angle);
+                        float oc = 1.0 - c;
+                        
+                        return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+                                    oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+                                    oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+                                    0.0,                                0.0,                                0.0,                                1.0);
+                    }
+
+                    vec3 rotate(vec3 v, vec3 axis, float angle) {
+                        mat4 m = rotationMatrix(axis, angle);
+                        return (m * vec4(v, 1.0)).xyz;
+                    }
+                        
+                    #define axisX vec3(0.0, 1.0, 0.0)
+                    ${shader.vertexShader}  // Giữ nguyên phần vertex shader gốc
+                `.replace(
+                    `#include <fog_vertex>`,
+                    `#include <fog_vertex>
+                    vec3 pos = position * abs(offset.x);
+                    
+
+                    vec2 uvT = vec2(
+                        mod(float(gl_InstanceID), tSize.x) / tSize.x, // Tính chỉ số cột
+                        floor(float(gl_InstanceID) / tSize.x) / tSize.y  // Tính chỉ số hàng
+                    );
+                    vec4 posGpu = texture2D(tPos_gpu, uvT);
+                    vec3 velGpu = texture2D(tVel_gpu, uvT).xyz;
+
+                    vec3 dirC = normalize(velGpu);
+                    vec3 axis = cross(dirC, axisX);
+                    float angle = acos(dot(dirC, axisX));
+
+
+                
+                
+                    pos = rotate(pos, axis, angle);
+                    pos += posGpu.xyz;
+                
+
+
+                
+
+                 
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+
+                    vPos = vec4(pos,posGpu.w);
+                    vColor = offset;
+
+                `);
+        
+                // Sửa đổi fragment shader
+                shader.fragmentShader = `
+             
+                    varying vec3 vColor;
+                    varying vec4 vPos;
+                    varying vec2 vUv;
+                    uniform sampler2D texturePoint;
+                    ${shader.fragmentShader} // Giữ nguyên phần fragment shader gốc
+                `.replace(
+                    `#include <dithering_fragment>`,
+                    `#include <dithering_fragment>
+                    vec4 colorMap = texture2D(texturePoint, vUv);
+                    gl_FragColor = vec4( outgoingLight * 12. + vColor / 5.,1.);
+                    
+
+                   `);
+                   console.log(shader.vertexShader)
+                matCubeInstanced = shader;
+            };
+
+            const cubeInstanced = new THREE.InstancedMesh(geometry, materialChunk, count);
+            for (let i = 0; i < count; i++) {
+                dummy.position.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1);
+                dummy.updateMatrix();
+                cubeInstanced.setMatrixAt(i, dummy.matrix);
+            }
+
+            sceneDisplay.add(cubeInstanced);
+        }
+
         function initViewDisplay() {
-            
+
             const gridSize = widthTexture; // Số điểm theo mỗi chiều
             const spacing = 1.0 / (gridSize - 1); // Khoảng cách giữa các điểm
 
@@ -668,106 +1012,20 @@
                     vPos = extra;
                     vUv = uv;
                     life = posGpu.w;
-                    gl_PointSize  = 5. *  ( posGpu.w );
+                    gl_PointSize  = 2.;
                 }
             `;
 
-            const fragmentShader = `
-
-                varying vec3 vPos;
-                uniform sampler2D texturePoint;
-                varying vec2 vUv;
-                varying float life;
-
-                #define uMapSize vec2(1024.0)
-                #define FOG_DENSITY 0.001
-                #define LIGHT_POS vec3(0.0, 10.0, 0.0)
-
-
-                float rand(vec4 seed4) {
-                    float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
-                    return fract(sin(dot_product) * 43758.5453);
-                }
-
-
-                float PCFShadow(sampler2D depths, vec2 size, vec4 shadowCoord) {
-                    float result = 0.0;
-                    float bias = 0.005;
-                    vec2 uv = shadowCoord.xy;
-
-                    for(int x=-1; x<=1; x++){
-                        for(int y=-1; y<=1; y++){
-                            vec2 off = vec2(x,y) + rand(vec4(gl_FragCoord.xy, float(x), float(y)));
-                            off /= size;
-
-                            float d = texture2D(depths, uv + off).r;
-                            if(d < shadowCoord.z - bias) {
-                                result += 1.0;
-                            }
-
-                        }
-                    }
-                    return 1.0 -result/9.0;
-
-                }
-
-                float fogFactorExp2(const float dist, const float density) {
-                    const float LOG2 = -1.442695;
-                    float d = density * dist;
-                    return 1.0 - clamp(exp2(d * d * LOG2), 0.0, 1.0);
-                }
-
-
-                float diffuse(vec3 N, vec3 L) {
-                    return max(dot(N, normalize(L)), 0.0);
-                }
-
-
-                vec3 diffuse(vec3 N, vec3 L, vec3 C) {
-                    return diffuse(N, L) * C;
-                }
-                float sdCircle( vec2 p, float r )
-                {
-                    return length(p) - r;
-                }
-                void main() {
-                
-                    vec2 uv = gl_PointCoord;
-                    float cc = sdCircle(vec2(uv.x-.5,uv.y-.5),.2);    
-                    cc = step(cc,.15);
-                    uv.y = 1.0 - uv.y;
-                    
-                    vec4 colorMap = texture2D(texturePoint, uv);
-                    if(colorMap.r <= 0.0) {
-                        discard;
-                    }
-                    vec3 N = colorMap.rgb * 2.0 - 1.0;
-
-
-                    float d = diffuse(N, LIGHT_POS);
-                    vec3 finalColor = mix(vec3(d), vPos.xyz, .5);
-
-                    vec4 color = vec4(finalColor, 1.0);
-
-
-                    float fogDistance = gl_FragCoord.z / gl_FragCoord.w;
-                    float fogAmount = fogFactorExp2(fogDistance - 4.5, FOG_DENSITY);
-                    const vec4 fogColor = vec4(0.0, 0.0, 0.0, 1.0); // white
-
-                    vec4 mixOut = mix(color, fogColor, fogAmount);
-                    gl_FragColor = color;
-    	            gl_FragColor = vec4(vec3(cc) * color.xyz,cc);
-                }
-            `;
+            const fragmentShader = document.getElementById('frag_point').textContent.trim();
             const texture = new THREE.TextureLoader().load('textures/colorMap.jpg');
             PointMat = new THREE.ShaderMaterial({
                 vertexShader: vertexShader,
                 fragmentShader: fragmentShader,
                 transparent: true,
-     
-                depthWrite:false,
-               
-            blendSrcAlpha:1,
+
+                depthWrite: false,
+
+                blendSrcAlpha: 1,
                 uniforms: {
                     time: {
                         value: 0
@@ -775,10 +1033,10 @@
                     texturePoint: {
                         value: texture
                     },
-                    tPos_gpu : {
+                    tPos_gpu: {
                         value: null
                     },
-                    tVel_gpu : {
+                    tVel_gpu: {
                         value: null
                     }
                 }
@@ -786,11 +1044,11 @@
 
             // Tạo điểm từ geometry và material
             points = new THREE.Points(PointGeo, PointMat);
-          
-            const vSphere = new THREE.Mesh(new THREE.SphereGeometry(2,32,32),new THREE.MeshNormalMaterial({wireframe:true,transparent:true,opacity:.1}))
-            sceneDisplay.add(points)
 
-           
+            const vSphere = new THREE.Mesh(new THREE.SphereGeometry(2, 32, 32), new THREE.MeshNormalMaterial({ wireframe: true, transparent: true, opacity: .1 }))
+             sceneDisplay.add(points)
+
+
 
         }
 
@@ -799,9 +1057,9 @@
             sceneMonitor.background = new THREE.Color(0x000000);
             // set cam ortho
             const aspectRatio = 0.3; // vì đã sisscor
-            const  vZ = 2.
+            const vZ = 2.
             camMonitor = new THREE.OrthographicCamera(- ratioView * vZ, ratioView * vZ, 1 * vZ, - 1 * vZ, 0, 1);
-           
+
             viewGPGPU_Pos = new THREE.ShaderMaterial({
                 vertexShader: document.querySelector('#viewDf-vert').textContent.trim(),
                 fragmentShader: document.querySelector('#viewGPGPU_Pos-frag').textContent.trim(),
@@ -823,19 +1081,19 @@
                     tExtra: { value: null }
                 }
             });
-      
-            let vMesh3 = new THREE.Mesh(new THREE.PlaneGeometry(1,1), viewGPGPU_Pos);
-            let vMesh4 = new THREE.Mesh(new THREE.PlaneGeometry(1,1), viewGPGPU_Vel);
-            let vMesh5 = new THREE.Mesh(new THREE.PlaneGeometry(1,1), viewGPGPU_Extra);
+
+            let vMesh3 = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), viewGPGPU_Pos);
+            let vMesh4 = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), viewGPGPU_Vel);
+            let vMesh5 = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), viewGPGPU_Extra);
 
             //pass gpu
-            vMesh3.position.set(- ratioView * vZ + .72,ratioView * vZ / 3,0)
-            vMesh4.position.set(- ratioView * vZ + .72,0,0)
-            vMesh5.position.set(- ratioView * vZ + .72,- ratioView * vZ / 3,0)
+            vMesh3.position.set(- ratioView * vZ + .72, ratioView * vZ / 3, 0)
+            vMesh4.position.set(- ratioView * vZ + .72, 0, 0)
+            vMesh5.position.set(- ratioView * vZ + .72, - ratioView * vZ / 3, 0)
             sceneMonitor.add(vMesh3, vMesh4, vMesh5);
 
         }
-  
+
         function onWindowResize() {
 
             const aspect = wView / hView;
@@ -846,9 +1104,9 @@
 
         }
 
-   
+
         function renderMain() {
-            if(viewFboNormal_Mat) {
+            if (viewFboNormal_Mat) {
                 //Display
                 renderer.setScissorTest(true)
 
@@ -862,63 +1120,70 @@
                 renderer.render(sceneMonitor, camMonitor);
 
                 // Phần bên phải (70%)
-                const rightWidth = wView * (1-leftPer) - marginScissor;
+                const rightWidth = wView * (1 - leftPer) - marginScissor;
                 const rightX = wView * leftPer + marginScissor;
 
-                renderer.setViewport(0, 0, wView,hView);
+                renderer.setViewport(0, 0, wView, hView);
                 renderer.setScissor(0, 0, wView, hView);
                 renderer.render(sceneDisplay, cameraMain);
-                renderer.setScissorTest(false); 
-            }else{
+                renderer.setScissorTest(false);
+            } else {
                 renderer.clear();
-                renderer.setViewport(0, 0, wView,hView);
+                renderer.setViewport(0, 0, wView, hView);
                 renderer.render(sceneDisplay, cameraMain);
             }
-           
+
         }
-      
+
         function runGPGPU() {
-           
-            if(now && delta && last && now > 1000) {
-                positionUniforms['time'].value = now;
+
+            if (now && delta && last && now > 1000) {
+                positionUniforms['time'].value = now/1000;
                 positionUniforms['delta'].value = delta;
-                
-                velocityUniforms['time'].value = now;
+
+                velocityUniforms['time'].value = now/1000;
                 velocityUniforms['delta'].value = delta;
 
                 // extraUniforms['time'].value = now;
                 // extraUniforms['delta'].value = delta;
             }
-            
+
             gpuCompute.compute();
-            if(viewGPGPU_Vel) {
-                viewGPGPU_Vel.uniforms.tVel.value =  gpuCompute.getCurrentRenderTarget( velocityVariable ).texture;
-                viewGPGPU_Pos.uniforms.tPos.value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
-                viewGPGPU_Extra.uniforms.tExtra.value = gpuCompute.getCurrentRenderTarget( extraVariable ).texture;
+            const texturePosOut = gpuCompute.getCurrentRenderTarget(positionVariable).texture;
+            const textureVelOut = gpuCompute.getCurrentRenderTarget(velocityVariable).texture;
+            const textureExtraOut = gpuCompute.getCurrentRenderTarget(extraVariable).texture;
+            if (viewGPGPU_Vel) {
+                viewGPGPU_Vel.uniforms.tVel.value = textureVelOut
+                viewGPGPU_Pos.uniforms.tPos.value = texturePosOut
+                viewGPGPU_Extra.uniforms.tExtra.value = textureExtraOut
             }
-        
-            PointMat.uniforms.tPos_gpu.value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
+
+            PointMat.uniforms.tPos_gpu.value = texturePosOut
+            if (matCubeInstanced) {
+                matCubeInstanced.uniforms.tPos_gpu.value = texturePosOut
+                matCubeInstanced.uniforms.tVel_gpu.value = textureVelOut
+            }
         }
-        
-   
+
+
 
         function animate() {
             now = performance.now();
-            
+
             delta = (now - last) / 4200;
             // delta = 1/60 
             if (delta > 1) delta = 1; // safety cap on large deltas
             last = now;
             renderer.autoClear = false;
             runGPGPU()
-           
+
             renderMain()
 
             controls.update();
             stats.update();
         }
- 
- </script>
+
+    </script>
 
 </body>
 
