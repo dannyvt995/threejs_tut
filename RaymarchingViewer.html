@@ -18,39 +18,12 @@
 			overflow: hidden;
 		}
 
-		a {
-			color: #08f;
-		}
-		.btn {
-			position: fixed;
-			top:0;
-			left:0;
-			width:100%;
-			height: 20vh;
-			display: flex;
-			justify-content: center;
-		}
-		button {
-			cursor: pointer;
-			width:200px;
-			margin: 10vh 0 0 0;
-			height:50px;
-			background:rgb(182, 23, 23);
-			z-index: 9999;
-		}
-		button:hover {
-			border:5px solid green;
-			transition: 200ms;
-		}
+	
 	</style>
 	</head>
 
 	<body>
-		<div class="view">
-			<div class="btn">
-				<button id="buttonExplore">Click</button>
-			</div>
-		</div>
+		
 
 		<script type="importmap">
 			{
@@ -158,13 +131,44 @@ const fShader = `
   vec2 opMin(vec2 a, vec2 b){
     return a.x < b.x ? a : b;
   }
+mat4 rotationMatrix(vec3 axis, float angle) {
+    axis = normalize(axis);
+    float s = sin(angle);
+    float c = cos(angle);
+    float oc = 1.0 - c;
+    
+    return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+                oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+                oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+                0.0,                                0.0,                                0.0,                                1.0);
+}
+  vec3 rotate(vec3 v, vec3 axis, float angle) {
+	mat4 m = rotationMatrix(axis, angle);
+	return (m * vec4(v, 1.0)).xyz;
+}
+float sdBox( vec3 p, vec3 b )
+{
+  vec3 q = abs(p) - b;
+  return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+}
+
+float smin( float a, float b, float k )
+{
+    float h = clamp( 0.5+0.5*(b-a)/k, 0.0, 1.0 );
+    return mix( b, a, h ) - k*h*(1.0-h);
+}
+
 
   vec2 GetDist(in vec3 p) {
       //float objectDist = sdTorusKnot(p, vec4(0.375, 0.0625, 2.5, 0.075));
+	    vec3 pBox = rotate(p,vec3(0.,1.,0.),time);
+		 float  box = sdBox(pBox - vec3(0.2,0.,0.),vec3(.2));
       float objectDist = sdTorus(p, vec2(0.375, 0.125));
       float groundDist = p.y + 0.5;
-      vec2 d = opMin(vec2(objectDist, 0.), vec2(groundDist, 1.));
-      return d;
+      vec2 d = opMin(vec2(box, 0.), vec2(groundDist, 1.));
+	  float sminn =smin(box,objectDist,.1);
+	     return  vec2(sminn,1.);
+      
   }
 
   vec2 RayMarch(vec3 ro, vec3 rd) {
@@ -283,7 +287,7 @@ const fShader = `
   }
   `;
 
-const geometry = new THREE.BoxGeometry(1, 1, 1);
+const geometry = new THREE.BoxGeometry(3, 3, 3);
 const material = new THREE.ShaderMaterial({
   uniforms: {
     camPos: {
