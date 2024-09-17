@@ -322,11 +322,15 @@
 
         //GPGPU
         let gpuCompute
-        let widthTexture = 128
+        let widthTexture = 5
         let velocityVariable, positionVariable
         let positionUniforms, velocityUniforms
 
 
+        //ribbon
+        const numParticles = widthTexture; // Thay thế Config.numParticles nếu cần
+        const numSets = 8;       // set đoạn
+        let indexForRibbon = 0
         init();
         initComputeRenderer()
         function init() {
@@ -580,8 +584,7 @@
         }
         function initInstancedMesh() {
             //https://github.com/mrdoob/three.js/blob/master/src/geometries/CylinderGeometry.js
-            const numParticles = 10; // Thay thế Config.numParticles nếu cần
-            const numSets = 8;       // set đoạn
+           
 
             const positions = [];
             const uvs = [];
@@ -667,73 +670,89 @@
                      uniform float uDelta;
                     uniform float uTotal;
                     uniform float uNumSets;
-
+                    uniform float  uIndex;
+                    uniform sampler2D uPosMap;
+                     uniform float      uLengthOffset;
                     attribute vec2 aUVOffset;
                     attribute vec3 aExtra;
-
+                
                     varying vec2 vUV;
                     varying vec3 vExtra;
 
                     #define xAxis vec3(0.0, 1.0, 1.0)
                     #define PI 3.1415926535897932384626433832795
 
-                    vec3 evaluateParabola(float t, vec3 start, vec3 control1, vec3 control2, vec3 end) {
-                        float u = 1.0 - t;
-                        float tt = t * t;
-                        float uu = u * u;
-                        float ut2 = 2.0 * u * t;
-
-                        vec3 p = uu * start; // (1-t)^3 * p0
-                        p += ut2 * control1; // 3 * (1-t)^2 * t * p1
-                        p += tt * end; // t^3 * p2
-
-                        return p;
+           
+                    vec2 rotate(vec2 v, float a) {
+                        float s = sin(a);
+                        float c = cos(a);
+                        mat2 m = mat2(c, s, -s, c);
+                        return m * v;
                     }
 
+                    mat4 rotationMatrix(vec3 axis, float angle) {
+                        axis = normalize(axis);
+                        float s = sin(angle);
+                        float c = cos(angle);
+                        float oc = 1.0 - c;
+                        
+                        return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+                                    oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+                                    oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+                                    0.0,                                0.0,                                0.0,                                1.0);
+                    }
+
+                    vec3 rotate(vec3 v, vec3 axis, float angle) {
+                        mat4 m = rotationMatrix(axis, angle);
+                        return (m * vec4(v, 1.0)).xyz;
+                    }
+                        
+
+                    vec3 getPos(float mIndex, vec2 mUV) {
+                        float index = mIndex + uIndex;
+                        index = mod(index, uTotal);
+
+                        float tx = mod(index, uNumSets)/uNumSets;
+                        float ty = floor(index/uNumSets)/uNumSets;
+                        vec2 uv = mUV + vec2(tx, ty);
+
+                        return texture(uPosMap, uv).xyz;
+                    }
+
+
+
                     void main() {
-                        // Đặt UV offset cho mỗi instance
-                        vec2 uv = uv * aUVOffset;
-
-                        // Cập nhật UV cho fragment shader
-                        vUV = uv;
-                        vExtra = aExtra;
-
-                        // Tính toán vị trí cuối cùng của điểm
-                        vec3 pos = position;
-                        pos.x /= 5.;
-
-                        float idR = (float(gl_InstanceID) + .5)/10.;
-               
-                        // pos.x += sin(pos.y * 5. * rand(idR)  / uNumSets + uTime);
-                        // pos.z += cos(pos.x * 5. * rand(idR)  / uNumSets + uTime);
-                       // pos.y += sin(pos.x * 5. * rand(idR)  / uNumSets + uTime);
-
-                    
-
-                        vec3 posC = position ;
-                   //     posC.yz *= mix(0.25, 1.0, aExtra.x);
-
-                      
-            
-                         posC.x /= 10.;
-                         posC.y += idR / 1. + 2.;
-                        // posC.z += sin(posC.x  + uTime );
-                        vec3 dir = normalize(posC );
-                        vec3 axis = normalize(cross(dir, xAxis));
-                        float angle = acos(dot(dir, xAxis));
-                      ///  posC = rotate(posC , axis, angle);
-            
-
-                        if(gl_InstanceID == 1) {
-                            posC = position;
-                     
-                            float t = mod(uTime * 0.5+ position.x * 0.1, 1.0);
+                           vec2 uv = aUVOffset;
     
-                            vec3 curvePosition = evaluateParabola(t, vec3(0.), vec3(10.,5.,0.), vec3(0.,-5.,0.), vec3(0.,0.,5.));
-                            posC += curvePosition;
-                            }
 
-                        vec4 modelViewPosition = modelViewMatrix * vec4(posC.xyz * 2., 1.0);
+                            float s = 1.0 - position.x / uTotal;
+                            float vSkip = step(uLengthOffset, s);
+
+                            vec3 pos = position * vec3(0.0, 1.0, 1.0);
+                            pos.yz *= mix(0.25, 1.0, aExtra.x);
+
+                            float index = position.x;
+                            vec3 curr = getPos(index, uv);
+                            vec3 next = getPos(index + 1.0, uv);
+
+
+                            vec3 dir = normalize(next - curr);
+                            vec3 axis = normalize(cross(dir, xAxis));
+                            float angle = acos(dot(dir, xAxis));
+                            pos = rotate(pos, axis, angle);
+                            vec3 n = normal;
+                            n = rotate(n, axis, angle);
+
+                            // vec3 noise = curlNoise(curr * 0.2 + uTime * 0.1);
+                            // curr += noise;
+
+                           // pos += curr;
+
+
+                           vec3 posSample = position;
+                           posSample.x /= 10.;
+                           posSample.y += float(gl_InstanceID )/8.;
+                        vec4 modelViewPosition = modelViewMatrix * vec4(posSample, 1.0);
                         gl_Position = projectionMatrix * modelViewPosition;
                     }
 
@@ -761,6 +780,9 @@
                     uDelta: { value: 0. },
                     uTotal: { value: totalSets },
                     uNumSets: { value: numSets },
+                    uPosMap: {value :null},
+                    uIndex:  {value :0},
+                    uLengthOffset: {value: .4}
                 },
                 side: THREE.DoubleSide,
                 wireframe: true
@@ -801,7 +823,7 @@
             if (viewGPGPU_Vel) {
                 viewGPGPU_Vel.uniforms.tVel.value = textureVelOut
                 viewGPGPU_Pos.uniforms.tPos.value = texturePosOut
-
+                materialRibbon.uniforms.uPosMap.value = texturePosOut
             }
             PointMat.uniforms.tPos_gpu.value = texturePosOut
         }
@@ -822,6 +844,20 @@
             renderer.render(sceneDisplay, cameraMain);
             materialRibbon.uniforms.uTime.value = now / 1000
             materialRibbon.uniforms.uDelta.value = delta
+         
+
+        
+           
+
+            const tx = indexForRibbon % numSets;
+            const ty = Math.floor(indexForRibbon / numSets);
+            indexForRibbon++;
+            if (indexForRibbon >= numSets * numSets) {
+            indexForRibbon = 0;
+            }
+            materialRibbon.uniforms.uIndex.value = indexForRibbon
+
+
             controls.update();
             stats.update();
         }
