@@ -5,7 +5,7 @@
     <title>Ribbon_FboPingPong</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <link type="text/css" rel="stylesheet" href="main.css">
+
 
 </head>
 <style>
@@ -30,184 +30,108 @@
 <body>
     <div class="note"></div>
     <div id="canvas"></div>
-    <script type="importmap">
-		{
-			"imports": {
-				"three": "./three.module.js",
-				"three/addons/": "./jsm/"
-			}
-		}
-	</script>
-    <script type="module">
-        import * as THREE from 'three';
+    <script id="viewDf-vert" type="x-shader/x-vertex">
+        varying vec2 vUv;
 
-        import Stats from 'three/addons/stats.module.js';
-        import { GUI } from 'three/addons/lil-gui.module.min.js';
-        import { OBJLoader } from 'three/addons/OBJLoader.js';
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    </script>
+    <script id="viewGPGPU_Pos-frag" type="x-shader/x-fragment">
+        varying vec2 vUv;
+        uniform sampler2D tPos;
+        void main() {
+            vec4 outColor = texture2D( tPos, vUv );
+            if(vUv.x < 0.01 || vUv.y < 0.01 || vUv.x > 0.99 || vUv.y > 0.99 ) {
+                outColor.xyz = vec3(1.,0.,0.);
+            }
+            gl_FragColor =  vec4(outColor.xyz,1.);
+        }
+    </script>
+    <script id="viewGPGPU_Vel-frag" type="x-shader/x-fragment">
+        varying vec2 vUv;
+        uniform sampler2D tVel;
+        void main() {
+            vec4 outColor = texture2D( tVel, vUv );
+            if(vUv.x < 0.01 || vUv.y < 0.01 || vUv.x > 0.99 || vUv.y > 0.99 ) {
+                outColor.xyz = vec3(1.,0.,0.);
+            }
+            gl_FragColor =  vec4(outColor.xyz ,1.);
+        }
+    </script>
+
+    <script id="frag_Pos_GPGPU" type="x-shader/x-fragment">
+
+        uniform float time;
+        uniform float delta;
     
-        import { OrbitControls } from 'three/addons/OrbitControls.js';
-        import { radixSort } from 'three/addons/SortUtils.js';
-        //glsl
-        import { curl4Noise } from './glsl/curl4Noise.js'
+      
+        vec2 rotate(vec2 v, float a) {
+            float s = sin(a);
+            float c = cos(a);
+            mat2 m = mat2(c, -s, s, c);
+            return m * v;
+        }
+        
+        #define PI 3.141592653
+        void main()	{
 
-        //MAIN SCENE
-        let renderer, controls, stats, cameraMain, sceneDisplay;
-        let matCubeInstanced,materialRibbon
-        //MONITOR
-        let sceneMonitor, camMonitor, points, PointMat;
-        let viewFBODepth_Mat, viewFboNormal_Mat, viewGPGPU_Pos, viewGPGPU_Vel, viewGPGPU_Extra
-        let loaderObjModel
-
-        //UTILS
-        let now, last, delta
-        let wView = window.innerWidth
-        let hView = window.innerHeight
-        let ratioView = window.innerWidth / window.innerHeight
-        let marginScissor = 2
-
-
-
-
-        init();
-
-        function init() {
-            loaderObjModel = new OBJLoader();
-
-            renderer = new THREE.WebGLRenderer({ alpha: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(wView, hView);
-            renderer.setAnimationLoop(animate);
-            const canvasDom = document.getElementById("canvas")
-            canvasDom.appendChild(renderer.domElement);
-
-            //
-
-            stats = new Stats();
-            document.body.appendChild(stats.dom);
-
-            cameraMain = new THREE.PerspectiveCamera(70, wView / hView, 0.01, 400);
-            cameraMain.position.z = 1;
-
-
-            controls = new OrbitControls(cameraMain, renderer.domElement);
-            controls.enableDamping = true;
-
-
-            sceneDisplay = new THREE.Scene();
-            sceneDisplay.background = new THREE.Color(0x000000);
-            const ambienLight = new THREE.AmbientLight(0x404040, 5); // soft white light
-            sceneDisplay.add(ambienLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight.position.set(-2,0,1)
-            sceneDisplay.add(directionalLight)
-
-            const axesHelper = new THREE.AxesHelper(5);
-            sceneDisplay.add(axesHelper);
-  
-          
-
-            initInstancedMesh()
-
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec4 tmpPos = texture2D( texturePosition, uv );
+            vec3 posSelf = tmpPos.xyz;
+            vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
            
-            onWindowResize();
-            window.addEventListener('resize', onWindowResize);
+      
+            float life = tmpPos.w;
+   
+            float maxYSet = 8.;
+            float activeOnYSet = 7.;
 
+            if(posSelf.y > maxYSet) {
+                posSelf.y = -maxYSet;
+                
+            }
+         
+            if (posSelf.y >= activeOnYSet && posSelf.y < maxYSet) {
+                life = 1.0 - ((posSelf.y - activeOnYSet) / 2.0);
+               
 
+            } else if (posSelf.y >= maxYSet) {
+                life = 0.0;
+                posSelf.y = -maxYSet;
+            } else if (posSelf.y >= -maxYSet && posSelf.y < -activeOnYSet) {
+                life = (posSelf.y + maxYSet) / 2.0;
+            }
+
+            float dowSpeed = 1.;
+
+            vec3 outVel = velSelf * 0.2;
+         
+
+            if(time > 7.2 && time < 10.0){
+                dowSpeed = .36;
+                
+              
+            }else{
+              
+            }
+      
+            posSelf   += outVel ;
+
+            gl_FragColor = vec4(  posSelf, life  );
 
         }
 
+    </script>
 
-        function initInstancedMesh() {
-                const numParticles = 5; // Thay thế Config.numParticles nếu cần
-                const numSets = 5;       // Thay thế Config.numSets nếu cần
+    <script id="frag_Vel_GPGPU" type="x-shader/x-fragment">
 
-                const positions = [];
-                const uvs = [];
-                const normals = [];
-                const indices = [];
+        uniform float time;
+        uniform float delta;
+        uniform vec2 mouse;
 
-                let count = 0;
-                const numSides = 3; // Số mặt của ribbon
-
-                const getPos = (i, j) => {
-                const a = ((Math.PI * 2) / numSides) * j;
-                const z = Math.cos(a);
-                const y = Math.sin(a);
-                const r = 0.015; // Bán kính ribbon
-
-                const pos = [i, y * r, z * r];
-                const normal = [0, y, z];
-
-                return {
-                    pos,
-                    normal,
-                };
-                };
-
-                const addVertex = (i, j) => {
-                const { pos, normal } = getPos(i, j);
-                positions.push(...pos);
-                normals.push(...normal);
-                uvs.push(i / numSets, j / numSides);
-                };
-
-                const totalSets = numSets * numSets;
-
-                for (let i = 0; i < totalSets - 1; i++) {
-                for (let j = 0; j < numSides; j++) {
-                    addVertex(i, j);
-                    addVertex(i + 1, j);
-                    addVertex(i + 1, (j + 1) % numSides);
-                    addVertex(i, (j + 1) % numSides);
-
-                    indices.push(count * 4 + 0, count * 4 + 1, count * 4 + 2);
-                    indices.push(count * 4 + 0, count * 4 + 2, count * 4 + 3);
-
-                    count++;
-                }
-                }
-
-                const geometry = new THREE.BufferGeometry();
-                geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-                geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-                geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-                geometry.setIndex(indices);
-
-                // Instancing attributes
-                const uvOffsets = [];
-                const extras = [];
-
-                for (let i = 0; i < numParticles; i++) {
-                for (let j = 0; j < numParticles; j++) {
-                    uvOffsets.push((i + 0.5) / numParticles / numSets, (j + 0.5) / numParticles / numSets);
-                    extras.push(Math.random(), Math.random(), Math.random());
-                }
-                }
-
-                const uvOffsetAttribute = new THREE.InstancedBufferAttribute(new Float32Array(uvOffsets), 2);
-                const extrasAttribute = new THREE.InstancedBufferAttribute(new Float32Array(extras), 3);
-
-                geometry.setAttribute('aUVOffset', uvOffsetAttribute);
-                geometry.setAttribute('aExtra', extrasAttribute);
-
-               
-
-                // Shader material
-                materialRibbon = new THREE.ShaderMaterial({
-                vertexShader: `
-                    // Vertex Shader (vs)
-                     uniform float uTime;
-                     uniform float uDelta;
-                    uniform float uTotal;
-                    uniform float uNumSets;
-
-                    attribute vec2 aUVOffset;
-                    attribute vec3 aExtra;
-
-                    varying vec2 vUV;
-                    varying vec3 vExtra;
-
-                      vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
 
         vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
         
@@ -308,26 +232,463 @@
             return normalize( vec3( x , y , z ) * divisor );
         
         }
+        vec2 rotate(vec2 v, float a) {
+            float s = sin(a);
+            float c = cos(a);
+            mat2 m = mat2(c, -s, s, c);
+            return m * v;
+        }
+        
+        #define PI 3.141592653
+        void main() {
+            
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
 
-                    mat4 rotationMatrix(float angle, vec3 axis) {
-                        float s = sin(angle);
-                        float c = cos(angle);
-                        float t = 1.0 - c;
+            vec3 posSelf = texture2D( texturePosition, uv ).xyz;
+            vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
+          
 
-                        vec3 normAxis = normalize(axis);
+              
+            float posOffset      = 0.7;
+            vec3 acc             = curlNoise(posSelf  * 0.2 );
+            
+            acc.y 				 += 1.0;
+            acc.y 				 *= 0.85;
+            float speedOffset    = mix(posSelf.g, 1.0, .9);
+       
+        
+            //	rotation 
+            vec2 dir = normalize(posSelf.xz);
+            dir      = rotate(dir, PI * 0.75);
+            acc.xz   += dir * 7.7;
+        
+           
+           
 
-                        return mat4(
-                            t * normAxis.x * normAxis.x + c,     t * normAxis.x * normAxis.y - s * normAxis.z, t * normAxis.x * normAxis.z + s * normAxis.y, 0.0,
-                            t * normAxis.x * normAxis.y + s * normAxis.z, t * normAxis.y * normAxis.y + c,     t * normAxis.y * normAxis.z - s * normAxis.x, 0.0,
-                            t * normAxis.x * normAxis.z - s * normAxis.y, t * normAxis.y * normAxis.z + s * normAxis.x, t * normAxis.z * normAxis.z + c,     0.0,
-                            0.0, 0.0, 0.0, 1.0
-                        );
+
+           
+            float life = 1.;
+            float maxYSet = 8.;
+
+            float dowSpeed = 1.;
+            if(time > 7.2) dowSpeed = .36;
+
+            const float decrease = .96;
+
+            velSelf                  += acc * .01 * speedOffset;
+
+            velSelf                  *= decrease;
+           
+
+            gl_FragColor = vec4( velSelf,1.);
+
+        }
+
+    </script>
+    <script type="importmap">
+		{
+			"imports": {
+				"three": "./three.module.js",
+				"three/addons/": "./jsm/"
+			}
+		}
+	</script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import { OBJLoader } from 'three/addons/OBJLoader.js';
+        import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { radixSort } from 'three/addons/SortUtils.js';
+        //glsl
+        import { curl4Noise } from './glsl/curl4Noise.js'
+
+        //MAIN SCENE
+        let renderer, controls, stats, cameraMain, sceneDisplay;
+        let matCubeInstanced, materialRibbon
+        //MONITOR
+        let sceneMonitor, camMonitor, points, PointMat;
+        let viewFBODepth_Mat, viewFboNormal_Mat, viewGPGPU_Pos, viewGPGPU_Vel, viewGPGPU_Extra
+        let loaderObjModel
+
+        //UTILS
+        let now, last, delta
+        let wView = window.innerWidth
+        let hView = window.innerHeight
+        let ratioView = window.innerWidth / window.innerHeight
+        let marginScissor = 2
+
+        //GPGPU
+        let gpuCompute
+        let widthTexture = 128
+        let velocityVariable, positionVariable
+        let positionUniforms, velocityUniforms
+
+
+        init();
+        initComputeRenderer()
+        function init() {
+            loaderObjModel = new OBJLoader();
+
+            renderer = new THREE.WebGLRenderer({ alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(wView, hView);
+            renderer.setAnimationLoop(animate);
+            const canvasDom = document.getElementById("canvas")
+            canvasDom.appendChild(renderer.domElement);
+
+            //
+
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            cameraMain = new THREE.PerspectiveCamera(70, wView / hView, 0.01, 400);
+            cameraMain.position.z = 8;
+
+
+            controls = new OrbitControls(cameraMain, renderer.domElement);
+            controls.enableDamping = true;
+
+
+            sceneDisplay = new THREE.Scene();
+            sceneDisplay.background = new THREE.Color(0x000000);
+            const ambienLight = new THREE.AmbientLight(0x404040, 5); // soft white light
+            sceneDisplay.add(ambienLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(-2, 0, 1)
+            sceneDisplay.add(directionalLight)
+
+            const axesHelper = new THREE.AxesHelper(5);
+            sceneDisplay.add(axesHelper);
+
+
+
+            initInstancedMesh()
+            initViewMonitor()
+            initPointSample()
+            onWindowResize();
+            window.addEventListener('resize', onWindowResize);
+
+
+
+        }
+        function initPointSample() {
+            const gridSize = widthTexture; // Số điểm theo mỗi chiều
+            const spacing = 1.0 / (gridSize - 1); // Khoảng cách giữa các điểm
+
+            // Tạo dữ liệu điểm cho lưới
+            const vertices = [];
+            const extra = [];
+            const uvs = [];
+
+            for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    // Tính toán tọa độ UV cho điểm
+                    const u = x * spacing;
+                    const v = y * spacing;
+
+                    let posX = u * 2.0 - 1.0;
+                    let posY = v * 2.0 - 1.0;
+                    let extraX = Math.random() * 2 - 1
+                    let extraY = Math.random() * 2 - 1
+                    vertices.push(posX * 2., posY * 2., 0);
+                    extra.push(extraX, extraY, 0);
+                    uvs.push(u, v);
+                }
+            }
+            const PointGeo = new THREE.BufferGeometry();
+            const positionAttribute = new THREE.BufferAttribute(new Float32Array(vertices), 3);
+            const extraAttribute = new THREE.BufferAttribute(new Float32Array(extra), 3);
+            const uvAttribute = new THREE.BufferAttribute(new Float32Array(uvs), 2);
+            PointGeo.setAttribute('position', positionAttribute);
+            PointGeo.setAttribute('extra', extraAttribute);
+            PointGeo.setAttribute('uv', uvAttribute);
+
+
+            const vertexShader = `
+                precision highp float;
+                uniform float time;
+                attribute vec3 extra;
+                uniform sampler2D depthTexture;
+                uniform sampler2D tPos_gpu;
+                uniform sampler2D tVel_gpu;
+                varying vec3 vPos;
+                varying vec2 vUv;
+                varying float life;
+                void main() {
+                    vec4 depthData = texture2D(depthTexture,uv).xyzw;
+                    vec4 posGpu = texture2D(tPos_gpu,uv).xyzw;
+                    //  float zDepth = mix(0.0, 1.0, (depthData.b)/2. );
+                    //  pos.z = zDepth ;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(posGpu.xyz, 1.0);
+                 gl_Position = projectionMatrix * modelViewMatrix * vec4(posGpu.xyz * .2, 1.0);
+                    vPos = extra;
+                    vUv = uv;
+                    life = posGpu.w;
+                    gl_PointSize  = 2.;
+                }
+            `;
+
+            const fragmentShader = `
+                void main() {
+                gl_FragColor = vec4(vec3(1.,0.,0.),1.);
+                }
+            `;
+            const texture = new THREE.TextureLoader().load('textures/pointTexture.jpg');
+            PointMat = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                transparent: true,
+
+                depthWrite: false,
+
+                blendSrcAlpha: 1,
+                uniforms: {
+                    time: {
+                        value: 0
+                    },
+                    texturePoint: {
+                        value: texture
+                    },
+                    tPos_gpu: {
+                        value: null
+                    },
+                    tVel_gpu: {
+                        value: null
                     }
+                }
+            });
 
-float rand(float seed) {
-    return fract(sin(seed * 12.9898) * 43758.5453);
-}
+            // Tạo điểm từ geometry và material
+            points = new THREE.Points(PointGeo, PointMat);
+            points.position.x = -2
+            points.scale.set(.4,.4,.4)
+            sceneDisplay.add(points)
+        }
+        function initComputeRenderer() {
 
+            gpuCompute = new GPUComputationRenderer(widthTexture, widthTexture, renderer);
+
+            const dtPosition = gpuCompute.createTexture();
+            const dtVelocity = gpuCompute.createTexture();
+
+
+            fillPosTexture(dtPosition);
+            fillVelTexture(dtVelocity);
+
+
+            velocityVariable = gpuCompute.addVariable('textureVelocity', document.getElementById('frag_Vel_GPGPU').textContent, dtVelocity);
+            positionVariable = gpuCompute.addVariable('texturePosition', document.getElementById('frag_Pos_GPGPU').textContent, dtPosition);
+
+
+            velocityVariable.wrapS = THREE.RepeatWrapping;
+            velocityVariable.wrapT = THREE.RepeatWrapping;
+            positionVariable.wrapS = THREE.RepeatWrapping;
+            positionVariable.wrapT = THREE.RepeatWrapping;
+            gpuCompute.setVariableDependencies(velocityVariable, [positionVariable, velocityVariable]);
+            gpuCompute.setVariableDependencies(positionVariable, [positionVariable, velocityVariable]);
+
+            positionUniforms = positionVariable.material.uniforms;
+            velocityUniforms = velocityVariable.material.uniforms;
+
+
+            positionUniforms['time'] = { value: 0.0 };
+            positionUniforms['delta'] = { value: 0.0 };
+            velocityUniforms['time'] = { value: 0.0 };
+            velocityUniforms['delta'] = { value: 0.0 };
+
+
+            //mouse
+            positionUniforms['mouse'] = { value: new THREE.Vector2(10000, 10000) };
+            velocityUniforms['mouse'] = { value: new THREE.Vector2(10000, 10000) };
+
+
+            const error = gpuCompute.init();
+
+            if (error !== null) {
+                console.error(error);
+            }
+
+        }
+
+        function fillPosTexture(texture) {
+            const arrT = texture.image.data;
+            for (let k = 0, kl = arrT.length; k < kl; k += 4) {
+                const x = Math.random() ;
+                const y = Math.random();
+                const z = Math.random() ;
+                let vp = new THREE.Vector3(x, y, z)
+                vp.multiplyScalar(0.00001)
+                arrT[k + 0] = vp.x
+                arrT[k + 1] = vp.y
+                arrT[k + 2] = vp.z
+                arrT[k + 3] = 1
+            }
+        }
+
+        function fillVelTexture(texture) {
+            const arrT = texture.image.data;
+            for (let k = 0, kl = arrT.length; k < kl; k += 4) {
+                const x = Math.random() * 2 - 1;
+                const y = Math.random() * 2 - 1;
+                const z = Math.random() * 2 - 1;
+                let vv = new THREE.Vector3(x, y, z)
+
+                arrT[k + 0] = vv.x
+                arrT[k + 1] = vv.y
+                arrT[k + 2] = vv.z
+                arrT[k + 3] = 1
+            }
+        }
+
+
+        function initViewMonitor() {
+            sceneMonitor = new THREE.Scene();
+            sceneMonitor.background = new THREE.Color(0x000000);
+            // set cam ortho
+            const aspectRatio = 0.3; // vì đã sisscor
+            const vZ = 2.
+            camMonitor = new THREE.OrthographicCamera(- ratioView * vZ, ratioView * vZ, 1 * vZ, - 1 * vZ, 0, 1);
+
+            viewGPGPU_Pos = new THREE.ShaderMaterial({
+                vertexShader: document.querySelector('#viewDf-vert').textContent.trim(),
+                fragmentShader: document.querySelector('#viewGPGPU_Pos-frag').textContent.trim(),
+                uniforms: {
+                    tPos: { value: null }
+                }
+            });
+            viewGPGPU_Vel = new THREE.ShaderMaterial({
+                vertexShader: document.querySelector('#viewDf-vert').textContent.trim(),
+                fragmentShader: document.querySelector('#viewGPGPU_Vel-frag').textContent.trim(),
+                uniforms: {
+                    tVel: { value: null }
+                }
+            });
+
+
+            let vMesh3 = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), viewGPGPU_Pos);
+            let vMesh4 = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), viewGPGPU_Vel);
+
+            //pass gpu
+            vMesh3.position.set(- ratioView * vZ + .72, ratioView * vZ / 3, 0)
+            vMesh4.position.set(- ratioView * vZ + .72, 0, 0)
+
+            sceneDisplay.add(vMesh3, vMesh4);
+
+        }
+        function initInstancedMesh() {
+            //https://github.com/mrdoob/three.js/blob/master/src/geometries/CylinderGeometry.js
+            const numParticles = 10; // Thay thế Config.numParticles nếu cần
+            const numSets = 8;       // set đoạn
+
+            const positions = [];
+            const uvs = [];
+            const normals = [];
+            const indices = [];
+
+            let count = 0;
+            const numSides = 4; // shape  radius
+
+            const getPos = (i, j) => {
+                const a = ((Math.PI * 2) / numSides) * j;
+                const z = Math.cos(a);
+                const y = Math.sin(a);
+                const r = 0.015; // Bán kính ribbon
+
+                const pos = [i, y * r, z * r];
+                const normal = [0, y, z];
+
+                return {
+                    pos,
+                    normal,
+                };
+            };
+
+            const addVertex = (i, j) => {
+                const { pos, normal } = getPos(i, j);
+                positions.push(...pos);
+                normals.push(...normal);
+                uvs.push(i / numSets, j / numSides);
+            };
+
+            const totalSets = numSets * numSets;
+
+            for (let i = 0; i < totalSets - 1; i++) {
+                for (let j = 0; j < numSides; j++) {
+                    addVertex(i, j);
+                    addVertex(i + 1, j);
+                    addVertex(i + 1, (j + 1));
+                    addVertex(i, (j + 1));
+
+
+                    indices.push(count * 4 + 0);
+                    indices.push(count * 4 + 1);
+                    indices.push(count * 4 + 2);
+                    indices.push(count * 4 + 0);
+                    indices.push(count * 4 + 2);
+                    indices.push(count * 4 + 3);
+
+                    count++;
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            console.log(positions, positions.length / 3)
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            geometry.setIndex(indices);
+
+            // Instancing attributes
+            const uvOffsets = [];
+            const extras = [];
+
+            for (let i = 0; i < numParticles; i++) {
+                for (let j = 0; j < numParticles; j++) {
+                    uvOffsets.push((i + 0.5) / numParticles / numSets, (j + 0.5) / numParticles / numSets);
+                    extras.push(Math.random(), Math.random(), Math.random());
+                }
+            }
+            console.log(uvOffsets)
+            const uvOffsetAttribute = new THREE.InstancedBufferAttribute(new Float32Array(uvOffsets), 2);
+            const extrasAttribute = new THREE.InstancedBufferAttribute(new Float32Array(extras), 3);
+
+            geometry.setAttribute('aUVOffset', uvOffsetAttribute);
+            geometry.setAttribute('aExtra', extrasAttribute);
+
+
+
+            // Shader material
+            materialRibbon = new THREE.ShaderMaterial({
+                vertexShader: `
+                     uniform float uTime;
+                     uniform float uDelta;
+                    uniform float uTotal;
+                    uniform float uNumSets;
+
+                    attribute vec2 aUVOffset;
+                    attribute vec3 aExtra;
+
+                    varying vec2 vUV;
+                    varying vec3 vExtra;
+
+                    #define xAxis vec3(0.0, 1.0, 1.0)
+                    #define PI 3.1415926535897932384626433832795
+
+                    vec3 evaluateParabola(float t, vec3 start, vec3 control1, vec3 control2, vec3 end) {
+                        float u = 1.0 - t;
+                        float tt = t * t;
+                        float uu = u * u;
+                        float ut2 = 2.0 * u * t;
+
+                        vec3 p = uu * start; // (1-t)^3 * p0
+                        p += ut2 * control1; // 3 * (1-t)^2 * t * p1
+                        p += tt * end; // t^3 * p2
+
+                        return p;
+                    }
 
                     void main() {
                         // Đặt UV offset cho mỗi instance
@@ -339,26 +700,40 @@ float rand(float seed) {
 
                         // Tính toán vị trí cuối cùng của điểm
                         vec3 pos = position;
-                        pos.x /= 10.;
+                        pos.x /= 5.;
 
                         float idR = (float(gl_InstanceID) + .5)/10.;
-                        float yWave = sin(pos.x * 12.0 * 3.14  * idR/ uNumSets + uTime) * 0.1 ; // Sóng cho trục y
-                        float xWave = cos(pos.y * 12.0 * 3.14 / uNumSets + uTime) * 0.1; // Sóng cho trục x
-                        float zWave = sin(yWave * 12.0 * 3.14  * idR/ uNumSets + uTime) * 0.1; // Sóng cho trục z
+               
+                        // pos.x += sin(pos.y * 5. * rand(idR)  / uNumSets + uTime);
+                        // pos.z += cos(pos.x * 5. * rand(idR)  / uNumSets + uTime);
+                       // pos.y += sin(pos.x * 5. * rand(idR)  / uNumSets + uTime);
 
+                    
 
-pos.x += sin(pos.y * 5. * rand(idR)  / uNumSets + uTime);
-pos.z += cos(pos.x * 5. * rand(idR)  / uNumSets + uTime);
-pos.y += sin(pos.z * 5. * rand(idR)  / uNumSets + uTime);
+                        vec3 posC = position ;
+                   //     posC.yz *= mix(0.25, 1.0, aExtra.x);
 
-vec3 ppp =  curlNoise(pos + uDelta);
-
-
-                         mat4 rotMatrix = rotationMatrix(10. * idR ,vec3(0.,1.,0.));
-                        vec4 rotatedPosition = rotMatrix * vec4(pos, 1.0);
-
+                      
             
-                        vec4 modelViewPosition = modelViewMatrix * vec4(rotatedPosition.xyz, 1.0);
+                         posC.x /= 10.;
+                         posC.y += idR / 1. + 2.;
+                        // posC.z += sin(posC.x  + uTime );
+                        vec3 dir = normalize(posC );
+                        vec3 axis = normalize(cross(dir, xAxis));
+                        float angle = acos(dot(dir, xAxis));
+                      ///  posC = rotate(posC , axis, angle);
+            
+
+                        if(gl_InstanceID == 1) {
+                            posC = position;
+                     
+                            float t = mod(uTime * 0.5+ position.x * 0.1, 1.0);
+    
+                            vec3 curvePosition = evaluateParabola(t, vec3(0.), vec3(10.,5.,0.), vec3(0.,-5.,0.), vec3(0.,0.,5.));
+                            posC += curvePosition;
+                            }
+
+                        vec4 modelViewPosition = modelViewMatrix * vec4(posC.xyz * 2., 1.0);
                         gl_Position = projectionMatrix * modelViewPosition;
                     }
 
@@ -382,19 +757,19 @@ vec3 ppp =  curlNoise(pos + uDelta);
 
                 `, // fs là shader bạn đã import
                 uniforms: {
-                    uTime: {value: 0.},
-                    uDelta: {value: 0.},
+                    uTime: { value: 0. },
+                    uDelta: { value: 0. },
                     uTotal: { value: totalSets },
                     uNumSets: { value: numSets },
                 },
                 side: THREE.DoubleSide,
-                wireframe:true
-                });
+                wireframe: true
+            });
 
-                // Instanced mesh
-                const mesh = new THREE.InstancedMesh(geometry, materialRibbon, numParticles * numParticles);
+            // Instanced mesh
+            const mesh = new THREE.InstancedMesh(geometry, materialRibbon, numParticles * numParticles);
 
-                sceneDisplay.add(mesh);
+            sceneDisplay.add(mesh);
         }
 
         function onWindowResize() {
@@ -406,15 +781,33 @@ vec3 ppp =  curlNoise(pos + uDelta);
             renderer.setSize(wView, hView);
 
         }
-    
-        function renderMain() {
-        
-            renderer.setViewport(0, 0, wView, hView);
-            renderer.render(sceneDisplay, cameraMain);
-          
+
+
+        function runGPGPU() {
+
+            if (now && delta && last && now > 1000) {
+                positionUniforms['time'].value = now / 1000;
+                positionUniforms['delta'].value = delta;
+
+                velocityUniforms['time'].value = now / 1000;
+                velocityUniforms['delta'].value = delta;
+
+
+            }
+
+            gpuCompute.compute();
+            const texturePosOut = gpuCompute.getCurrentRenderTarget(positionVariable).texture;
+            const textureVelOut = gpuCompute.getCurrentRenderTarget(velocityVariable).texture;
+            if (viewGPGPU_Vel) {
+                viewGPGPU_Vel.uniforms.tVel.value = textureVelOut
+                viewGPGPU_Pos.uniforms.tPos.value = texturePosOut
+
+            }
+            PointMat.uniforms.tPos_gpu.value = texturePosOut
         }
 
-       
+
+
         function animate() {
             now = performance.now();
 
@@ -423,9 +816,11 @@ vec3 ppp =  curlNoise(pos + uDelta);
             if (delta > 1) delta = 1; // safety cap on large deltas
             last = now;
             renderer.autoClear = false;
-        
-            renderMain()
-            materialRibbon.uniforms.uTime.value = now/1000
+            runGPGPU()
+            renderer.clear();
+            renderer.setViewport(0, 0, wView, hView);
+            renderer.render(sceneDisplay, cameraMain);
+            materialRibbon.uniforms.uTime.value = now / 1000
             materialRibbon.uniforms.uDelta.value = delta
             controls.update();
             stats.update();

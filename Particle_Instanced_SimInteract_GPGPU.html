@@ -236,7 +236,7 @@
                 life = (posSelf.y + maxYSet) / 2.0;
             }
         
-            posSelf   += velSelf * 0.2;
+            posSelf   += velSelf * 0.3;
             gl_FragColor = vec4(  posSelf, life  );
 
         }
@@ -377,8 +377,8 @@
 
               
             float posOffset      = 0.1;
-            vec3 acc             = curlNoise(posSelf * posOffset + delta);
-           acc.y 				 += 1.0;
+            vec3 acc             = curlNoise(posSelf * posOffset + delta * 0.005);
+             acc.y 				 += 1.0;
             acc.y 				 *= 0.85;
             float speedOffset    = mix(extraSelf.g, 1.0, .9);
        
@@ -386,7 +386,7 @@
             //	rotation 
             vec2 dir = normalize(posSelf.xz);
             dir      = rotate(dir, PI * 0.75);
-            acc.xz   += dir * 0.5;
+            acc.xz   += dir * 0.7; // > 4 to have tornal
         
            
             velSelf                  += acc * .01 * speedOffset;
@@ -407,7 +407,7 @@
             vec3 normal = normalize(posSelf); // Normal của mặt phẳng
             vec3 reflectedVel = reflect(velSelf, normal);
 
-            if(dHit < .5) velSelf = reflectedVel;
+          //  if(dHit < .5) velSelf = reflectedVel;
 
 
 
@@ -415,7 +415,7 @@
             if(time > 7.2) dowSpeed = .72;
             const float decrease = .96;
             velSelf                  *= decrease;
-            velSelf *= dowSpeed;
+          //  velSelf *= dowSpeed;
 
             gl_FragColor = vec4( velSelf,1.);
 
@@ -495,7 +495,7 @@
             vec2 uv = gl_PointCoord;
             float cc = sdCircle(vec2(uv.x-.5,uv.y-.5),.2);    
             cc = step(cc,.15);
-            uv.y = 1.0 - uv.y;
+           // uv.y = 1.0 - uv.y;
             
             vec4 colorMap = texture2D(texturePoint, uv);
             if(colorMap.r <= 0.0) {
@@ -707,7 +707,7 @@
                 const y = Math.random() * 2 - 1;
                 const z = Math.random() * 2 - 1;
                 let vp = new THREE.Vector3(x, y, z)
-                vp.multiplyScalar(0.1)
+                vp.multiplyScalar(0.01)
                 arrT[k + 0] = vp.x
                 arrT[k + 1] = vp.y
                 arrT[k + 2] = vp.z
@@ -1038,7 +1038,7 @@
             `;
 
             const fragmentShader = document.getElementById('frag_point').textContent.trim();
-            const texture = new THREE.TextureLoader().load('textures/colorMap.jpg');
+            const texture = new THREE.TextureLoader().load('textures/pointTexture.jpg');
             PointMat = new THREE.ShaderMaterial({
                 vertexShader: vertexShader,
                 fragmentShader: fragmentShader,
