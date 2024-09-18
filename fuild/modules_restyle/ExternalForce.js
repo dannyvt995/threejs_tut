@@ -4,13 +4,14 @@ import ShaderPass from "./ShaderPass.js";
 import Mouse from "./Mouse.js";
 
 import * as THREE from "three";
+import Renderer from "./Renderer.js";
 
 export default class ExternalForce extends ShaderPass{
     constructor(simProps){
         super({
             output: simProps.dst
         });
-
+        this.forcePrev = new THREE.Vector2()
         this.init(simProps);
     }
 
@@ -25,6 +26,9 @@ export default class ExternalForce extends ShaderPass{
             fragmentShader: externalForceFrag,
             blending: THREE.AdditiveBlending,
             uniforms: {
+                time:{
+                    value:0
+                },
                 px: {
                     value: simProps.cellScale
                 },
@@ -47,7 +51,7 @@ export default class ExternalForce extends ShaderPass{
     update(props){
         const forceX = Mouse.diff.x / 2 * props.mouse_force;
         const forceY = Mouse.diff.y / 2 * props.mouse_force;
-
+ 
         const cursorSizeX = props.cursor_size * props.cellScale.x;
         const cursorSizeY = props.cursor_size * props.cellScale.y;
 
@@ -59,7 +63,10 @@ export default class ExternalForce extends ShaderPass{
         uniforms.force.value.set(forceX, forceY);
         uniforms.center.value.set(centerX, centerY);
         uniforms.scale.value.set(props.cursor_size, props.cursor_size);
+        uniforms.time.value = Renderer.time
 
+        this.forcePrev.set(forceX,forceY)
+        
         super.update();
     }
 

@@ -2,7 +2,7 @@
 
 export  const   externalForceFrag = `
 precision highp float;
-
+uniform float time;
 uniform vec2 force;
 uniform vec2 center;
 uniform vec2 scale;
@@ -18,8 +18,9 @@ void main(){
 
 
       vec2 circle = (vUv - 0.5) * 2.0 ;
-    float d = 1.0-min(length(circle), 1.0);
-    d *= d;
+      vec2 dd = force - center;
+    float d = 1.0-min(length(circle) , 1.0);
+    d *= d * d;
     gl_FragColor = vec4(force * d, 0, 1);
 }
 

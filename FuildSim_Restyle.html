@@ -62,7 +62,7 @@
             iterations_viscous: 32,
             mouse_force: 20,
             resolution: 0.5,
-            cursor_size: 40,
+            cursor_size: 70,
             viscous: 30,
             isBounce: false,
             dt: 0.054,
@@ -85,24 +85,33 @@
     const fragmentShader = `
             
                 varying vec2 vUv;
-                 uniform sampler2D fuildMap;
+                 uniform sampler2D fuildVel;
                     uniform sampler2D fuildPress;
+                                  uniform sampler2D fuildDiv;
                     uniform float time;
                     vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
                 {
                     return a + b*cos( 6.28318*(c*t+d) );
                 }
-
+float random (vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+}
                 void main() {
-                    vec2 vel = texture2D(fuildMap,vUv).xy;
-                           vec2 press = texture2D(fuildPress,vUv).xy;
-                  float len = length(vel);
+                    vec2 vel = texture2D(fuildVel,vUv).xy;
+                    vec2 press = texture2D(fuildPress,vUv).xy;
+                    float len = length(vel);
                     vel = vel * 0.5 + 0.5;
     
                     vec2 velO = vel * 0.5 + 0.5;
-                    vec3  colVel = pal((vel.y+vel.x + .1) * 20.2 , vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
-                     vec3 color = mix(vec3(1.0),colVel, len);
-                    gl_FragColor = vec4( 1.-color,1.);
+                    vec3  colVel = pal((vel.y+vel.x) * 20.2 , vec3(random(vUv),0.5,0.5),vec3(0.5,cos(time),0.5),vec3(1.0,1.0,0.5),vec3(sin(time),0.90,0.30) );
+                    vec3 color = mix(vec3(1.0),colVel, len);
+
+                    vec3 rls = 1.-color;
+                   
+                    gl_FragColor = vec4(color,1.);
+                  
                 }
             `
 
@@ -116,11 +125,14 @@
             time: {
                 value: 0
             },
-            fuildMap: {
+            fuildVel: {
                 value: simulation.fbos.vel_0.texture
             },
             fuildPress: {
-                value: simulation.fbos.pressure_0.texture
+                value: simulation.fbos.pressure_1.texture
+            },
+            fuildDiv: {
+                value: simulation.fbos.div.texture
             },
             sizeView: {
                 value: new THREE.Vector2(widthFit, heightFit)
