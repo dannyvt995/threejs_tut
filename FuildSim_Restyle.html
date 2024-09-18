@@ -4,20 +4,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fuild_Particle_GPGPU</title>
+    <title>FuildSim_Restyle</title>
 </head>
 <style>
     body {
         margin: 0;
         padding: 0;
         overflow: hidden;
-        background-color: black;
+        background-color: rgb(255, 255, 255);
+    }
+    h1 {
+        color:rgb(0, 0, 0);
+        position: absolute;
     }
 </style>
 
 <body>
-
-</body>
+    <h1>HELLO NHA</h1>
+</body> 
 <div id="canvas"></div>
 <script type="importmap">
         {
@@ -30,11 +34,11 @@
 <script type="module">
     import * as THREE from "three";
 
-    import Renderer from "./fuild/modules/Renderer.js";
-    import Simulation from "./fuild/modules/Simulation.js";
-    import Mouse from "./fuild/modules/Mouse.js";
+    import Renderer from "./fuild/modules_restyle/Renderer.js";
+    import Simulation from "./fuild/modules_restyle/Simulation.js";
+    import Mouse from "./fuild/modules_restyle/Mouse.js";
     import {calcSizeFitCamPerspective} from './utils/calcSizeFitCamPerspective.js'
-
+     
     Renderer.init();
     Mouse.init();
 
@@ -48,17 +52,17 @@
     scene.add(directionalLight);
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = .5
+    camera.position.z = .1
 
     const [widthFit,heightFit] = calcSizeFitCamPerspective(camera)
 
     const simulation = new Simulation({
         options: {
-            iterations_poisson: 5,
+            iterations_poisson: 1,
             iterations_viscous: 32,
-            mouse_force: 70,
+            mouse_force: 20,
             resolution: 0.5,
-            cursor_size: 30,
+            cursor_size: 40,
             viscous: 30,
             isBounce: false,
             dt: 0.054,
@@ -70,65 +74,20 @@
     const textureImg = new THREE.TextureLoader().load('textures/cat.jpg');
 
 
-    const gridSize = 256;
-    const spacing = 1.0 / (gridSize - 1);
-
-
-    const vertices = [];
-    const uvs = [];
-
-    for (let x = 0; x < gridSize; x++) {
-        for (let y = 0; y < gridSize; y++) {
-            const u = x * spacing;
-            const v = y * spacing;
-            
-            let posX = (Math.random() - 0.5) * widthFit;
-            let posY = (Math.random() - 0.5) * heightFit;
-            vertices.push(posX, posY, 0); 
-            uvs.push(u, v);
-        }
-    }
-
-
-    const PointGeo = new THREE.BufferGeometry();
-    const positionAttribute = new THREE.BufferAttribute(new Float32Array(vertices), 3);
-
-    const uvAttribute = new THREE.BufferAttribute(new Float32Array(uvs), 2);
-    PointGeo.setAttribute('position', positionAttribute);
-    PointGeo.setAttribute('uv', uvAttribute);
-
-
     const vertexShader = `
-                precision highp float;
-                uniform float time;
-                uniform sampler2D fuildMap;
-                uniform vec2 sizeView;
                 varying vec2 vUv;
-                varying vec3 vPos;
-     
                 void main() {
-                     vec2 uvPos = vec2(
-                         position.x / sizeView.x + 0.5,
-                        position.y / sizeView.y + 0.5
-                     );
-                     vec2 vel = texture2D(fuildMap,uvPos).xy;
-                     vec3 pos = position;
-
-                     pos.xy += vel  ;
-                    
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-                  
-                    vUv = uvPos;
-                    vPos = pos;
-                    gl_PointSize  = 2.;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    vUv = uv;
                 }
             `;
 
     const fragmentShader = `
-                varying vec3 vPos;
-                    varying vec2 vUv;
+            
+                varying vec2 vUv;
                  uniform sampler2D fuildMap;
                     uniform sampler2D fuildPress;
+                    uniform float time;
                     vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
                 {
                     return a + b*cos( 6.28318*(c*t+d) );
@@ -138,14 +97,16 @@
                     vec2 vel = texture2D(fuildMap,vUv).xy;
                            vec2 press = texture2D(fuildPress,vUv).xy;
                   float len = length(vel);
+                    vel = vel * 0.5 + 0.5;
+    
                     vec2 velO = vel * 0.5 + 0.5;
-                    vec3  colVel = pal((vel.y+vel.x) * 8.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
-                  
-                    gl_FragColor = vec4( colVel,.5);
+                    vec3  colVel = pal((vel.y+vel.x + .1) * 20.2 , vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
+                     vec3 color = mix(vec3(1.0),colVel, len);
+                    gl_FragColor = vec4( 1.-color,1.);
                 }
             `
 
-    const pointMat = new THREE.ShaderMaterial({
+    const planeMat = new THREE.ShaderMaterial({
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
         transparent: true,
@@ -168,10 +129,8 @@
     });
 
 
-    let points = new THREE.Points(PointGeo, pointMat);
-
-
-    scene.add(points)
+    let mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthFit,heightFit), planeMat);
+    scene.add(mesh)
 
 
     Renderer.renderer.setAnimationLoop(animate);
@@ -184,7 +143,7 @@
 
         Renderer.renderer.setRenderTarget(null);
         Renderer.renderer.render(scene, camera);
-        pointMat.uniforms.time.value = Renderer.time
+        planeMat.uniforms.time.value = Renderer.time
     }
 
 </script>

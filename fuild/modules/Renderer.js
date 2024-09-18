@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-class Common{
+class Renderer{
     constructor(){
         this.width = null;
         this.height = null;
@@ -55,4 +55,4 @@ class Common{
     }
 }
 
-export default new Common();
+export default new Renderer();
