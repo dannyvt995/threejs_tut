@@ -8,7 +8,7 @@ uniform float dt;
 varying vec2 uv;
 
 void main(){
-    float step = 1.0;
+    float step = 2.0;
 
     float p0 = texture2D(pressure, uv+vec2(px.x * step, 0)).r;
     float p1 = texture2D(pressure, uv-vec2(px.x * step, 0)).r;
