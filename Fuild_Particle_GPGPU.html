@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuild_Particle_GPGPU</title>
+</head>
+<style>
+
+body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+</style>
+<body>
+
+</body>
+<div id="canvas"></div>
+<script type="importmap">
+        {
+            "imports": {
+                "three": "./three.module.js",
+                "three/addons/": "./jsm/"
+            }
+        }
+    </script>
+<script type="module">
+    import * as THREE from "three";
+
+    import Common from "./fuild/modules/Common.js";
+    import Output from "./fuild/modules/Output.js";
+    import Mouse from "./fuild/modules/Mouse.js";
+
+
+    Common.init();
+    Mouse.init();
+    let output = new Output();
+    Common.renderer.setAnimationLoop(animate);
+    function animate() {
+
+        Mouse.update();
+        Common.update();
+        output.update();
+
+    }
+
+</script>
+
+</html>
