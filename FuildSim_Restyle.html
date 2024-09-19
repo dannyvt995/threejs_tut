@@ -13,15 +13,16 @@
         overflow: hidden;
         background-color: rgb(255, 255, 255);
     }
+
     h1 {
-        color:rgb(0, 0, 0);
+        color: rgb(0, 0, 0);
         position: absolute;
     }
 </style>
 
 <body>
-    
-</body> 
+
+</body>
 <div id="canvas"></div>
 <script type="importmap">
         {
@@ -38,26 +39,26 @@
     import Simulation from "./fuild/modules_restyle/Simulation.js";
     import Mouse from "./fuild/modules_restyle/Mouse.js";
     import { OrbitControls } from 'three/addons/OrbitControls.js';
-    import {calcSizeFitCamPerspective} from './utils/calcSizeFitCamPerspective.js'
-     
+    import { calcSizeFitCamPerspective } from './utils/calcSizeFitCamPerspective.js'
+
     Renderer.init();
     Mouse.init();
 
-    let sceneMain,cameraMain,controlsMain
-    let sceneOutSim,cameraOutSim,planeMatOutSim
+    let sceneMain, cameraMain, controlsMain
+    let sceneOutSim, cameraOutSim, planeMatOutSim
 
-    let fboMain,fboOutSim
+    let fboMain, fboOutSim
 
     const widthView = window.innerWidth;
     const heightView = window.innerHeight;
-    
+
     const simulation = new Simulation({
         options: {
             iterations_poisson: 1,
             iterations_viscous: 32,
             mouse_force: 70,
             resolution: 0.5,
-            cursor_size: 70,
+            cursor_size: 50,
             viscous: 30,
             isBounce: false,
             dt: 0.054,
@@ -86,101 +87,101 @@
     }
 
     initSceneMain()
-    function initSceneMain () {
-        sceneMain  = new THREE.Scene();
+    function initSceneMain() {
+        sceneMain = new THREE.Scene();
         sceneMain.background = 0xffffff
 
         const light = new THREE.AmbientLight(0xffffff, 2.5);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 5.5);
 
-        sceneMain.add(light,directionalLight);
+        sceneMain.add(light, directionalLight);
 
         cameraMain = new THREE.PerspectiveCamera(75, widthView / heightView, 0.1, 1000);
         cameraMain.position.z = 5
 
         controlsMain = new OrbitControls(cameraMain, Renderer.renderer.domElement);
- 
-const count = 1000;
 
-// Tạo BoxGeometry
-const geometry = new THREE.BoxGeometry(.1, .1, .1);
+        const count = 420;
 
-// Tạo Material. Sử dụng MeshBasicMaterial cho đơn giản, bạn có thể sử dụng các material khác tùy nhu cầu.
-const material = new THREE.MeshBasicMaterial({ vertexColors: false });
+        // Tạo BoxGeometry
+        const geometry = new THREE.BoxGeometry(.1, .1, .1);
 
-// Tạo InstancedMesh
-const instancedMesh = new THREE.InstancedMesh(geometry, material, count);
+        // Tạo Material. Sử dụng MeshBasicMaterial cho đơn giản, bạn có thể sử dụng các material khác tùy nhu cầu.
+        const material = new THREE.MeshBasicMaterial({ vertexColors: false });
 
-// Tạo một BufferAttribute để lưu trữ màu sắc cho mỗi instance
-const colors = [];
+        // Tạo InstancedMesh
+        const instancedMesh = new THREE.InstancedMesh(geometry, material, count);
 
-for (let i = 0; i < count; i++) {
-    // Tạo ma trận transform cho mỗi instance
-    const matrix = new THREE.Matrix4();
+        // Tạo một BufferAttribute để lưu trữ màu sắc cho mỗi instance
+        const colors = [];
 
-    // Tạo vị trí ngẫu nhiên trong phạm vi từ -50 đến 50
-    const position = new THREE.Vector3(
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2
-    );
+        for (let i = 0; i < count; i++) {
+            // Tạo ma trận transform cho mỗi instance
+            const matrix = new THREE.Matrix4();
 
-    // Tạo tỷ lệ ngẫu nhiên từ 0.5 đến 1.5
-    const scale = new THREE.Vector3(
-        Math.random() + 0.5,
-        Math.random() + 0.5,
-        Math.random() + 0.5
-    );
+            // Tạo vị trí ngẫu nhiên trong phạm vi từ -50 đến 50
+            const position = new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2
+            );
 
-    // Tạo rotation ngẫu nhiên
-    const rotation = new THREE.Euler(
-        Math.random() * 2 * Math.PI,
-        Math.random() * 2 * Math.PI,
-        Math.random() * 2 * Math.PI
-    );
+            // Tạo tỷ lệ ngẫu nhiên từ 0.5 đến 1.5
+            const scale = new THREE.Vector3(
+                Math.random() + 0.5,
+                Math.random() + 0.5,
+                Math.random() + 0.5
+            );
 
-    // Áp dụng transform vào ma trận
-    matrix.makeRotationFromEuler(rotation);
-    matrix.setPosition(position);
-    matrix.scale(scale);
+            // Tạo rotation ngẫu nhiên
+            const rotation = new THREE.Euler(
+                Math.random() * 2 * Math.PI,
+                Math.random() * 2 * Math.PI,
+                Math.random() * 2 * Math.PI
+            );
 
-    // Gán ma trận cho instance thứ i
-    instancedMesh.setMatrixAt(i, matrix);
+            // Áp dụng transform vào ma trận
+            matrix.makeRotationFromEuler(rotation);
+            matrix.setPosition(position);
+            matrix.scale(scale);
 
-    // Tạo màu ngẫu nhiên cho mỗi instance
-    const color = new THREE.Color(Math.random(), Math.random(), Math.random());
-    colors.push(color.r, color.g, color.b);
-}
+            // Gán ma trận cho instance thứ i
+            instancedMesh.setMatrixAt(i, matrix);
 
-// Tạo BufferAttribute từ mảng màu sắc và gán vào geometry của InstancedMesh
-const colorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(colors), 3);
-instancedMesh.instanceColor = colorAttribute;
+            // Tạo màu ngẫu nhiên cho mỗi instance
+            const color = new THREE.Color(Math.random(), Math.random(), Math.random());
+            colors.push(color.r, color.g, color.b);
+        }
+
+        // Tạo BufferAttribute từ mảng màu sắc và gán vào geometry của InstancedMesh
+        const colorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(colors), 3);
+        instancedMesh.instanceColor = colorAttribute;
 
         sceneMain.add(instancedMesh)
     }
-       
-    
-    
 
-   
 
-    
 
-   
-    initFboOutSim() 
+
+
+
+
+
+
+    initFboOutSim()
     function initFboOutSim() {
-        sceneOutSim  = new THREE.Scene();
+        sceneOutSim = new THREE.Scene();
 
         const light = new THREE.AmbientLight(0x404040);
         const directionalLight = new THREE.DirectionalLight(0xffffff);
 
-        sceneOutSim.add(light,directionalLight);
+        sceneOutSim.add(light, directionalLight);
 
         cameraOutSim = new THREE.PerspectiveCamera(75, widthView / heightView, 0.1, 1000);
         cameraOutSim.position.z = .1
 
-        const [widthFit,heightFit] = calcSizeFitCamPerspective(cameraOutSim)   
-        
+        const [widthFit, heightFit] = calcSizeFitCamPerspective(cameraOutSim)
+
         const vertexShader = `
                 varying vec2 vUv;
                 void main() {
@@ -189,7 +190,7 @@ instancedMesh.instanceColor = colorAttribute;
                 }
             `;
 
-            const fragmentShader = `
+        const fragmentShader = `
                     
                         varying vec2 vUv;
                         uniform sampler2D fuildVel;
@@ -215,66 +216,69 @@ instancedMesh.instanceColor = colorAttribute;
             
                             vec2 velO = vel * 0.5 + 0.5;
                             vec3  colVel = pal((vel.y+vel.x) * 50.2 , vec3(random(vUv),0.5,0.5),vec3(0.5,cos(time),0.5),vec3(1.0,1.0,0.5),vec3(sin(time),0.90,0.30) );
-                            vec3 color = mix(vec3(1.0),colVel, len);
-
-                            vec3 rls = 1.-color;
+                           
                         
 
-                            vec3 outScene = texture2D(outSceneMain,vUv - rls.xy / 10.).xyz;
+                            
+
+                            vec3 color = mix(vec3(1.0),colVel, len);
+                            vec3 rls = 1.-color;
+
+                            vec3 outScene = texture2D(outSceneMain,vUv - texture2D(fuildVel,vUv).zy * 2.).xyz;
 
 
-                            gl_FragColor = vec4(rls + outScene ,1.);
+                            gl_FragColor = vec4(rls * 2. + outScene ,1.);
                         
                         }
                     `
 
-            planeMatOutSim = new THREE.ShaderMaterial({
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blendSrcAlpha: 1,
-                uniforms: {
-                    outSceneMain : {
-                        value: null
-                    },
-                    time: {
-                        value: 0
-                    },
-                    fuildVel: {
-                        value: simulation.fbos.vel_0.texture
-                    },
-                    fuildPress: {
-                        value: simulation.fbos.pressure_1.texture
-                    },
-                    fuildDiv: {
-                        value: simulation.fbos.div.texture
-                    },
-                    sizeView: {
-                        value: new THREE.Vector2(widthFit, heightFit)
-                    }
+        planeMatOutSim = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blendSrcAlpha: 1,
+            uniforms: {
+                outSceneMain: {
+                    value: null
+                },
+                time: {
+                    value: 0
+                },
+                fuildVel: {
+                    value: simulation.fbos.vel_0.texture
+                },
+                fuildPress: {
+                    value: simulation.fbos.pressure_1.texture
+                },
+                fuildDiv: {
+                    value: simulation.fbos.div.texture
+                },
+                sizeView: {
+                    value: new THREE.Vector2(widthFit, heightFit)
                 }
-            });
+            }
+        });
 
 
-            let mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthFit,heightFit), planeMatOutSim);
-            sceneOutSim.add(mesh)
+        let mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthFit, heightFit), planeMatOutSim);
+        sceneOutSim.add(mesh)
     }
-   
 
 
-   
+
+
     function animate() {
 
         Mouse.update();
         Renderer.update();
-        
+
         simulation.update()
-     
 
 
-          // Render sceneOutSim vào Render Target hiện tại
-          Renderer.renderer.autoClear = true;
+
+        // Render sceneOutSim vào Render Target hiện tại
+        Renderer.renderer.autoClear = true;
         Renderer.renderer.setRenderTarget(fboMain);
         Renderer.renderer.render(sceneMain, cameraMain);
 
@@ -282,7 +286,7 @@ instancedMesh.instanceColor = colorAttribute;
         planeMatOutSim.uniforms.outSceneMain.value = fboMain.texture
 
         Renderer.renderer.setRenderTarget(null);
-        
+
         Renderer.renderer.autoClear = false;
         // Render sceneMain vào màn hình
         Renderer.renderer.render(sceneOutSim, cameraOutSim);
