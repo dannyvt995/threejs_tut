@@ -20,7 +20,7 @@
 </style>
 
 <body>
-    <h1>HELLO NHA</h1>
+    
 </body> 
 <div id="canvas"></div>
 <script type="importmap">
@@ -37,30 +37,25 @@
     import Renderer from "./fuild/modules_restyle/Renderer.js";
     import Simulation from "./fuild/modules_restyle/Simulation.js";
     import Mouse from "./fuild/modules_restyle/Mouse.js";
+    import { OrbitControls } from 'three/addons/OrbitControls.js';
     import {calcSizeFitCamPerspective} from './utils/calcSizeFitCamPerspective.js'
      
     Renderer.init();
     Mouse.init();
 
- 
+    let sceneMain,cameraMain,controlsMain
+    let sceneOutSim,cameraOutSim,planeMatOutSim
+
+    let fboMain,fboOutSim
+
+    const widthView = window.innerWidth;
+    const heightView = window.innerHeight;
     
-    const scene = new THREE.Scene();
-    scene.background = 0x000000
-    const light = new THREE.AmbientLight(0x404040); // soft white light
-    scene.add(light);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
-    scene.add(directionalLight);
-
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = .1
-
-    const [widthFit,heightFit] = calcSizeFitCamPerspective(camera)
-
     const simulation = new Simulation({
         options: {
             iterations_poisson: 1,
             iterations_viscous: 32,
-            mouse_force: 20,
+            mouse_force: 70,
             resolution: 0.5,
             cursor_size: 70,
             viscous: 30,
@@ -70,11 +65,123 @@
             BFECC: false
         }
     });
-
     const textureImg = new THREE.TextureLoader().load('textures/cat.jpg');
+    initFbos()
+    function initFbos() {
+        const renderTargetMain = new THREE.WebGLRenderTarget(widthView, heightView, {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            format: THREE.RGBAFormat
+        });
 
+        const renderTargetOutSim = new THREE.WebGLRenderTarget(widthView, heightView, {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            format: THREE.RGBAFormat
+        });
 
-    const vertexShader = `
+        // Biến để theo dõi Render Target hiện tại
+        fboMain = renderTargetMain;
+        fboOutSim = renderTargetOutSim;
+    }
+
+    initSceneMain()
+    function initSceneMain () {
+        sceneMain  = new THREE.Scene();
+        sceneMain.background = 0xffffff
+
+        const light = new THREE.AmbientLight(0xffffff, 2.5);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 5.5);
+
+        sceneMain.add(light,directionalLight);
+
+        cameraMain = new THREE.PerspectiveCamera(75, widthView / heightView, 0.1, 1000);
+        cameraMain.position.z = 5
+
+        controlsMain = new OrbitControls(cameraMain, Renderer.renderer.domElement);
+ 
+const count = 1000;
+
+// Tạo BoxGeometry
+const geometry = new THREE.BoxGeometry(.1, .1, .1);
+
+// Tạo Material. Sử dụng MeshBasicMaterial cho đơn giản, bạn có thể sử dụng các material khác tùy nhu cầu.
+const material = new THREE.MeshBasicMaterial({ vertexColors: false });
+
+// Tạo InstancedMesh
+const instancedMesh = new THREE.InstancedMesh(geometry, material, count);
+
+// Tạo một BufferAttribute để lưu trữ màu sắc cho mỗi instance
+const colors = [];
+
+for (let i = 0; i < count; i++) {
+    // Tạo ma trận transform cho mỗi instance
+    const matrix = new THREE.Matrix4();
+
+    // Tạo vị trí ngẫu nhiên trong phạm vi từ -50 đến 50
+    const position = new THREE.Vector3(
+        (Math.random() - 0.5) * 2,
+        (Math.random() - 0.5) * 2,
+        (Math.random() - 0.5) * 2
+    );
+
+    // Tạo tỷ lệ ngẫu nhiên từ 0.5 đến 1.5
+    const scale = new THREE.Vector3(
+        Math.random() + 0.5,
+        Math.random() + 0.5,
+        Math.random() + 0.5
+    );
+
+    // Tạo rotation ngẫu nhiên
+    const rotation = new THREE.Euler(
+        Math.random() * 2 * Math.PI,
+        Math.random() * 2 * Math.PI,
+        Math.random() * 2 * Math.PI
+    );
+
+    // Áp dụng transform vào ma trận
+    matrix.makeRotationFromEuler(rotation);
+    matrix.setPosition(position);
+    matrix.scale(scale);
+
+    // Gán ma trận cho instance thứ i
+    instancedMesh.setMatrixAt(i, matrix);
+
+    // Tạo màu ngẫu nhiên cho mỗi instance
+    const color = new THREE.Color(Math.random(), Math.random(), Math.random());
+    colors.push(color.r, color.g, color.b);
+}
+
+// Tạo BufferAttribute từ mảng màu sắc và gán vào geometry của InstancedMesh
+const colorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(colors), 3);
+instancedMesh.instanceColor = colorAttribute;
+
+        sceneMain.add(instancedMesh)
+    }
+       
+    
+    
+
+   
+
+    
+
+   
+    initFboOutSim() 
+    function initFboOutSim() {
+        sceneOutSim  = new THREE.Scene();
+
+        const light = new THREE.AmbientLight(0x404040);
+        const directionalLight = new THREE.DirectionalLight(0xffffff);
+
+        sceneOutSim.add(light,directionalLight);
+
+        cameraOutSim = new THREE.PerspectiveCamera(75, widthView / heightView, 0.1, 1000);
+        cameraOutSim.position.z = .1
+
+        const [widthFit,heightFit] = calcSizeFitCamPerspective(cameraOutSim)   
+        
+        const vertexShader = `
                 varying vec2 vUv;
                 void main() {
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -82,82 +189,113 @@
                 }
             `;
 
-    const fragmentShader = `
+            const fragmentShader = `
+                    
+                        varying vec2 vUv;
+                        uniform sampler2D fuildVel;
+                            uniform sampler2D fuildPress;
+                                        uniform sampler2D fuildDiv;
+                                                 uniform sampler2D outSceneMain;
+                            uniform float time;
+                            vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+                        {
+                            return a + b*cos( 6.28318*(c*t+d) );
+                        }
+                        float random (vec2 st) {
+                            return fract(sin(dot(st.xy,
+                                                vec2(12.9898,78.233)))*
+                                43758.5453123);
+                        }
+                        void main() {
+                         
+                            vec2 vel = texture2D(fuildVel,vUv).xy;
+                            vec2 press = texture2D(fuildPress,vUv).xy;
+                            float len = length(vel);
+                            vel = vel * 0.5 + 0.5;
             
-                varying vec2 vUv;
-                 uniform sampler2D fuildVel;
-                    uniform sampler2D fuildPress;
-                                  uniform sampler2D fuildDiv;
-                    uniform float time;
-                    vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
-                {
-                    return a + b*cos( 6.28318*(c*t+d) );
+                            vec2 velO = vel * 0.5 + 0.5;
+                            vec3  colVel = pal((vel.y+vel.x) * 50.2 , vec3(random(vUv),0.5,0.5),vec3(0.5,cos(time),0.5),vec3(1.0,1.0,0.5),vec3(sin(time),0.90,0.30) );
+                            vec3 color = mix(vec3(1.0),colVel, len);
+
+                            vec3 rls = 1.-color;
+                        
+
+                            vec3 outScene = texture2D(outSceneMain,vUv - rls.xy / 10.).xyz;
+
+
+                            gl_FragColor = vec4(rls + outScene ,1.);
+                        
+                        }
+                    `
+
+            planeMatOutSim = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blendSrcAlpha: 1,
+                uniforms: {
+                    outSceneMain : {
+                        value: null
+                    },
+                    time: {
+                        value: 0
+                    },
+                    fuildVel: {
+                        value: simulation.fbos.vel_0.texture
+                    },
+                    fuildPress: {
+                        value: simulation.fbos.pressure_1.texture
+                    },
+                    fuildDiv: {
+                        value: simulation.fbos.div.texture
+                    },
+                    sizeView: {
+                        value: new THREE.Vector2(widthFit, heightFit)
+                    }
                 }
-float random (vec2 st) {
-    return fract(sin(dot(st.xy,
-                         vec2(12.9898,78.233)))*
-        43758.5453123);
-}
-                void main() {
-                    vec2 vel = texture2D(fuildVel,vUv).xy;
-                    vec2 press = texture2D(fuildPress,vUv).xy;
-                    float len = length(vel);
-                    vel = vel * 0.5 + 0.5;
-    
-                    vec2 velO = vel * 0.5 + 0.5;
-                    vec3  colVel = pal((vel.y+vel.x) * 20.2 , vec3(random(vUv),0.5,0.5),vec3(0.5,cos(time),0.5),vec3(1.0,1.0,0.5),vec3(sin(time),0.90,0.30) );
-                    vec3 color = mix(vec3(1.0),colVel, len);
-
-                    vec3 rls = 1.-color;
-                   
-                    gl_FragColor = vec4(color,1.);
-                  
-                }
-            `
-
-    const planeMat = new THREE.ShaderMaterial({
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
-        transparent: true,
-        depthWrite: false,
-        blendSrcAlpha: 1,
-        uniforms: {
-            time: {
-                value: 0
-            },
-            fuildVel: {
-                value: simulation.fbos.vel_0.texture
-            },
-            fuildPress: {
-                value: simulation.fbos.pressure_1.texture
-            },
-            fuildDiv: {
-                value: simulation.fbos.div.texture
-            },
-            sizeView: {
-                value: new THREE.Vector2(widthFit, heightFit)
-            }
-        }
-    });
+            });
 
 
-    let mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthFit,heightFit), planeMat);
-    scene.add(mesh)
+            let mesh = new THREE.Mesh(new THREE.PlaneGeometry(widthFit,heightFit), planeMatOutSim);
+            sceneOutSim.add(mesh)
+    }
+   
 
 
-    Renderer.renderer.setAnimationLoop(animate);
+   
     function animate() {
 
         Mouse.update();
         Renderer.update();
         
         simulation.update()
+     
+
+
+          // Render sceneOutSim vào Render Target hiện tại
+          Renderer.renderer.autoClear = true;
+        Renderer.renderer.setRenderTarget(fboMain);
+        Renderer.renderer.render(sceneMain, cameraMain);
+
+        planeMatOutSim.uniforms.time.value = Renderer.time
+        planeMatOutSim.uniforms.outSceneMain.value = fboMain.texture
 
         Renderer.renderer.setRenderTarget(null);
-        Renderer.renderer.render(scene, camera);
-        planeMat.uniforms.time.value = Renderer.time
-    }
+        
+        Renderer.renderer.autoClear = false;
+        // Render sceneMain vào màn hình
+        Renderer.renderer.render(sceneOutSim, cameraOutSim);
 
+        let temp = fboMain;
+        fboMain = fboOutSim;
+        fboOutSim = temp;
+
+
+        // Renderer.renderer.setRenderTarget(null);
+        // Renderer.renderer.render(sceneMain, cameraMain);
+    }
+    Renderer.renderer.setAnimationLoop(animate);
 </script>
 
 </html>
