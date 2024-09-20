@@ -29,6 +29,10 @@ export default class Simulation{
             pressure_1: null,
         };
 
+        this.more = {
+            externalForceFbo : null
+        }
+
         this.options = this.props.options
 
         this.fboSize = new THREE.Vector2();
@@ -185,7 +189,7 @@ export default class Simulation{
             this.boundarySpace.copy(this.cellScale);
         }
 
-
+  
 
         this.advection.update(this.options);
 
@@ -195,6 +199,7 @@ export default class Simulation{
             cellScale: this.cellScale
         });
 
+        this.more.externalForceFbo = this.externalForce
         let vel = this.fbos.vel_1;
 
         // if(this.options.isViscous){
@@ -205,14 +210,14 @@ export default class Simulation{
         //     });
         // }
 
-        this.divergence.update({vel});
+        this.divergence.update({vel}); //  turn off it , eff will like glass
 
         const pressure = this.poisson.update({
             iterations: this.options.iterations_poisson,
         });
 
         this.pressure.update({ vel , pressure});
-
+       // console.log(this.pressure.props.output.texture)
       
     }
 }
