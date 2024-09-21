@@ -19,11 +19,11 @@ void main(){
 
     vec2 vel = texture2D(velocity, uv).xy;
         vec2 uv2 = uv - vel * dt * ratio  ;
-      uv2 = uv - vel * dt * ratio  * random(uv);
+     uv2 = uv - vel * dt * ratio  * random(uv);
         vec2 newVel = texture2D(velocity, uv2 ).xy;
      
         gl_FragColor = vec4(newVel , 0.0, 0.0);
 }
-
+ 
 
 `

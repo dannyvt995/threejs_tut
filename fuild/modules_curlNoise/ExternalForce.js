@@ -81,18 +81,18 @@ export default class ExternalForce extends ShaderPass{
         let speed = Math.sqrt(deltaX * deltaX + deltaY * deltaY) * 10;
         this.speed = speed
         let sizeOut = 0
-        if(props.cursor_size * speed > 60) {
-            sizeOut = 60
-        }else if(props.cursor_size * speed < 20) {
-            sizeOut = 20
+        if(props.cursor_size * speed > 40) {
+            sizeOut = 10
+        }else if(props.cursor_size * speed < 7) {
+            sizeOut = 40
         }else{
             sizeOut = props.cursor_size * speed
         }
-     // uniforms.scale.value.set(sizeOut,sizeOut);
+      uniforms.scale.value.set(sizeOut,sizeOut);
 
        
       uniforms.dir.value.set(deltaX, deltaY);
-      uniforms.scale.value.set(props.cursor_size ,props.cursor_size );
+      //uniforms.scale.value.set(props.cursor_size ,props.cursor_size );
         uniforms.time.value = Renderer.time
 
         this.lastMouseCoords = { x: Mouse.coords.x, y: Mouse.coords.y };

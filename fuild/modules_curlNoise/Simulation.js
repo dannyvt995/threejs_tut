@@ -17,11 +17,8 @@ export default class Simulation{
             vel_0: null,
             vel_1: null,
             
-            // for calc next velocity with viscous
-            // vel_viscous0: null,
-            // vel_viscous1: null,
 
-            // for calc pressure
+            // for calc diver
             div: null,
 
             // for calc poisson equation 
@@ -51,7 +48,7 @@ export default class Simulation{
         this.calcSize();
         this.createAllFBO();
         this.createShaderPass();
-        this.initPlane()
+     
     }
 
     createAllFBO(){
@@ -68,45 +65,7 @@ export default class Simulation{
 
         }
     }
-    initPlane(){
-        let cc = 0
-     
-        // for(let key in this.fbos){
-        //     cc++
-        //     const  g = new THREE.PlaneGeometry(2,2);
-        //     const m = new THREE.ShaderMaterial({
-        //         vertexShader: `
-        //         varying vec2 vUv;
-        //             void main() {
-        //                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-        //                 vUv = uv;
-        //             }
-        //         `,
-        //         fragmentShader: `
-        //         varying vec2 vUv;
-        //             uniform sampler2D uTexture${key};
-        //             void main() {  
-        //                 gl_FragColor = texture2D(uTexture${key}, vUv)  * vec4(1.,0.,0.,1.);
-        //                 // gl_FragColor = vec4(1.,0.,0.,1.);
-        //             }
-        //         `,
-        //         uniforms :{
-        //             [`uTexture${key}`] : {
-        //                 value: null
-        //             }
-        //         },
-        //         // wireframe: true
-        //     })
-        //     const mesh = new THREE.Mesh(g,m);
-        //     mesh.position.x = cc  + 2.5 - 7.
-
-        //     this.group.add(mesh);
-            
-        //     this.props.add( this.group);
-          
-        // }
-     
-    }
+  
     createShaderPass(){
         this.advection = new Advection({
             cellScale: this.cellScale,
@@ -121,16 +80,6 @@ export default class Simulation{
             cursor_size: this.options.cursor_size,
             dst: this.fbos.vel_1,
         });
-
-        // this.viscous = new Viscous({
-        //     cellScale: this.cellScale,
-        //     boundarySpace: this.boundarySpace,
-        //     viscous: this.options.viscous,
-        //     src: this.fbos.vel_1,
-        //     dst: this.fbos.vel_viscous1,
-        //     dst_: this.fbos.vel_viscous0,
-        //     dt: this.options.dt,
-        // });
 
         this.divergence = new Divergence({
             cellScale: this.cellScale,
