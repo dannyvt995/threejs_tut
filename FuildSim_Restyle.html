@@ -262,16 +262,16 @@
                         }
 
                         float blendDarken(float base, float blend) {
-	return min(blend,base);
-}
+                            return min(blend,base);
+                        }
 
-vec3 blendDarken(vec3 base, vec3 blend) {
-	return vec3(blendDarken(base.r,blend.r),blendDarken(base.g,blend.g),blendDarken(base.b,blend.b));
-}
+                        vec3 blendDarken(vec3 base, vec3 blend) {
+                            return vec3(blendDarken(base.r,blend.r),blendDarken(base.g,blend.g),blendDarken(base.b,blend.b));
+                        }
 
-vec3 blendDarken(vec3 base, vec3 blend, float opacity) {
-	return (blendDarken(base, blend) * opacity + base * (1.0 - opacity));
-}
+                        vec3 blendDarken(vec3 base, vec3 blend, float opacity) {
+                            return (blendDarken(base, blend) * opacity + base * (1.0 - opacity));
+                        }
                         void main() {
                           vec3 cat = texture2D(textureImg,vec2((vUv.x* ratio ) - .5,vUv.y)).xyz;
                             vec2 vel = texture2D(fuildVel,vUv).xy;
@@ -286,7 +286,7 @@ vec3 blendDarken(vec3 base, vec3 blend, float opacity) {
                         float angle = time * 6.28318; // 2π
 
                             vec3  colVel = pal(vel.x  * 50.2 , vec3(random(vUv),0.5,0.5),vec3(0.5,cos(time),0.5),vec3(1.0,1.0,0.5),vec3(sin(time),0.90,0.30) );
-               colVel =  pal(atan(vel.y ,vel.x ) * 50.2 ,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
+                             colVel =  pal(atan(vel.y ,vel.x ) * 50.2 ,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
                             vec3 saveC =  pal(atan(vUv.y - .5 ,vUv.x - .5) * 1.2 , vec3(.5,0.5,0.5),vec3(0.5,.1,0.5),vec3(1.0,0.5,0.5),vec3(.9,0.1,0.1) );
                            saveC +=  pal(atan(vel.y ,vel.x ) * 50.2 , vec3(.5,0.5,0.5),vec3(0.5,.1,0.5),vec3(1.0,0.5,0.5),vec3(.9,0.1,0.1) );
 
