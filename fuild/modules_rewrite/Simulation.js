@@ -8,7 +8,7 @@ import ExternalForce from "./ExternalForce.js";
 import Divergence from "./Divergence.js";
 import Poisson from "./Poisson.js";
 import Pressure from "./Pressure.js";
-
+import ClearColor from "./ClearColor.js";
 export default class Simulation{
     constructor(props){
         this.props = props;
@@ -137,6 +137,14 @@ export default class Simulation{
             dt: this.options.dt,
         });
 
+
+        this.clearColor = new ClearColor({
+            cellScale: this.cellScale,
+            boundarySpace: this.boundarySpace,
+            dst: this.fbos.vel_0,
+            dst_: this.fbos.vel_1,
+        });
+
         this.poisson = new Poisson({
             cellScale: this.cellScale,
             boundarySpace: this.boundarySpace,
@@ -179,11 +187,11 @@ export default class Simulation{
 
     update(){
 
-        // if(this.options.isBounce){
-        //     this.boundarySpace.set(0, 0);
-        // } else {
-        //     this.boundarySpace.copy(this.cellScale);
-        // }
+        if(this.options.isBounce){
+            this.boundarySpace.set(0, 0);
+        } else {
+            this.boundarySpace.copy(this.cellScale);
+        }
 
       
 
@@ -194,7 +202,7 @@ export default class Simulation{
             mouse_force: this.options.mouse_force,
             cellScale: this.cellScale
         });
-     
+        // this.clearColor.update({iterations:1})
 
         let vel = this.fbos.vel_1;
         

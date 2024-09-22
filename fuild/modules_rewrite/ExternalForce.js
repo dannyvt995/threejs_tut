@@ -4,13 +4,17 @@ import ShaderPass from "./ShaderPass.js";
 import Mouse from "./Mouse.js";
 
 import * as THREE from "three";
+import Renderer from "./Renderer.js";
 
 export default class ExternalForce extends ShaderPass{
     constructor(simProps){
         super({
             output: simProps.dst
         });
-
+        this.force = new THREE.Vector2()
+        this.center = new THREE.Vector2()
+        this.lastMouseCoords = { x: Mouse.coords.x, y: Mouse.coords.y };
+        this.speedFactor = 1;
         this.init(simProps);
     }
 
@@ -25,6 +29,9 @@ export default class ExternalForce extends ShaderPass{
             fragmentShader: externalForceFrag,
             blending: THREE.AdditiveBlending,
             uniforms: {
+                time:{
+                    value:0
+                },
                 px: {
                     value: simProps.cellScale
                 },
@@ -47,7 +54,7 @@ export default class ExternalForce extends ShaderPass{
     update(props){
         const forceX = Mouse.diff.x / 2 * props.mouse_force;
         const forceY = Mouse.diff.y / 2 * props.mouse_force;
-
+ 
         const cursorSizeX = props.cursor_size * props.cellScale.x;
         const cursorSizeY = props.cursor_size * props.cellScale.y;
 
@@ -56,10 +63,31 @@ export default class ExternalForce extends ShaderPass{
 
         const uniforms = this.mouse.material.uniforms;
 
+        this.force.set(forceX,forceY)
+        this.center.set(centerX,centerY)
         uniforms.force.value.set(forceX, forceY);
         uniforms.center.value.set(centerX, centerY);
-        uniforms.scale.value.set(props.cursor_size, props.cursor_size);
+        
 
+        // Tính toán tốc độ di chuyển chuột
+        const deltaX = Mouse.coords.x - this.lastMouseCoords.x;
+        const deltaY = Mouse.coords.y - this.lastMouseCoords.y;
+        let speed = Math.sqrt(deltaX * deltaX + deltaY * deltaY) * 10;
+
+        let sizeOut = 0
+        if(props.cursor_size * speed > 40) {
+            sizeOut = 50
+        }else if(props.cursor_size * speed < 20) {
+            sizeOut = 20
+        }else{
+            sizeOut = props.cursor_size * speed
+        }
+   //uniforms.scale.value.set(sizeOut,sizeOut);
+    uniforms.scale.value.set(props.cursor_size ,props.cursor_size );
+        uniforms.time.value = Renderer.time
+
+        this.lastMouseCoords = { x: Mouse.coords.x, y: Mouse.coords.y };
+        
         super.update();
     }
 

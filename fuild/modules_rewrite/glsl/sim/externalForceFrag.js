@@ -17,10 +17,10 @@ float random (vec2 st) {
 void main(){
 
 
-      vec2 circle = (vUv - 0.5) * 2.0 ;
+      vec2 circle = (vUv  - 0.5) * 2.0 ;
     float d = 1.0-min(length(circle), 1.0);
   //  d *= d;
-    d *= d * d *d * d *d * d* random(vec2(vUv.x,d));
+    d *= d * d *  d * d;
     gl_FragColor = vec4(force * d, 0, 1);
 }
 

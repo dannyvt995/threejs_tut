@@ -15,13 +15,29 @@ void main(){
     float p2 = texture2D(pressure, uv+vec2(0, px.y * step)).r;
     float p3 = texture2D(pressure, uv-vec2(0, px.y * step)).r;
 
-    vec2 v = texture2D(velocity, uv).xy ;
-    vec2 gradP = vec2(p0 - p1, p2 - p3) * 0.1;
-      vec2 center = vec2(0.5, 0.5);
-    vec2 toEdge = normalize(uv - center);
-    gradP -= toEdge * 0.01; // Adjust this value to control the strength of the outward pressure
-    v = v - gradP * dt ;
-    gl_FragColor = vec4(v, 0.0, 1.0);
+ vec2 v = texture2D(velocity, uv).xy;
+    vec2 gradP = vec2(p0 - p1, p2 - p3) * 0.8;
+    
+    // Áp dụng một hệ số giảm nhẹ để làm mịn chuyển động
+    float smoothingFactor = 0.75;
+    v = mix(v, v - gradP * dt, smoothingFactor);
+    
+    // Áp dụng một ngưỡng để giảm thiểu các gợn nhỏ
+    float threshold = 0.01;
+    v = (length(v) < threshold) ? vec2(0.0) : v;
+    
+    // Giới hạn tốc độ tối đa để tránh tụ màu quá mức
+    float maxSpeed = 1.0;
+    v = clamp(v, -maxSpeed, maxSpeed);
+
+
+  
+ vec2 v2 = texture2D(velocity, uv).xy;
+    vec2 gradP2 = vec2(p0 - p1, p2 - p3) * 0.5;
+    v2 =  v2 - gradP2 * dt;
+    
+    // Gán màu cho fragment
+    gl_FragColor = vec4(v2, 0.0, 1.0);
 }
 
 `
