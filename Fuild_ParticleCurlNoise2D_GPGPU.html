@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fuild_ParticleCurlNoise_GPGPU.html</title>
+    <title>Fuild_ParticleCurlNoise2D_GPGPU</title>
 </head>
 <style>
     body {
@@ -46,6 +46,7 @@
 
         uniform float time;
         uniform float delta;
+        uniform float forceMouse;
         uniform sampler2D fuildMap;
         uniform vec2 sizeView;
         uniform bool stopDelta;
@@ -101,8 +102,9 @@
                 life = (posSelf.y + maxYSet) / 2.0;
             }
         
-
-
+            float decreaseVel = 0.1;
+            if(stopDelta) decreaseVel = 0.;
+            posSelf   += velSelf * decreaseVel;
          vec2 uvPos = vec2(
             posSelf.x / sizeView.x + 0.5,
             posSelf.y / sizeView.y + 0.5
@@ -110,14 +112,14 @@
          vec2 velFuild = texture2D(fuildMap,uvPos).xy;
 
 
-       posSelf += vec3(velFuild,0.)  * 1.;
+       posSelf += vec3(velFuild,posSelf.z)  * 1.;
     
 
          
-         if(posSelf.y > 1.) {
-            posSelf.y = -1.;
-            }else if(posSelf.y < -1.) {
-                posSelf.y = -1.;
+         if(posSelf.y > sizeView.y) {
+            posSelf.y = -sizeView.y;
+            }else if(posSelf.y < -sizeView.y) {
+                posSelf.y = -sizeView.y;
             }
 
             if(posSelf.x > 2.) {
@@ -128,14 +130,13 @@
 
 
                 if(posSelf.z > 1.) {
-                    posSelf.z = -1.;
+                    posSelf.z = 0.;
                     }else if(posSelf.z < -1.) {
-                        posSelf.z = -1.;
+                        posSelf.z = 0.;
                     }
 
-                    float decreaseVel = 0.1;
-                    if(stopDelta) decreaseVel = 0.;
-                    posSelf   += velSelf * decreaseVel;
+                
+                  
             
        
              if(!start) posSelf = tmpPos.xyz;
@@ -273,8 +274,8 @@
               
             float posOffset    = mix(posSelf.b, 1.0, .9);
             vec3 acc             = curlNoise(posSelf * posOffset + delta * 0.5);
-            //acc.y 				 += 1.0;
-           // acc.y 				 *= 0.85;
+            acc.y 				 += .5;
+            acc.y 				 *= 0.85;
          
             float speedOffset    = mix(extraSelf.g, 1.0, .9);
        
@@ -381,6 +382,9 @@
         velocityUniforms['start'] = { value: false };
         positionUniforms['stopDelta'] = {value : false}
         velocityUniforms['stopDelta'] = { value: false };
+
+        
+        positionUniforms['forceMouse'] = { value: 0.0 };
 
         const error = gpuCompute.init();
 
@@ -538,6 +542,7 @@
                 uniform vec2 tSize;
                 varying vec2 vUv;
                 varying vec3 vPos;
+                varying vec2 vFuild;
                 ${curl4Noise}
                 void main() {
                     vec2 uvT = vec2(
@@ -551,16 +556,19 @@
                         pos.x / sizeView.x + 0.5,
                         pos.y / sizeView.y + 0.5
                      );
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                       vec2 velfuild = texture2D(fuildMap,uvPos).xy;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(vec3(pos.xy,0.), 1.0);
                   
                     vUv = uvPos;
                     vPos = pos;
-                    gl_PointSize  = 2.;
+                    vFuild = 1.-velfuild;
+                    gl_PointSize  =  max(2.,200. * abs(velfuild.y - velfuild.x));
                 }
             `;
 
     const fragmentShader = `
                 varying vec3 vPos;
+                varying vec2 vFuild;
                     varying vec2 vUv;
                  uniform sampler2D fuildMap;
                     uniform sampler2D fuildPress;
@@ -574,9 +582,9 @@
                            vec2 press = texture2D(fuildPress,vUv).xy;
                   float len = length(vel);
                     vec2 velO = vel * 0.5 + 0.5;
-                    vec3  colVel = pal((vel.y+vel.x) * 8.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
+                    vec3  colVel = pal(abs(vel.y+vel.x ) * 8.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
                   
-                    gl_FragColor = vec4(colVel,.5);
+                    gl_FragColor = vec4(colVel ,1.);
                 }
             `
 
@@ -637,7 +645,7 @@
     
 
 
-                vec3  colVel = pal((vel.y+vel.x) * 8.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
+                vec3  colVel = pal((vel.y+vel.x) * 58.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
                 
                  vec3 color = vec3(vel.x, vel.y, 1.0);
                 color = mix(vec3(1.0), colVel, len);
@@ -668,10 +676,10 @@
     )
     let box = new THREE.Mesh(
         new THREE.BoxGeometry(2,2,2),
-        new THREE.MeshBasicMaterial({color:'blue',transparent:true,opacity:.2})
+        new THREE.MeshBasicMaterial({color:'blue',transparent:true,opacity:1})
     )
   scene.add(points)
- scene.add(planeCheck)
+//  scene.add(planeCheck)
     }
    
     function runGPGPU() {
@@ -712,6 +720,7 @@
         PointMat.uniforms.time.value = Renderer.time
     
       PointMat.uniforms.speedmouse.value = simulation.externalForce.speed
+      positionUniforms['forceMouse'] = { value: simulation.externalForce.speed };
    //   PointMat.uniforms.externalForce.value = simulation.externalForce.props.output.texture
     }
 

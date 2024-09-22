@@ -82,9 +82,9 @@ export default class ExternalForce extends ShaderPass{
         this.speed = speed
         let sizeOut = 0
         if(props.cursor_size * speed > 40) {
-            sizeOut = 10
-        }else if(props.cursor_size * speed < 7) {
-            sizeOut = 40
+            sizeOut = 1
+        }else if(props.cursor_size * speed < 10) {
+            sizeOut = 50
         }else{
             sizeOut = props.cursor_size * speed
         }

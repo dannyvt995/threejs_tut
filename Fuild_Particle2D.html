@@ -56,9 +56,9 @@
         options: {
             iterations_poisson: 5,
             iterations_viscous: 32,
-            mouse_force: 70,
-            resolution: 0.5,
-            cursor_size: 30,
+            mouse_force: 10,
+            resolution: 0.1,
+            cursor_size: 10,
             viscous: 30,
             isBounce: false,
             dt: 0.054,
@@ -141,7 +141,7 @@
                     vec2 velO = vel * 0.5 + 0.5;
                     vec3  colVel = pal((vel.y+vel.x) * 8.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
                   
-                    gl_FragColor = vec4( colVel,.5);
+                    gl_FragColor = vec4( colVel,1.);
                 }
             `
 
