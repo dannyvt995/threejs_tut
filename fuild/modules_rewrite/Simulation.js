@@ -8,7 +8,7 @@ import ExternalForce from "./ExternalForce.js";
 import Divergence from "./Divergence.js";
 import Poisson from "./Poisson.js";
 import Pressure from "./Pressure.js";
-import ClearColor from "./ClearColor.js";
+import ClearColor from "./clearColor.js";
 export default class Simulation{
     constructor(props){
         this.props = props;
@@ -137,14 +137,7 @@ export default class Simulation{
             dt: this.options.dt,
         });
 
-
-        this.clearColor = new ClearColor({
-            cellScale: this.cellScale,
-            boundarySpace: this.boundarySpace,
-            dst: this.fbos.vel_0,
-            dst_: this.fbos.vel_1,
-        });
-
+  
         this.poisson = new Poisson({
             cellScale: this.cellScale,
             boundarySpace: this.boundarySpace,
@@ -152,6 +145,12 @@ export default class Simulation{
             dst: this.fbos.pressure_1,
             dst_: this.fbos.pressure_0,
         });
+
+
+        this.clearColor = new ClearColor({
+            dst: this.fbos.vel_0,
+        });
+
 
         this.pressure = new Pressure({
             cellScale: this.cellScale,
@@ -196,14 +195,14 @@ export default class Simulation{
       
 
         this.advection.update(this.options);
-
+    
+        
         this.externalForce.update({
             cursor_size: this.options.cursor_size,
             mouse_force: this.options.mouse_force,
             cellScale: this.cellScale
         });
-        // this.clearColor.update({iterations:1})
-
+   
         let vel = this.fbos.vel_1;
         
         this.divergence.update({vel});
@@ -214,6 +213,9 @@ export default class Simulation{
 
         this.pressure.update({ vel , pressure});
 
-      
+        // this.clearColor.update({
+        //     velocity: this.fbos.vel_1.texture,
+        //     fadeRate: 0.0 // Bạn có thể điều chỉnh giá trị này để thay đổi tốc độ mờ dần
+        // });
     }
 }

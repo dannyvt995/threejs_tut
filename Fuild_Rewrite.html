@@ -112,13 +112,15 @@
      //   color += vec3(len * 0.05);
         
         // Áp dụng độ mờ dựa trên vận tốc
-        float alpha = smoothstep(0.0, 0.5, len);
-        vec3 fc = mix(vec3(0.1),color * 10.,alpha);
+        float alpha = smoothstep(0.0, 0.9, len);
+        vec3 fc = mix(vec3(0.),color * 10.,alpha);
         gl_FragColor = vec4( 1. - (color * alpha),1.);
 
     //     float aa = 0.01;
     //    if(fc.x < aa) fc  = vec3(0.1);
         gl_FragColor = vec4(fc,1.);
+
+      //  gl_FragColor = vec4(vec3(len),1.);
                 }
             `
 

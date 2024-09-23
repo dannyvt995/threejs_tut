@@ -1,18 +1,12 @@
-
-
-export  const   clearColorFrag = `
+export const clearColorFrag = `
 precision highp float;
-uniform sampler2D pressure;
-uniform sampler2D divergence;
-uniform float delta;
-uniform vec2 px;
+uniform sampler2D velocity;
+uniform float fadeRate;
 varying vec2 uv;
 
-void main(){    
-    vec3 color = texture2D(pressure, uv).rgb;
-        color = vec4(1.);
-    gl_FragColor = vec4(color,1.);
+void main() {    
+    vec4 color = texture2D(velocity, uv);
+    color.rgb *= (1.0 - fadeRate);
+    gl_FragColor = color;
 }
-
-
-`
+`;
