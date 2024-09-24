@@ -35,8 +35,8 @@ v = clamp(v, -maxSpeed, maxSpeed);
  vec2 v2 = texture2D(velocity, uv).xy;
     vec2 gradP2 = vec2(p0 - p1, p2 - p3) * 0.5;
     v2 =  v2 - gradP2 * dt;
-    
-    // Gán màu cho fragment
+  
+   // if(v2.x < .7 && v2.y < .7)   v2 *= 0.9;
     gl_FragColor = vec4(v2, 0.0, 1.0);
 }
 
