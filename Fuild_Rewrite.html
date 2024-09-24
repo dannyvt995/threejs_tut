@@ -41,7 +41,7 @@
  
     
     const scene = new THREE.Scene();
-    scene.background = 0x000000
+    
     const light = new THREE.AmbientLight(0x404040); // soft white light
     scene.add(light);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
@@ -99,9 +99,37 @@
 
                 void main() {
                      vec2 vel = texture2D(fuildMap, vUv).xy;
-    
+        vec2 press = texture2D(fuildPress, vUv).xy;
+        float len = length(vel);
+        
+        // Tăng cường độ của vận tốc để tạo vệt rõ hơn
+      //  vel *= 1.5;
+        
+        // Sử dụng hàm pal() để tạo màu sắc dựa trên vận tốc
+        vec3 color = pal(len * 70.0, vec3(0.5,0.5,0.5), vec3(0.5,0.5,0.5), vec3(1.0,1.0,0.5), vec3(0.8,0.90,0.30));
+        
+        // Thêm hiệu ứng phát sáng
+        //color += vec3(len * 0.05);
+        
+        // Áp dụng độ mờ dựa trên vận tốc
+        float alpha = smoothstep(0.0, 0.95, len * .7);
+        vec3 fc = mix(vec3(0.),color * 8.,alpha);
 
-      gl_FragColor = vec4(vec3(vel.xy,1.),1.);
+         // Tính độ sáng của pixel
+    float luminance = dot(fc, vec3(0.299, 0.587, 0.114));
+
+    // Ngưỡng để quyết định xem pixel có sáng hay không
+    float threshold = 0.1;
+
+    // Nếu pixel sáng, làm tối nó
+    if (luminance > threshold) {
+        fc *= 0.0001;  // giảm cường độ của màu (làm tối)
+    }
+       gl_FragColor = vec4(1.-fc,1.);
+
+
+
+    //   gl_FragColor = vec4(color,1.);
                 }
             `
 
