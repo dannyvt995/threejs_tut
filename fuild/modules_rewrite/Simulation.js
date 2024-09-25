@@ -8,7 +8,7 @@ import ExternalForce from "./ExternalForce.js";
 import Divergence from "./Divergence.js";
 import Poisson from "./Poisson.js";
 import Pressure from "./Pressure.js";
-import ClearColor from "./clearColor.js";
+import ClearColor from "./ClearColor.js";
 export default class Simulation{
     constructor(props){
         this.props = props;
