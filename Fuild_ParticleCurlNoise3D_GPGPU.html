@@ -13,14 +13,16 @@
         overflow: hidden;
         background-color: black;
     }
+
     .monitor {
         position: fixed;
-        top:0;
-        left:0;
+        top: 0;
+        left: 0;
         z-index: 9999;
     }
+
     .monitor button {
-        padding : 1rem 2rem;
+        padding: 1rem 2rem;
     }
 </style>
 
@@ -51,8 +53,9 @@
         uniform vec2 sizeView;
         uniform bool stopDelta;
         uniform bool start;
-
-
+        uniform mat4 projectionMatrix;
+        uniform mat4 viewMatrixOrbit;
+     
         vec2 rotate(vec2 v, float a) {
             float s = sin(a);
             float c = cos(a);
@@ -66,6 +69,23 @@
             return fract(sin(dot(st.xy,
                                  vec2(12.9898,78.233)))*
                 43758.5453123);
+        }
+
+        mat4 rotationMatrix(vec3 axis, float angle) {
+            axis = normalize(axis);
+            float s = sin(angle);
+            float c = cos(angle);
+            float oc = 1.0 - c;
+            
+            return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+                        oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+                        oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+                        0.0,                                0.0,                                0.0,                                1.0);
+        }
+        
+        vec3 rotate(vec3 v, vec3 axis, float angle) {
+            mat4 m = rotationMatrix(axis, angle);
+            return (m * vec4(v, 1.0)).xyz;
         }
 
         #define PI 3.141592653
@@ -106,18 +126,24 @@
             float decreaseVel = 0.1;
             if(stopDelta) decreaseVel = 0.;
             posSelf   += velSelf * decreaseVel;
-
-
+         
+            mat4 invertGG = inverse(projectionMatrix * viewMatrix);
+           vec4 viewPos = vec4(posSelf,1.); 
          
          vec2 uvPos = vec2(
-            posSelf.x / sizeView.x + 0.5,
-            posSelf.y / sizeView.y + 0.5
+            viewPos.x / sizeView.x + 0.5,
+            viewPos.y / sizeView.y + 0.5
          );
+
+
+        vec4 projCoord = vec4(vec3(uvPos,posSelf.z), 1.0);
+
+         vec4 fluidColor = texture2DProj(fuildMap, projCoord);
          vec2 velFuild = texture2D(fuildMap,uvPos).xy;
 
 
-       posSelf += vec3(velFuild,posSelf.z)  * 1.;
-    
+      // posSelf += vec3(velFuild,0.)  * 2.;
+       posSelf += vec3(fluidColor.xyz)  * .0001;
 
          
          if(posSelf.y > sizeView.y) {
@@ -133,17 +159,15 @@
                 }
 
 
-                if(posSelf.z > 1.) {
-                    posSelf.z = 0.;
-                    }else if(posSelf.z < -1.) {
-                        posSelf.z = 0.;
-                    }
+             
 
                 
                   
             
        
              if(!start) posSelf = tmpPos.xyz;
+
+
             gl_FragColor = vec4(  posSelf, 1.  );
 
         }
@@ -303,7 +327,7 @@
         }
 
     </script>
-    <script id="frag_Extra_GPGPU" type="x-shader/x-fragment">
+<script id="frag_Extra_GPGPU" type="x-shader/x-fragment">
         void main() {
             vec2 uv = gl_FragCoord.xy / resolution.xy;
             vec4 extra = texture2D( textureExtra, uv );
@@ -313,23 +337,23 @@
 <script type="module">
     import * as THREE from "three";
 
-    import Renderer from "./fuild/modules_curlNoise/Renderer.js";
-    import Simulation from "./fuild/modules_curlNoise/Simulation.js";
-    import Mouse from "./fuild/modules_curlNoise/Mouse.js";
+    import Renderer from "./fuild/modules_curlNoise3d/Renderer.js";
+    import Simulation from "./fuild/modules_curlNoise3d/Simulation.js";
+    import Mouse from "./fuild/modules_curlNoise3d/Mouse.js";
     import { calcSizeFitCamPerspective } from './utils/calcSizeFitCamPerspective.js'
     import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
     import { OrbitControls } from 'three/addons/OrbitControls.js';
 
 
-    import {curl4Noise} from './glsl/curl4Noise.js'
- 
+    import { curl4Noise } from './glsl/curl4Noise.js'
+
     let controlsMain
     //GPGPU
     let gpuCompute
     let widthTexture = 258
     let velocityVariable, positionVariable, extraVariable
     let positionUniforms, velocityUniforms, extraUniforms
-    
+
     let now, last, delta
     let wView = window.innerWidth
     let hView = window.innerHeight
@@ -371,7 +395,7 @@
         positionUniforms['time'] = { value: 0.0 };
         positionUniforms['sizeView'] = { value: new THREE.Vector2(0, 0) };
 
-        
+
 
 
         positionUniforms['delta'] = { value: 0.0 };
@@ -379,18 +403,18 @@
         velocityUniforms['delta'] = { value: 0.0 };
         extraUniforms['time'] = { value: 0.0 };
         extraUniforms['delta'] = { value: 0.0 };
-        positionUniforms['fuildMap'] = {value : null}
-        velocityUniforms['fuildMap'] = {value : null}
+        positionUniforms['fuildMap'] = { value: null }
+        velocityUniforms['fuildMap'] = { value: null }
 
-        positionUniforms['start'] = {value : false}
+        positionUniforms['start'] = { value: false }
         velocityUniforms['start'] = { value: false };
-        positionUniforms['stopDelta'] = {value : false}
+        positionUniforms['stopDelta'] = { value: false }
         velocityUniforms['stopDelta'] = { value: false };
 
-        
+
         positionUniforms['forceMouse'] = { value: 0.0 };
         positionUniforms['projectionMatrix'] = { value: new THREE.Matrix4() };
-        positionUniforms['viewMatrix'] = { value: new THREE.Matrix4()};
+        positionUniforms['viewMatrixOrbit'] = { value: new THREE.Matrix4() };
         const error = gpuCompute.init();
 
         if (error !== null) {
@@ -423,7 +447,7 @@
             const y = Math.random() * 2 - 1;
             const z = Math.random() * 2 - 1;
             let vv = new THREE.Vector3(x, y, z)
-         
+
             arrT[k + 0] = vv.x
             arrT[k + 1] = vv.y
             arrT[k + 2] = vv.z
@@ -431,21 +455,21 @@
         }
     }
     function fillExtraTexture(texture) {
-            const arrT = texture.image.data;
-            for (let k = 0, kl = arrT.length; k < kl; k += 4) {
-                const x = Math.random() * 2 - 1;
-                const y = Math.random() * 2 - 1;
-                const z = Math.random() * 2 - 1;
-                arrT[k + 0] = x
-                arrT[k + 1] = y
-                arrT[k + 2] = z
-                arrT[k + 3] = 1
-            }
+        const arrT = texture.image.data;
+        for (let k = 0, kl = arrT.length; k < kl; k += 4) {
+            const x = Math.random() * 2 - 1;
+            const y = Math.random() * 2 - 1;
+            const z = Math.random() * 2 - 1;
+            arrT[k + 0] = x
+            arrT[k + 1] = y
+            arrT[k + 2] = z
+            arrT[k + 3] = 1
         }
+    }
 
     Renderer.init();
     Mouse.init();
-    
+
     const buttonStop = document.getElementById("stop")
     const buttonStart = document.getElementById("start")
     buttonStop.onclick = () => {
@@ -457,7 +481,7 @@
         positionUniforms['start'].value = !positionUniforms['start'].value;
     };
     initComputeRenderer(Renderer.renderer)
-        
+
 
     const scene = new THREE.Scene();
     scene.background = 0x000000
@@ -468,8 +492,8 @@
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.z = 2.5
-   //controlsMain = new OrbitControls(camera, Renderer.renderer.domElement);
-    
+    controlsMain = new OrbitControls(camera, Renderer.renderer.domElement);
+
     const [widthFit, heightFit] = calcSizeFitCamPerspective(camera)
     positionUniforms['sizeView'] = { value: new THREE.Vector2(widthFit, heightFit) };
     const simulation = new Simulation({
@@ -481,61 +505,62 @@
             cursor_size: 20,
             viscous: 30,
             isBounce: false,
-            dt: 0.9,
+            dt: 0.1,
             isViscous: false,
             BFECC: false
         }
     });
-
+    const axesHelper = new THREE.AxesHelper(5);
+    scene.add(axesHelper);
     const textureImg = new THREE.TextureLoader().load('textures/cat.jpg');
     initPoint()
     function initPoint() {
         const gridSize = widthTexture; // Số điểm theo mỗi chiều
-            const spacing = 1.0 / (gridSize - 1); // Khoảng cách giữa các điểm
+        const spacing = 1.0 / (gridSize - 1); // Khoảng cách giữa các điểm
 
-            // Tạo dữ liệu điểm cho lưới
-            const vertices = [];
-            const extra = [];
-            const uvs = [];
-            const radius = 1.0;
-            for (let x = 0; x < gridSize; x++) {
-                for (let y = 0; y < gridSize; y++) {
-                    // Tính toán tọa độ UV cho điểm
-                    const u = x * spacing;
-                    const v = y * spacing;
+        // Tạo dữ liệu điểm cho lưới
+        const vertices = [];
+        const extra = [];
+        const uvs = [];
+        const radius = 1.0;
+        for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridSize; y++) {
+                // Tính toán tọa độ UV cho điểm
+                const u = x * spacing;
+                const v = y * spacing;
 
-                    //// rando
-                    // let posX = u * 2.0 - 1.0;
-                    // let posY = v * 2.0 - 1.0;
-                    // vertices.push(posX * 2., posY * 2., 0);
-                    //// sphere
-                  
-                    const theta = u * Math.PI * 2; // Góc xoay quanh trục Y (longitude)
-                    const phi = v * Math.PI;       // Góc từ trên xuống dưới (latitude)
+                //// rando
+                // let posX = u * 2.0 - 1.0;
+                // let posY = v * 2.0 - 1.0;
+                // vertices.push(posX * 2., posY * 2., 0);
+                //// sphere
 
-                    // Tính toán tọa độ x, y, z trên bề mặt hình cầu
-                    let posX = radius * Math.sin(phi) * Math.cos(theta);
-                    let posY = radius * Math.sin(phi) * Math.sin(theta);
-                    let posZ = radius * Math.cos(phi);
-                    vertices.push(posX, posY, posZ);
+                const theta = u * Math.PI * 2; // Góc xoay quanh trục Y (longitude)
+                const phi = v * Math.PI;       // Góc từ trên xuống dưới (latitude)
 
-                    let extraX = Math.random() * 2 - 1
-                    let extraY = Math.random() * 2 - 1
-                 
-                    extra.push(extraX, extraY, 0);
-                    uvs.push(u, v);
-                }
+                // Tính toán tọa độ x, y, z trên bề mặt hình cầu
+                let posX = radius * Math.sin(phi) * Math.cos(theta);
+                let posY = radius * Math.sin(phi) * Math.sin(theta);
+                let posZ = radius * Math.cos(phi);
+                vertices.push(posX, posY, posZ);
+
+                let extraX = Math.random() * 2 - 1
+                let extraY = Math.random() * 2 - 1
+
+                extra.push(extraX, extraY, 0);
+                uvs.push(u, v);
             }
-            const PointGeo = new THREE.BufferGeometry();
-            const positionAttribute = new THREE.BufferAttribute(new Float32Array(vertices), 3);
-            const extraAttribute = new THREE.BufferAttribute(new Float32Array(extra), 3);
-            const uvAttribute = new THREE.BufferAttribute(new Float32Array(uvs), 2);
-            PointGeo.setAttribute('position', positionAttribute);
-            PointGeo.setAttribute('extra', extraAttribute);
-            PointGeo.setAttribute('uv', uvAttribute);
+        }
+        const PointGeo = new THREE.BufferGeometry();
+        const positionAttribute = new THREE.BufferAttribute(new Float32Array(vertices), 3);
+        const extraAttribute = new THREE.BufferAttribute(new Float32Array(extra), 3);
+        const uvAttribute = new THREE.BufferAttribute(new Float32Array(uvs), 2);
+        PointGeo.setAttribute('position', positionAttribute);
+        PointGeo.setAttribute('extra', extraAttribute);
+        PointGeo.setAttribute('uv', uvAttribute);
 
 
-    const vertexShader = `
+        const vertexShader = `
                 precision highp float;
                 uniform float time;
                 uniform sampler2D fuildMap;
@@ -543,6 +568,9 @@
                 uniform sampler2D tPos_gpu;
                 uniform sampler2D tVel_gpu;
                 uniform float speedmouse;
+
+                     uniform mat4 p;
+                          uniform mat4 m;
                 uniform vec2 sizeView;
                 uniform vec2 tSize;
                 varying vec2 vUv;
@@ -562,7 +590,7 @@
                         pos.y / sizeView.y + 0.5
                      );
                        vec2 velfuild = texture2D(fuildMap,uvPos).xy;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(vec3(pos.xy,0.), 1.0);
+                    gl_Position = p * m * vec4(pos, 1.0);
                   
                     vUv = uvPos;
                     vPos = pos;
@@ -571,7 +599,7 @@
                 }
             `;
 
-    const fragmentShader = `
+        const fragmentShader = `
                 varying vec3 vPos;
                 varying vec2 vFuild;
                     varying vec2 vUv;
@@ -593,47 +621,94 @@
                 }
             `
 
-   PointMat = new THREE.ShaderMaterial({
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
-        transparent: true,
-        depthWrite: false,
-        blendSrcAlpha: 1,
-        uniforms: {
-            speedmouse:{
-                value:0
-            },
-            time: {
-                value: 0
-            },
-            fuildMap: {
-                value: simulation.fbos.vel_0.texture
-            },
-            fuildPress: {
-                value: simulation.fbos.pressure_1.texture
-            },
-            sizeView: {
-                value: new THREE.Vector2(widthFit, heightFit)
-            },
-            tPos_gpu :{value:null},
-            tVel_gpu :{value:null},
-            tSize:{value: new THREE.Vector2(widthTexture,widthTexture)}
+        PointMat = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blendSrcAlpha: 1,
+            uniforms: {
+                speedmouse: {
+                    value: 0
+                },
+                time: {
+                    value: 0
+                },
+                fuildMap: {
+                    value: simulation.fbos.vel_0.texture
+                },
+                fuildPress: {
+                    value: simulation.fbos.pressure_1.texture
+                },
+                sizeView: {
+                    value: new THREE.Vector2(widthFit, heightFit)
+                },
+                tPos_gpu: { value: null },
+                tVel_gpu: { value: null },
+                tSize: { value: new THREE.Vector2(widthTexture, widthTexture) },
+                p : {value:new THREE.Matrix4()},
+                m : {value:new THREE.Matrix4()},
+            }
+        });
+
+
+        let points = new THREE.Points(PointGeo, PointMat);
+
+
+
+        let box = new THREE.Mesh(
+            new THREE.BoxGeometry(2, 2, 2),
+            new THREE.MeshBasicMaterial({ color: 'blue', transparent: true, opacity: 1 })
+        )
+        scene.add(points)
+
+    }
+
+    function runGPGPU() {
+
+        positionUniforms['time'].value = now / 1000;
+        positionUniforms['delta'].value = delta;
+
+        velocityUniforms['time'].value = now / 1000;
+        velocityUniforms['delta'].value = delta;
+
+      //  positionUniforms['fuildMap'].value = simulation.fbos.vel_0.texture
+
+        gpuCompute.compute();
+        const texturePosOut = gpuCompute.getCurrentRenderTarget(positionVariable).texture;
+        const textureVelOut = gpuCompute.getCurrentRenderTarget(velocityVariable).texture;
+
+
+
+
+
+        if (PointMat) {
+            PointMat.uniforms.tPos_gpu.value = texturePosOut
+            PointMat.uniforms.tVel_gpu.value = textureVelOut
         }
+
+    }
+    const targetFboOrtho = new THREE.WebGLRenderTarget(wView, hView, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat
     });
+    let sceneOrtho, cameraOrtho, planeOrtho
 
-
-    let points = new THREE.Points(PointGeo, PointMat);
-
-
-    let planeMat = new THREE.ShaderMaterial({
-        vertexShader : `
+    SceneOrtho()
+    function SceneOrtho() {
+        sceneOrtho = new THREE.Scene()
+        cameraOrtho = new THREE.OrthographicCamera(- 2, 2, 2, -2, 0, 1);
+    
+        let planeMat = new THREE.ShaderMaterial({
+            vertexShader: `
             varying vec2 vUv;
             void main() {
                   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                   vUv = uv;
             }
         `,
-        fragmentShader : `
+            fragmentShader: `
             varying vec2 vUv;
             uniform sampler2D fuildMap;
                   uniform sampler2D externalForce;
@@ -650,84 +725,64 @@
     
 
 
-                vec3  colVel = pal((vel.y+vel.x) * 58.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
+                vec3  colVel = pal(len * 10.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
                 
                  vec3 color = vec3(vel.x, vel.y, 1.0);
                 color = mix(vec3(1.0), colVel, len);
                 
-                gl_FragColor = vec4(1.-color,1.);
+                gl_FragColor = vec4(1.-colVel,1.);
             }
         `,
-        uniforms: {
-            externalForce : {
-                value : simulation.externalForce.props.output.texture
+            uniforms: {
+                externalForce: {
+                    value: simulation.externalForce.props.output.texture
+                },
+                fuildMap: {
+                    value: simulation.fbos.vel_0.texture
+                },
+                fuildPress: {
+                    value: simulation.fbos.pressure_1.texture
+                },
+
             },
-            fuildMap: {
-                value: simulation.fbos.vel_0.texture
-            },
-            fuildPress: {
-                value: simulation.fbos.pressure_1.texture
-            },
-           
-        },
-        wireframe:false,
-        transparent:true,
-        blending:THREE.AdditiveBlending,
-    })
-    let planeCheck = new THREE.Mesh(
-        new THREE.PlaneGeometry(widthFit,heightFit),
-        planeMat,
-        
-    )
-    let box = new THREE.Mesh(
-        new THREE.BoxGeometry(2,2,2),
-        new THREE.MeshBasicMaterial({color:'blue',transparent:true,opacity:1})
-    )
-  scene.add(points)
-//  scene.add(planeCheck)
-    }
-   
-    function runGPGPU() {
+            wireframe: false,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+        })
+        let planeCheck = new THREE.Mesh(
+            new THREE.PlaneGeometry(4, 4),
+            planeMat,
 
-        positionUniforms['time'].value = now / 1000;
-        positionUniforms['delta'].value = delta;
-
-        velocityUniforms['time'].value = now / 1000;
-        velocityUniforms['delta'].value = delta;
-
-        positionUniforms['fuildMap'].value = simulation.fbos.vel_0.texture
-
-        gpuCompute.compute();
-        const texturePosOut = gpuCompute.getCurrentRenderTarget(positionVariable).texture;
-        const textureVelOut = gpuCompute.getCurrentRenderTarget(velocityVariable).texture;
-
-
-        
-
-
-        if (PointMat) {
-            PointMat.uniforms.tPos_gpu.value = texturePosOut
-            PointMat.uniforms.tVel_gpu.value = textureVelOut
-        }
+        )
+        sceneOrtho.add(planeCheck)
 
     }
-
     Renderer.renderer.setAnimationLoop(animate);
     function animate() {
 
         Mouse.update();
         Renderer.update();
-      
+
         simulation.update()
         runGPGPU()
         Renderer.renderer.setRenderTarget(null);
         Renderer.renderer.render(scene, camera);
         PointMat.uniforms.time.value = Renderer.time
-      PointMat.uniforms.speedmouse.value = simulation.externalForce.speed
-      positionUniforms['forceMouse'] = { value: simulation.externalForce.speed };
-    //   positionUniforms['projectionMatrix'] = { value: controlsMain.object.projectionMatrix };
-    //   positionUniforms['viewMatrix'] = { value: controlsMain.object.matrixWorldInverse};
-   //   PointMat.uniforms.externalForce.value = simulation.externalForce.props.output.texture
+        PointMat.uniforms.speedmouse.value = simulation.externalForce.speed
+        positionUniforms['forceMouse'] = { value: simulation.externalForce.speed };
+        positionUniforms['projectionMatrix'] = { value: controlsMain.object.projectionMatrix };
+        positionUniforms['viewMatrixOrbit'] = { value: controlsMain.object.matrixWorldInverse };
+
+        PointMat.uniforms.p.value = controlsMain.object.projectionMatrix
+        PointMat.uniforms.m.value = controlsMain.object.matrixWorldInverse
+
+     
+        Renderer.renderer.setRenderTarget(null);
+        Renderer.renderer.setRenderTarget(targetFboOrtho);
+        Renderer.renderer.render(sceneOrtho, cameraOrtho);
+        positionUniforms['fuildMap'] = { value: targetFboOrtho.texture }
+       
+        //   PointMat.uniforms.externalForce.value = simulation.externalForce.props.output.texture
     }
 
 </script>

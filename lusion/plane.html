@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>three.js webgl2 - volume - cloud</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+</head>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+    }
+</style>
+
+<body>
+
+    <script type="importmap">
+            {
+                "imports": {
+                    "three": "../three.module.js",
+                    "three/addons/": "../jsm/"
+                }
+            }
+		</script>
+
+    <script type="module">
+        import Stats from 'three/addons/stats.module.js';
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
+
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+
+        let matPLane, gui
+        let time = 0; // Biến lưu trữ thời gian tổng
+        let lastTime = performance.now(); // Lưu thời gian khởi đầu
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 1;
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        const orbitCOntrol = new OrbitControls(camera, renderer.domElement)
+        const textureImg = new THREE.TextureLoader().load('../textures/cat.jpg');
+        const light = new THREE.AmbientLight(0x404040); // soft white light
+        scene.add(light);
+
+        const plane = new THREE.PlaneGeometry(1, 16 / 32, 32, 16)
+        const vertexShader = /* glsl */`
+        varying vec2 vUv;
+        uniform float time;
+        uniform vec3 u_position;
+        uniform vec4 u_quaternion;
+        uniform vec3 u_scale;
+        uniform vec2 u_domXYFrom;
+        uniform vec2 u_domWHFrom;
+        uniform vec2 u_domXY;
+        uniform vec2 u_domWH;
+        uniform vec2 u_domPivot;
+        uniform vec4 u_domPadding;
+        uniform float u_showRatio;
+
+        vec3 qrotate(vec4 q, vec3 v) {
+            return v+2.*cross(q.xyz, cross(q.xyz, v)+q.w*v);
+        }
+        vec3 getBasePosition(in vec3 pos, in vec2 domWH) {
+            vec3 basePos = vec3((pos.xy)*domWH-u_domPivot, pos.z);
+            basePos.xy += mix(-u_domPadding.xz, u_domPadding.yw, pos.xy);
+            return basePos;
+        }
+        float linearStep(float edge0, float edge1, float x) {
+            return clamp((x-edge0)/(edge1-edge0), 0.0, 1.0);
+        }
+        vec3 getScreenPosition(in vec3 basePos, in vec2 domXY) {
+            vec3 screenPos = qrotate(u_quaternion, basePos*u_scale)+vec3(u_domPivot.xy, 0.);
+            screenPos = (screenPos+vec3(domXY, 0.)+u_position)*vec3(1., -1., 1.);
+            return screenPos;
+        }
+        float cubicBezier(float p0, float p1, float p2, float p3, float t) {
+            float c = (p1-p0)*3.;
+            float b = (p2-p1)*3.-c;
+            float a = p3-p0-c-b;
+            float t2 = t*t;
+            float t3 = t2*t;
+            return a*t3+b*t2+c*t+p0;
+        }
+        float easeOutBack(float t) {
+            return cubicBezier(0., 1.3, 1.1, 1., t);
+        }
+            
+        void main() {
+            float v_showRatio;
+            vec3 pos = position;
+           
+
+            float placementWeight = 1.-(pow(position.x*position.x, 0.75)+pow(1.-position.y, 1.5))/2.;
+            v_showRatio = (smoothstep(placementWeight*0.3, 0.7+placementWeight*0.3, u_showRatio));
+            vec2 domXY = mix(u_domXYFrom, u_domXY, v_showRatio);
+            vec2 domWH = mix(u_domWHFrom, u_domWH, v_showRatio);
+            domXY.x += mix(domWH.x, 0., cos(v_showRatio*3.1415926*2.)*0.5+0.5)*0.1;
+            vec3 basePos = getBasePosition(position, domWH);
+            float rot = (smoothstep(0., 1., v_showRatio)-v_showRatio)*-0.5;
+            vec3 rotBasePos = qrotate(vec4(0., 0., sin(rot), cos(rot)), pos);
+            vec3 screenPos = getScreenPosition(rotBasePos , domXY);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(screenPos, 1.0);
+
+            vUv = uv;
+         
+        }
+        `;
+
+
+        const fragmentShader = /* glsl */`
+        uniform sampler2D textureImg;
+        uniform float time;
+        uniform float delta;
+        varying vec2 vUv;
+        void main() {
+            
+            vec4 color = texture2D(textureImg, vUv.xy)*0.1633;
+            vec2 delta = vec2(delta,0.07);
+        
+            color += texture2D(textureImg, vUv.xy-delta)*0.1531;
+            color += texture2D(textureImg, vUv.xy+delta)*0.1531;
+            delta += delta;
+            color += texture2D(textureImg, vUv.xy-delta)*0.12245;
+            color += texture2D(textureImg, vUv.xy+delta)*0.12245;
+            delta += delta;
+            color += texture2D(textureImg, vUv.xy-delta)*0.0918;
+            color += texture2D(textureImg, vUv.xy+delta)*0.0918;
+            delta += delta;
+            color += texture2D(textureImg, vUv.xy-delta)*0.051;
+            color += texture2D(textureImg, vUv.xy+delta)*0.051;
+            gl_FragColor = color;
+        
+        }
+        `;
+        matPLane = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            uniforms: {
+                time:{value:0},
+                delta:{value:0},
+                u_position: { value: new THREE.Vector3() },
+                u_quaternion: { value: new THREE.Vector4(0, 0, 0, 1) },
+                u_scale: { value: new THREE.Vector3(1, 1, 1) },
+                u_domXYFrom: { value: new THREE.Vector2(76.8000, 196.7625) },
+                u_domWHFrom: { value: new THREE.Vector2(620, 349) },
+                u_domXY: { value: new THREE.Vector2(76.8000, 143.7588) },
+                u_domWH: { value: new THREE.Vector2(1383, 554) },
+                u_domPivot: { value: new THREE.Vector2(691.5000, 277) },
+                u_domPadding: { value: new THREE.Vector4(0, 0, 0, 0) },
+                u_showRatio: { value: 0 },
+                textureImg : {value:textureImg}
+            },
+            wireframe: false,
+            side:2
+        })
+    
+        const mesh = new THREE.Mesh(plane, matPLane)
+        console.log(mesh)
+        scene.add(mesh)
+
+
+
+
+
+        initGui()
+
+        function initGui() {
+
+            gui = new GUI();
+            // Tạo các control cho từng uniform
+            const params = {
+                u_position: { x: 0, y: 0, z: 0 }, // Vec3
+                u_quaternion: { x: 0, y: 0, z: 0, w: 1 }, // Vec4
+                u_scale: { x: 1, y: 1, z: 1 }, // Vec3
+                u_domXYFrom: { x: 0, y: 0 }, // Vec2
+                u_domWHFrom: { width: 0, height: 0 }, // Vec2
+                u_domXY: { x: 0, y: 0 }, // Vec2
+                u_domWH: { width: 0, height: 0 }, // Vec2
+                u_domPivot: { x: 0, y: 0 }, // Vec2
+                u_domPadding: { left: 0, top: 0, right: 0, bottom: 0 }, // Vec4
+                u_showRatio: 0. // Float
+            };
+
+            // Thêm các điều khiển vào GUI
+            gui.add(params.u_position, 'x', -10, 10).name('Position X').onChange(updateUniforms);
+            gui.add(params.u_position, 'y', -10, 10).name('Position Y').onChange(updateUniforms);
+            gui.add(params.u_position, 'z', -10, 10).name('Position Z').onChange(updateUniforms);
+
+            gui.add(params.u_quaternion, 'x', -1, 1).name('Quaternion X').onChange(updateUniforms);
+            gui.add(params.u_quaternion, 'y', -1, 1).name('Quaternion Y').onChange(updateUniforms);
+            gui.add(params.u_quaternion, 'z', -1, 1).name('Quaternion Z').onChange(updateUniforms);
+            gui.add(params.u_quaternion, 'w', -1, 1).name('Quaternion W').onChange(updateUniforms);
+
+            gui.add(params.u_scale, 'x', 0.1, 5).name('Scale X').onChange(updateUniforms);
+            gui.add(params.u_scale, 'y', 0.1, 5).name('Scale Y').onChange(updateUniforms);
+            gui.add(params.u_scale, 'z', 0.1, 5).name('Scale Z').onChange(updateUniforms);
+
+            gui.add(params.u_domXYFrom, 'x', 0, window.innerWidth).name('DOM XY From X').onChange(updateUniforms);
+            gui.add(params.u_domXYFrom, 'y', 0, window.innerHeight).name('DOM XY From Y').onChange(updateUniforms);
+
+            gui.add(params.u_domWHFrom, 'width', 0, window.innerWidth).name('DOM WH From Width').onChange(updateUniforms);
+            gui.add(params.u_domWHFrom, 'height', 0, window.innerHeight).name('DOM WH From Height').onChange(updateUniforms);
+
+            gui.add(params.u_domXY, 'x', 0, window.innerWidth).name('DOM XY X').onChange(updateUniforms);
+            gui.add(params.u_domXY, 'y', 0, window.innerHeight).name('DOM XY Y').onChange(updateUniforms);
+
+            gui.add(params.u_domWH, 'width', 0, window.innerWidth).name('DOM WH Width').onChange(updateUniforms);
+            gui.add(params.u_domWH, 'height', 0, window.innerHeight).name('DOM WH Height').onChange(updateUniforms);
+
+            gui.add(params.u_domPivot, 'x', 0, 1).name('DOM Pivot X').onChange(updateUniforms);
+            gui.add(params.u_domPivot, 'y', 0, 1).name('DOM Pivot Y').onChange(updateUniforms);
+
+            gui.add(params.u_domPadding, 'left', 0, 100).name('DOM Padding Left').onChange(updateUniforms);
+            gui.add(params.u_domPadding, 'top', 0, 100).name('DOM Padding Top').onChange(updateUniforms);
+            gui.add(params.u_domPadding, 'right', 0, 100).name('DOM Padding Right').onChange(updateUniforms);
+            gui.add(params.u_domPadding, 'bottom', 0, 100).name('DOM Padding Bottom').onChange(updateUniforms);
+
+            gui.add(params, 'u_showRatio', 0, 1).name('Show Ratio').onChange(updateUniforms);
+
+            // Hàm cập nhật uniforms trong shader
+            function updateUniforms() {
+                matPLane.uniforms.u_position.value.set(params.u_position.x, params.u_position.y, params.u_position.z);
+                matPLane.uniforms.u_quaternion.value.set(params.u_quaternion.x, params.u_quaternion.y, params.u_quaternion.z, params.u_quaternion.w);
+                matPLane.uniforms.u_scale.value.set(params.u_scale.x, params.u_scale.y, params.u_scale.z);
+                matPLane.uniforms.u_domXYFrom.value.set(params.u_domXYFrom.x, params.u_domXYFrom.y);
+                matPLane.uniforms.u_domWHFrom.value.set(params.u_domWHFrom.width, params.u_domWHFrom.height);
+                matPLane.uniforms.u_domXY.value.set(params.u_domXY.x, params.u_domXY.y);
+                matPLane.uniforms.u_domWH.value.set(params.u_domWH.width, params.u_domWH.height);
+                matPLane.uniforms.u_domPivot.value.set(params.u_domPivot.x, params.u_domPivot.y);
+                matPLane.uniforms.u_domPadding.value.set(params.u_domPadding.left, params.u_domPadding.top, params.u_domPadding.right, params.u_domPadding.bottom);
+                matPLane.uniforms.u_showRatio.value = params.u_showRatio;
+            }
+
+        }
+        
+        function animate() {
+            const currentTime = performance.now(); // Lấy thời gian hiện tại
+            const delta = (currentTime - lastTime) / 1000; // Tính toán delta (thời gian trôi qua giữa các khung hình) tính bằng giây
+
+            lastTime = currentTime; // Cập nhật lastTime cho khung hình tiếp theo
+
+            time += delta; // Cập nhật giá trị time
+
+            matPLane.uniforms.time.value = time; // Cập nhật uniform time
+            matPLane.uniforms.delta.value = delta;
+            requestAnimationFrame(animate); // Gọi hàm animate lại
+
+            renderer.render(scene, camera); // Render scene
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+    </script>
+
+</body>
+
+</html>
