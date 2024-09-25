@@ -32,21 +32,33 @@
         import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
 
         import { GUI } from 'three/addons/lil-gui.module.min.js';
-
+        import {vertex} from './glsl/vertdf.js'
+        import {fragmentFbo} from './glsl/fragmentFbo.js'
         let matPLane, gui
         let time = 0; // Biến lưu trữ thời gian tổng
         let lastTime = performance.now(); // Lưu thời gian khởi đầu
 
-        let renderer, orbitControl
+        let renderer, orbitControl , raycastPlane , dummy ,pointerPos
         let sceneMain, cameraMain
-        let rt1,rt2
+        let srcTarget,fboCamera,fboMaterial,fboScene,fboQuad
+        let targetA,targetB
+        let finalScene,finalQuad
+
+        const width = window.innerWidth
+        const height = window.innerHeight
 
         const textureImg = new THREE.TextureLoader().load('../textures/cat.jpg');
         const ratioView = (16 / 27)
 
+        const raycaster = new THREE.Raycaster();
+        let pointer = new THREE.Vector2();
+
         initRender()
         function initRender() {
-            renderer = new THREE.WebGLRenderer();
+            renderer = new THREE.WebGLRenderer({
+                alpha:true,
+                antialias:false
+            });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
         }
@@ -54,15 +66,43 @@
         initSceneMain()
         function initSceneMain() {
             sceneMain = new THREE.Scene();
-            cameraMain = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+            cameraMain = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
             cameraMain.position.z = 2;
-            orbitControl = new OrbitControls(cameraMain, renderer.domElement)
+            //orbitControl = new OrbitControls(cameraMain, renderer.domElement)
 
             const light = new THREE.AmbientLight(0x404040); // soft white light
             sceneMain.add(light);
         }
+        mouseEvent() 
+        function mouseEvent() {
+            raycastPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(100,100),
+                new THREE.MeshBasicMaterial({color: 0xff0000, side:2})
+            )
+            dummy =  new THREE.Mesh(
+                new THREE.SphereGeometry(0.1,20,20),
+                new THREE.MeshBasicMaterial({color: 'blue'})
+            )
+            sceneMain.add(dummy)
+            
+            window.addEventListener('mousemove',(e) => {
+            
+                pointer.x = (e.clientX/width) * 2 - 1
+                pointer.y = -(e.clientY/width) * 2 + 1
+                raycaster.setFromCamera( pointer, cameraMain );
 
-        initPlane()
+                const intersects = raycaster.intersectObjects( [raycastPlane] );
+                if(intersects.length > 0) {
+                  //  console.log(intersects[0].point)
+                    dummy.position.copy(intersects[0].point)
+                }
+            })
+            
+
+        }
+
+        
+        //initPlane()
 
         function initPlane() {
 
@@ -114,10 +154,40 @@
 
         }
 
+
+        initFbo()
         function initFbo(){
             const rtParams = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat };
-            rt1 = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, rtParams);
-            rt2 = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, rtParams);
+            srcTarget = new THREE.WebGLRenderTarget(width,height);
+            targetA = new THREE.WebGLRenderTarget(width,height);
+            targetB = new THREE.WebGLRenderTarget(width,height);
+
+
+            fboScene = new THREE.Scene()
+            fboCamera = new THREE.OrthographicCamera(-1,1,1,-1,0,1)
+            fboMaterial = new THREE.ShaderMaterial({
+                uniforms:{
+                    tDiffuse: { value: null},
+                    tPrev: { value: null},
+                    resolution: { value : new THREE.Vector4(width,height,1,1)}
+                },
+                vertexShader:vertex,
+                fragmentShader:fragmentFbo
+            })
+
+            fboQuad = new THREE.Mesh(
+                new THREE.PlaneGeometry(2,2),
+                fboMaterial
+            )
+            fboScene.add(fboQuad)
+
+
+            finalScene = new THREE.Scene()
+            finalQuad = new THREE.Mesh(
+                new THREE.PlaneGeometry(2,2),
+                new THREE.MeshBasicMaterial({map:targetA.texture})
+            )
+            finalScene.add(finalQuad)
         }
 
 
@@ -125,25 +195,31 @@
 
 
 
-        initGui()
+       
+        function render() {
+            
+            renderer.setRenderTarget(srcTarget)
+            renderer.render(sceneMain, cameraMain); 
 
-        function initGui() {
 
-            gui = new GUI();
-            const params = {
-                u_progress: 0.,
-            };
 
-            gui.add(params, 'u_progress', 0, 1).name('u_progress').onChange(updateUniforms);
+            renderer.setRenderTarget(targetA)
+            renderer.render(fboScene, fboCamera); 
 
-            function updateUniforms() {
+            fboMaterial.uniforms.tDiffuse.value = srcTarget.texture
+            fboMaterial.uniforms.tPrev.value = targetA.texture
+            
+            finalQuad.material.map = targetA.texture
 
-                matPLane.uniforms.u_progress.value = params.u_progress;
+            renderer.setRenderTarget(null)
+            renderer.render(finalScene, fboCamera); 
 
-            }
+            let temp = targetA
+            targetA = targetB
+            targetB = temp
 
+          
         }
-
         function animate() {
             const currentTime = performance.now(); // Lấy thời gian hiện tại
             const delta = (currentTime - lastTime) / 1000; // Tính toán delta (thời gian trôi qua giữa các khung hình) tính bằng giây
@@ -151,24 +227,44 @@
             lastTime = currentTime; // Cập nhật lastTime cho khung hình tiếp theo
 
             time += delta; // Cập nhật giá trị time
+            if(matPLane) {
+                matPLane.uniforms.time.value = time; // Cập nhật uniform time
+                matPLane.uniforms.delta.value = delta;
+            }
+           
 
-            matPLane.uniforms.time.value = time; // Cập nhật uniform time
-            matPLane.uniforms.delta.value = delta;
+            
             requestAnimationFrame(animate); // Gọi hàm animate lại
-
-            renderer.render(sceneMain, cameraMain); // Render scene
+            render()
         }
 
         animate();
 
         window.addEventListener('resize', () => {
             renderer.setSize(window.innerWidth, window.innerHeight);
-            rt1.setSize(window.innerWidth, window.innerHeight);
+            srcTarget.setSize(window.innerWidth, window.innerHeight);
             rt2.setSize(window.innerWidth, window.innerHeight);
             cameraMain.aspect = window.innerWidth / window.innerHeight;
             cameraMain.updateProjectionMatrix();
         });
+        initGui()
 
+function initGui() {
+
+    gui = new GUI();
+    const params = {
+        u_progress: 0.,
+    };
+
+    gui.add(params, 'u_progress', 0, 1).name('u_progress').onChange(updateUniforms);
+
+    function updateUniforms() {
+
+        matPLane.uniforms.u_progress.value = params.u_progress;
+
+    }
+
+}
     </script>
 
 </body>
