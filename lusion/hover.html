@@ -2,7 +2,7 @@
 <html lang="en">
 
 <head>
-    <title>three.js webgl2 - volume - cloud</title>
+    <title>cover hover lusion</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 
@@ -34,15 +34,18 @@
         import { GUI } from 'three/addons/lil-gui.module.min.js';
         import {vertex} from './glsl/vertdf.js'
         import {fragmentFbo} from './glsl/fragmentFbo.js'
+             import {fragmentBlur} from './glsl/fragmentBlur.js'
+           import {fragmentWrite} from './glsl/fragmentWrite.js'
         let matPLane, gui
         let time = 0; // Biến lưu trữ thời gian tổng
+        let delta = 0
         let lastTime = performance.now(); // Lưu thời gian khởi đầu
 
-        let renderer, orbitControl , raycastPlane , dummy ,pointerPos
+        let renderer, orbitControl , raycastPlane , dummy ,pointerPos ,planeWrite,planeMatWrite
         let sceneMain, cameraMain
         let srcTarget,fboCamera,fboMaterial,fboScene,fboQuad
         let targetA,targetB
-        let finalScene,finalQuad
+        let finalScene,finalQuad,finalMat
 
         const width = window.innerWidth
         const height = window.innerHeight
@@ -52,6 +55,9 @@
 
         const raycaster = new THREE.Raycaster();
         let pointer = new THREE.Vector2();
+        let pointerCurrent = new THREE.Vector2();
+        let pointerPrev = new THREE.Vector2();
+        let force = new THREE.Vector2();
 
         initRender()
         function initRender() {
@@ -68,10 +74,35 @@
             sceneMain = new THREE.Scene();
             cameraMain = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
             cameraMain.position.z = 2;
-            //orbitControl = new OrbitControls(cameraMain, renderer.domElement)
 
-            const light = new THREE.AmbientLight(0x404040); // soft white light
-            sceneMain.add(light);
+            dummy =  new THREE.Mesh(
+                new THREE.SphereGeometry(0.1,20,20),
+                new THREE.MeshBasicMaterial({color: 'blue'})
+            )
+
+            //  sceneMain.add(dummy)
+
+
+            planeMatWrite = new THREE.ShaderMaterial({
+                uniforms:{
+                    tDiffuse: { value: null},
+                    tPrev: { value: null},
+                    resolution: { value : new THREE.Vector4(width,height,1,1)},
+                    u_drawTo : { value: new THREE.Vector4(0,0,0,1) },
+                    u_drawFrom : { value: new THREE.Vector4(0,0,0,1) },
+                    u_vel : { value: new THREE.Vector2(0,0)},
+                },
+                vertexShader:vertex,
+                fragmentShader:fragmentWrite
+            })
+
+            planeWrite = new THREE.Mesh(
+                new THREE.PlaneGeometry(5,5),
+                planeMatWrite,
+               
+            )
+         sceneMain.add(planeWrite)
+        
         }
         mouseEvent() 
         function mouseEvent() {
@@ -79,14 +110,14 @@
                 new THREE.PlaneGeometry(100,100),
                 new THREE.MeshBasicMaterial({color: 0xff0000, side:2})
             )
-            dummy =  new THREE.Mesh(
-                new THREE.SphereGeometry(0.1,20,20),
-                new THREE.MeshBasicMaterial({color: 'blue'})
-            )
-            sceneMain.add(dummy)
+          
             
             window.addEventListener('mousemove',(e) => {
-            
+ 
+
+            // Cập nhật vị trí hiện tại
+            pointerCurrent.set(e.clientX,window.innerHeight-e.clientY);
+
                 pointer.x = (e.clientX/width) * 2 - 1
                 pointer.y = -(e.clientY/width) * 2 + 1
                 raycaster.setFromCamera( pointer, cameraMain );
@@ -140,7 +171,8 @@
                 uniforms: {
                     time: { value: 0 },
                     delta: { value: 0 },
-                    textureImg: { value: textureImg }
+                    textureImg: { value: textureImg },
+                 
                 },
                 wireframe: false,
                 side: 2,
@@ -169,12 +201,23 @@
                 uniforms:{
                     tDiffuse: { value: null},
                     tPrev: { value: null},
-                    resolution: { value : new THREE.Vector4(width,height,1,1)}
+                    resolution: { value : new THREE.Vector4(width,height,1,1)},
+                    u_drawTo : { value: new THREE.Vector4(0,0,0,1) },
+                    u_drawFrom : { value: new THREE.Vector4(0,0,0,1) },
+                    
+                    u_vel : { value: new THREE.Vector2(0,0)},
+
+                    u_dissipations:{ value: new THREE.Vector3(0.9750, 0.9500, 0.8000)},
+                    u_curlScale: {value: 0.0100},
+                    u_pushStrength: {value:25.},
+                    u_curlStrength: {value:3.},
+                    u_paintTexelSize :{value : new THREE.Vector2(1/width,1/height)}
+
                 },
                 vertexShader:vertex,
                 fragmentShader:fragmentFbo
             })
-
+         
             fboQuad = new THREE.Mesh(
                 new THREE.PlaneGeometry(2,2),
                 fboMaterial
@@ -182,16 +225,27 @@
             fboScene.add(fboQuad)
 
 
+
+            finalMat = new THREE.ShaderMaterial({
+                uniforms:{
+                    dt: { value: new THREE.Vector2(0,0)},
+                    u_texture : { value:null},
+                    resolution: { value: new THREE.Vector2(width,height)},
+                },
+                vertexShader:vertex,
+                fragmentShader:fragmentBlur
+            })
             finalScene = new THREE.Scene()
             finalQuad = new THREE.Mesh(
                 new THREE.PlaneGeometry(2,2),
-                new THREE.MeshBasicMaterial({map:targetA.texture})
+                finalMat
+               /*  new THREE.MeshBasicMaterial({map:targetA.texture}) */
             )
             finalScene.add(finalQuad)
+
+
+     
         }
-
-
-
 
 
 
@@ -205,24 +259,56 @@
 
             renderer.setRenderTarget(targetA)
             renderer.render(fboScene, fboCamera); 
+            
+
 
             fboMaterial.uniforms.tDiffuse.value = srcTarget.texture
             fboMaterial.uniforms.tPrev.value = targetA.texture
-            
-            finalQuad.material.map = targetA.texture
 
+
+            finalMat.uniforms.dt.value = new THREE.Vector2(delta,0)
+            let _v$4 =   new THREE.Vector2(0,0)
+           
+            if(fboMaterial.uniforms) {
+                pointerPrev.lerp(pointerCurrent, 0.036);
+                force = pointerCurrent.distanceTo(pointerPrev) * .05;
+                
+                _v$4.set(pointerCurrent.x - pointerPrev.x, pointerCurrent.y - pointerPrev.y).multiplyScalar(delta * .8)
+
+                planeMatWrite.uniforms.u_drawTo.value = new THREE.Vector4(pointerCurrent.x,pointerCurrent.y,force,1)
+                planeMatWrite.uniforms.u_drawFrom.value = new THREE.Vector4(pointerPrev.x,pointerPrev.y,0,1)
+                planeMatWrite.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
+                
+                fboMaterial.uniforms.u_drawTo.value = new THREE.Vector4(pointerCurrent.x,pointerCurrent.y,force,1)
+                fboMaterial.uniforms.u_drawFrom.value = new THREE.Vector4(pointerPrev.x,pointerPrev.y,0,1)
+                fboMaterial.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
+              
+
+                // console.log( fboMaterial.uniforms.u_vel.value)
+              //  console.log(fboMaterial.uniforms.u_drawTo.value,fboMaterial.uniforms.u_drawFrom.value)
+            }
+
+          // finalQuad.material.map = targetA.texture
+            finalMat.uniforms.u_texture.value = targetA.texture
+             finalMat.uniforms.dt.value = new THREE.Vector2(0,delta)
+  
             renderer.setRenderTarget(null)
             renderer.render(finalScene, fboCamera); 
+
+         
 
             let temp = targetA
             targetA = targetB
             targetB = temp
 
+                
+            // renderer.setRenderTarget(null)
+            // renderer.render(sceneMain, cameraMain); 
           
         }
         function animate() {
             const currentTime = performance.now(); // Lấy thời gian hiện tại
-            const delta = (currentTime - lastTime) / 1000; // Tính toán delta (thời gian trôi qua giữa các khung hình) tính bằng giây
+            delta = (currentTime - lastTime) / 1000; // Tính toán delta (thời gian trôi qua giữa các khung hình) tính bằng giây
 
             lastTime = currentTime; // Cập nhật lastTime cho khung hình tiếp theo
 
@@ -231,8 +317,7 @@
                 matPLane.uniforms.time.value = time; // Cập nhật uniform time
                 matPLane.uniforms.delta.value = delta;
             }
-           
-
+  
             
             requestAnimationFrame(animate); // Gọi hàm animate lại
             render()
@@ -243,7 +328,7 @@
         window.addEventListener('resize', () => {
             renderer.setSize(window.innerWidth, window.innerHeight);
             srcTarget.setSize(window.innerWidth, window.innerHeight);
-            rt2.setSize(window.innerWidth, window.innerHeight);
+            
             cameraMain.aspect = window.innerWidth / window.innerHeight;
             cameraMain.updateProjectionMatrix();
         });
@@ -253,15 +338,20 @@ function initGui() {
 
     gui = new GUI();
     const params = {
-        u_progress: 0.,
+        u_curlScale: 0.0100,
+        u_pushStrength: 25.,
+        u_curlStrength: 3.,
     };
 
-    gui.add(params, 'u_progress', 0, 1).name('u_progress').onChange(updateUniforms);
+    gui.add(params, 'u_curlScale', 0, 1).name('u_curlScale').onChange(updateUniforms);
+    gui.add(params, 'u_pushStrength', 0, 100).name('u_pushStrength').onChange(updateUniforms);
+    gui.add(params, 'u_curlStrength', 0, 20).name('u_curlStrength').onChange(updateUniforms);
 
     function updateUniforms() {
-
-        matPLane.uniforms.u_progress.value = params.u_progress;
-
+       
+        fboMaterial.uniforms.u_curlScale.value = params.u_curlScale;
+        fboMaterial.uniforms.u_pushStrength.value = params.u_pushStrength;
+        fboMaterial.uniforms.u_curlStrength.value = params.u_curlStrength;
     }
 
 }
