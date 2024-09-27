@@ -10,6 +10,7 @@ export const fragmentFbo = `
     uniform float u_pushStrength;
     uniform float u_curlStrength;
     uniform vec2 u_paintTexelSize;
+      uniform vec2 u_scrollOffset;
 
     uniform vec4 u_drawTo;
     uniform vec4 u_drawFrom;
@@ -49,40 +50,35 @@ export const fragmentFbo = `
         vec4 color = texture2D(tDiffuse,vUv);
         vec4 prev = texture2D(tPrev,vUv);
 
+        vec2 res = sdSegment(gl_FragCoord.xy, u_drawFrom.xy, u_drawTo.xy);
+        vec2 radiusWeight = mix(u_drawFrom.zw, u_drawTo.zw, res.y);
+        float d = 1.0-smoothstep(-0.01, radiusWeight.x, res.x);
+        vec4 lowData = texture2D(tDiffuse, vUv-u_scrollOffset);
+        vec2 velInv = (0.5-lowData.xy)*u_pushStrength;
+      
+        vec3 noise3 = noised(gl_FragCoord.xy*u_curlScale*(1.0-lowData.xy));
+        vec2 noise = noised(gl_FragCoord.xy*u_curlScale*(2.0-lowData.xy*(0.5+noise3.x)+noise3.yz*0.1)).yz;
+        velInv += noise*(lowData.z+lowData.w)*u_curlStrength;
 
 
-    vec2 res = sdSegment(gl_FragCoord.xy,u_drawFrom.xy, u_drawTo.xy);
-     vec2 radiusWeight = mix(u_drawFrom.zw, u_drawTo.zw, res.y);
-    float d = 1.0-smoothstep(-0.01, radiusWeight.x, res.x);
-    vec4 lowData = texture2D(tDiffuse, vUv);
-    vec2 velInv = (0.5-lowData.xy)*u_pushStrength;
-    vec3 noise3 = noised(gl_FragCoord.xy*u_curlScale*(1.0-lowData.xy));
-    vec2 noise = noised(gl_FragCoord.xy*u_curlScale*(2.0-lowData.xy*(0.5+noise3.x)+noise3.yz*0.1)).yz;
-    velInv += noise*(lowData.z+lowData.w)*u_curlStrength;
+        vec4 data = texture2D(tPrev, vUv-u_scrollOffset+velInv*u_paintTexelSize);
 
+        data.xy -= 0.5;
+   
+        vec4 delta = (u_dissipations.xxyz-1.0)*data;
+        vec2 newVel = u_vel*d;
+        delta += vec4(newVel, radiusWeight.yy*d);
+        delta.zw = sign(delta.zw)*max(vec2(0.004), abs(delta.zw));
+        data += delta;
+        data.xy += 0.5;
+        gl_FragColor = clamp(data , vec4(0.), vec4(1.0));
 
-
-    vec4 data = texture2D( tPrev, vUv+velInv*u_paintTexelSize);
-
-     data.xy -= 0.5;
-        
-    vec4 delta = (u_dissipations.xxyz-1.0)*data;
-    vec2 newVel = u_vel*d;
-    delta += vec4(newVel, radiusWeight.yy*d);
-    delta.zw = sign(delta.zw)*max(vec2(0.004), abs(delta.zw));
-    
-    data += delta;
-  
-    data.xy += 0.5;
-    gl_FragColor = clamp(data, vec4(0.3), vec4(1.0));
-
-   vec4 view = data;
+         vec4 view = data;
     
     //  gl_FragColor = color + (w2 + w1 + w3 + w4)*.1 ;
     // gl_FragColor = vec4(vec3(1.,.3,.1) * data.xyz,1.);
    // gl_FragColor = vec4(res.x,0.,0.,0.);
-//  gl_FragColor = color  + prev * 0.6;
+  //gl_FragColor = color  + prev * 0.8;
 gl_FragColor = vec4(view.xyz,1.);
-//   gl_FragColor = vec4(res,0.,1.);
     }
 `

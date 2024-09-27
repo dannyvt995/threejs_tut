@@ -4,7 +4,7 @@ uniform vec2 dt;
 uniform vec2 resolution;
 varying vec2 vUv;
 void main() {
-    vec4 color = texture2D(u_texture, vUv)*0.91633;
+    vec4 color = texture2D(u_texture, vUv)*0.1633;
      vec4 colorOri = texture2D(u_texture, vUv);
     vec2 delta = dt;
     color += texture2D(u_texture, vUv-delta)*0.1531;
@@ -36,7 +36,8 @@ void main() {
     gl_FragColor = upColor;
     gl_FragColor = vec4(vec3(factor),1.);
      gl_FragColor = colorOri ;
-   // gl_FragColor = vec4(1.-vec3(color.xyz),1.);
+  gl_FragColor = vec4(1.-vec3(color.xyz),1.);
+  gl_FragColor = colorOri;
 }
 
 `

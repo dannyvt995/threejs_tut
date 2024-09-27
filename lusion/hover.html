@@ -206,9 +206,9 @@
                     u_drawFrom : { value: new THREE.Vector4(0,0,0,1) },
                     
                     u_vel : { value: new THREE.Vector2(0,0)},
-
+                    u_scrollOffset: { value: new THREE.Vector2(0,0)},
                     u_dissipations:{ value: new THREE.Vector3(0.9750, 0.9500, 0.8000)},
-                    u_curlScale: {value: 0.0100},
+                    u_curlScale: {value: 0.0200},
                     u_pushStrength: {value:25.},
                     u_curlStrength: {value:3.},
                     u_paintTexelSize :{value : new THREE.Vector2(1/width,1/height)}
@@ -266,7 +266,7 @@
             fboMaterial.uniforms.tPrev.value = targetA.texture
 
 
-            finalMat.uniforms.dt.value = new THREE.Vector2(delta,0)
+        
             let _v$4 =   new THREE.Vector2(0,0)
            
             if(fboMaterial.uniforms) {
@@ -284,14 +284,14 @@
                 fboMaterial.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
               
 
-                // console.log( fboMaterial.uniforms.u_vel.value)
+            //  console.log( fboMaterial.uniforms.u_vel.value)
               //  console.log(fboMaterial.uniforms.u_drawTo.value,fboMaterial.uniforms.u_drawFrom.value)
             }
 
           // finalQuad.material.map = targetA.texture
             finalMat.uniforms.u_texture.value = targetA.texture
              finalMat.uniforms.dt.value = new THREE.Vector2(0,delta)
-  
+          
             renderer.setRenderTarget(null)
             renderer.render(finalScene, fboCamera); 
 
