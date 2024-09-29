@@ -215,7 +215,8 @@
 
                 },
                 vertexShader:vertex,
-                fragmentShader:fragmentFbo
+                fragmentShader:fragmentFbo,
+                glslVersion: THREE.GLSL3,
             })
          
             fboQuad = new THREE.Mesh(
@@ -251,7 +252,7 @@
 
        
         function render() {
-            
+            renderer.clear()
             renderer.setRenderTarget(srcTarget)
             renderer.render(sceneMain, cameraMain); 
 
@@ -262,35 +263,12 @@
             
 
 
-            fboMaterial.uniforms.tDiffuse.value = srcTarget.texture
+             fboMaterial.uniforms.tDiffuse.value = srcTarget.texture
             fboMaterial.uniforms.tPrev.value = targetA.texture
 
 
-        
-            let _v$4 =   new THREE.Vector2(0,0)
-           
-            if(fboMaterial.uniforms) {
-                pointerPrev.lerp(pointerCurrent, 0.036);
-                force = pointerCurrent.distanceTo(pointerPrev) * .05;
-                
-                _v$4.set(pointerCurrent.x - pointerPrev.x, pointerCurrent.y - pointerPrev.y).multiplyScalar(delta * .8)
-
-                planeMatWrite.uniforms.u_drawTo.value = new THREE.Vector4(pointerCurrent.x,pointerCurrent.y,force,1)
-                planeMatWrite.uniforms.u_drawFrom.value = new THREE.Vector4(pointerPrev.x,pointerPrev.y,0,1)
-                planeMatWrite.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
-                
-                fboMaterial.uniforms.u_drawTo.value = new THREE.Vector4(pointerCurrent.x,pointerCurrent.y,force,1)
-                fboMaterial.uniforms.u_drawFrom.value = new THREE.Vector4(pointerPrev.x,pointerPrev.y,0,1)
-                fboMaterial.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
-              
-
-            //  console.log( fboMaterial.uniforms.u_vel.value)
-              //  console.log(fboMaterial.uniforms.u_drawTo.value,fboMaterial.uniforms.u_drawFrom.value)
-            }
-
-          // finalQuad.material.map = targetA.texture
             finalMat.uniforms.u_texture.value = targetA.texture
-             finalMat.uniforms.dt.value = new THREE.Vector2(0,delta)
+             finalMat.uniforms.dt.value = new THREE.Vector2(0,delta/10.)
           
             renderer.setRenderTarget(null)
             renderer.render(finalScene, fboCamera); 
@@ -317,7 +295,24 @@
                 matPLane.uniforms.time.value = time; // Cập nhật uniform time
                 matPLane.uniforms.delta.value = delta;
             }
-  
+            if(fboMaterial.uniforms) {
+                let _v$4 =   new THREE.Vector2(0,0)
+                pointerPrev.lerp(pointerCurrent, 0.036);
+                force = pointerCurrent.distanceTo(pointerPrev) * .05;
+                
+                _v$4.set(pointerCurrent.x - pointerPrev.x, pointerCurrent.y - pointerPrev.y).multiplyScalar(delta * .8)
+
+                planeMatWrite.uniforms.u_drawTo.value = new THREE.Vector4(pointerCurrent.x,pointerCurrent.y,force,1)
+                planeMatWrite.uniforms.u_drawFrom.value = new THREE.Vector4(pointerPrev.x,pointerPrev.y,0,1)
+                planeMatWrite.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
+                
+                fboMaterial.uniforms.u_drawTo.value = new THREE.Vector4(pointerCurrent.x,pointerCurrent.y,force,1)
+                fboMaterial.uniforms.u_drawFrom.value = new THREE.Vector4(pointerPrev.x,pointerPrev.y,0,1)
+                fboMaterial.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
+              
+
+       
+            }
             
             requestAnimationFrame(animate); // Gọi hàm animate lại
             render()

@@ -192,7 +192,11 @@
 					}
 				}
 
-
+				const showSdfTexture = new THREE.Mesh(
+					new THREE.PlaneGeometry(1, 8 / 16),
+					new THREE.MeshBasicMaterial({ map: textureSDF, transparent: true })
+				)
+				showSdfTexture.position.z = .5
 				// Trích xuất các lớp từ texture3d
 				const listSlice2D = []
 				for (let i = 0; i < 128; i++) {
@@ -235,11 +239,7 @@
 
 
 
-				const showSdfTexture = new THREE.Mesh(
-					new THREE.PlaneGeometry(1, 8 / 16),
-					new THREE.MeshBasicMaterial({ map: textureSDF, transparent: true })
-				)
-				showSdfTexture.position.z = .5
+			
 
 
 				let groupSlice2D = new THREE.Group()

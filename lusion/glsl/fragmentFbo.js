@@ -1,4 +1,6 @@
 export const fragmentFbo = `
+layout(location = 0) out highp vec4 out1; // Đầu ra 1
+layout(location = 1) out highp vec4 out2; // Đầu ra 2
     uniform sampler2D tDiffuse;
     uniform sampler2D tPrev;
     uniform vec2 u_vel;
@@ -71,14 +73,14 @@ export const fragmentFbo = `
         delta.zw = sign(delta.zw)*max(vec2(0.004), abs(delta.zw));
         data += delta;
         data.xy += 0.5;
-        gl_FragColor = clamp(data , vec4(0.), vec4(1.0));
-
+        out1 = clamp(data , vec4(0.), vec4(1.0));
+        out2 = clamp(data , vec4(0.), vec4(1.0));
          vec4 view = data;
     
     //  gl_FragColor = color + (w2 + w1 + w3 + w4)*.1 ;
     // gl_FragColor = vec4(vec3(1.,.3,.1) * data.xyz,1.);
    // gl_FragColor = vec4(res.x,0.,0.,0.);
-  //gl_FragColor = color  + prev * 0.8;
-gl_FragColor = vec4(view.xyz,1.);
+ 
+//gl_FragColor = vec4(view.xyz,1.);
     }
 `
