@@ -135,12 +135,6 @@
         
         }
       
-        vec2 rotate(vec2 v, float a) {
-            float s = sin(a);
-            float c = cos(a);
-            mat2 m = mat2(c, -s, s, c);
-            return m * v;
-        }
         
 		float random (in vec2 _st) {
 			return fract(sin(dot(_st.xy,
@@ -152,8 +146,29 @@
 			float s = sin(angle);
 			return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
 		}
-			
-	
+		vec3 randomVec3(float randVal) {
+			if (randVal < 0.15) {
+				return vec3(-0.5);
+
+			} else if (randVal < 0.25) {
+				return vec3(0.5); 
+
+			} else if (randVal < 0.35) {
+				return vec3(0.5, 0.5, -0.5); 
+
+			} else if (randVal < 0.45) {
+				return vec3(0.5, -0.5, 0.5); 
+
+			} else if (randVal < 0.55) {
+				return vec3(-0.5, -0.5, 0.5); 
+				
+			}else if (randVal < 0.65) {
+				return vec3(-0.5, 0.5, -0.5); 
+				
+			} else {
+				return vec3(-0.5, 0.5, 0.5);
+			}
+		}
         void main()	{
 
             vec2 uv = gl_FragCoord.xy / resolution.xy;
@@ -167,18 +182,25 @@
 			vec4 sdf3d = texture(texture3DSDF, posSelf + .5);
 			vec4 sdf3dFormat = sdf3d * 2. - 1.;
 
-		//	posSelf += curlNoise(posSelf * random(velSelf.rb)) * 0.001;
+			
 			if(start) {
-				if(sdf3dFormat.w < 1.) {
+				if(sdf3dFormat.w < 1.2) {
 					vec3 dis = normalize(sdf3dFormat.xyz + posSelf) * (sdf3dFormat.w * u_holdGPGPU);
-					posSelf += velSelf * .0008;
-					posSelf -= dis * .15;
+					posSelf -= dis * .22 ;
 				}else{
 							
 				}
-			}
 			
-			if(posSelf.x > .5 || posSelf.x  < -.5 || posSelf.y > .5 || posSelf.y  < -.5 || posSelf.z > .5 || posSelf.z  < -.5) posSelf = vec3(.42);
+			}
+			if(posSelf.x > .5 || posSelf.x  < -.5 || posSelf.y > .5 || posSelf.y  < -.5 || posSelf.z > .5 || posSelf.z  < -.5) {
+				float randVal = random(posSelf.xz); 
+				posSelf = randomVec3(randVal); 
+			}
+		
+			
+		
+			posSelf += velSelf * .002;
+
 			gl_FragColor = vec4(  posSelf, 1.  );
 
         }
@@ -190,144 +212,14 @@
         uniform float time;
         uniform float delta;
 		uniform sampler3D texture3DSDF;
-      
-        uvec2 _pcg3d16(uvec3 p) {
-			uvec3 v = p*1664525u+1013904223u;
-			v.x += v.y*v.z;
-			v.y += v.z*v.x;
-			v.z += v.x*v.y;
-			v.x += v.y*v.z;
-			v.y += v.z*v.x;
-			return v.xy;
-		}
-		uvec2 _pcg4d16(uvec4 p) {
-			uvec4 v = p*1664525u+1013904223u;
-			v.x += v.y*v.w;
-			v.y += v.z*v.x;
-			v.z += v.x*v.y;
-			v.w += v.y*v.z;
-			v.x += v.y*v.w;
-			v.y += v.z*v.x;
-			return v.xy;
-		}
-		vec3 _gradient3d(uint hash) {
-			vec3 g = vec3(uvec3(hash)&uvec3(0x80000, 0x40000, 0x20000));
-			return g*(1.0/vec3(0x40000, 0x20000, 0x10000))-1.0;
-		}
-		vec4 _gradient4d(uint hash) {
-			vec4 g = vec4(uvec4(hash)&uvec4(0x80000, 0x40000, 0x20000, 0x10000));
-			return g*(1.0/vec4(0x40000, 0x20000, 0x10000, 0x8000))-1.0;
-		}
-		vec3 BitangentNoise3D(vec3 p) {
-			const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-			const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-			vec3 i = floor(p+dot(p, C.yyy));
-			vec3 x0 = p-i+dot(i, C.xxx);
-			vec3 g = step(x0.yzx, x0.xyz);
-			vec3 l = 1.0-g;
-			vec3 i1 = min(g.xyz, l.zxy);
-			vec3 i2 = max(g.xyz, l.zxy);
-			vec3 x1 = x0-i1+C.xxx;
-			vec3 x2 = x0-i2+C.yyy;
-			vec3 x3 = x0-D.yyy;
-			i = i+32768.5;
-			uvec2 hash0 = _pcg3d16(uvec3(i));
-			uvec2 hash1 = _pcg3d16(uvec3(i+i1));
-			uvec2 hash2 = _pcg3d16(uvec3(i+i2));
-			uvec2 hash3 = _pcg3d16(uvec3(i+1.0));
-			vec3 p00 = _gradient3d(hash0.x);
-			vec3 p01 = _gradient3d(hash0.y);
-			vec3 p10 = _gradient3d(hash1.x);
-			vec3 p11 = _gradient3d(hash1.y);
-			vec3 p20 = _gradient3d(hash2.x);
-			vec3 p21 = _gradient3d(hash2.y);
-			vec3 p30 = _gradient3d(hash3.x);
-			vec3 p31 = _gradient3d(hash3.y);
-			vec4 m = clamp(0.5-vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0, 1.0);
-			vec4 mt = m*m;
-			vec4 m4 = mt*mt;
-			mt = mt*m;
-			vec4 pdotx = vec4(dot(p00, x0), dot(p10, x1), dot(p20, x2), dot(p30, x3));
-			vec4 temp = mt*pdotx;
-			vec3 gradient0 = -8.0*(temp.x*x0+temp.y*x1+temp.z*x2+temp.w*x3);
-			gradient0 += m4.x*p00+m4.y*p10+m4.z*p20+m4.w*p30;
-			pdotx = vec4(dot(p01, x0), dot(p11, x1), dot(p21, x2), dot(p31, x3));
-			temp = mt*pdotx;
-			vec3 gradient1 = -8.0*(temp.x*x0+temp.y*x1+temp.z*x2+temp.w*x3);
-			gradient1 += m4.x*p01+m4.y*p11+m4.z*p21+m4.w*p31;
-			return cross(gradient0, gradient1)*3918.76;
-		}
-		vec3 BitangentNoise4D(vec4 p) {
-			const vec4 F4 = vec4(0.309016994374947451);
-			const vec4 C = vec4(0.138196601125011, 0.276393202250021, 0.414589803375032, -0.447213595499958);
-			vec4 i = floor(p+dot(p, F4));
-			vec4 x0 = p-i+dot(i, C.xxxx);
-			vec4 i0;
-			vec3 isX = step(x0.yzw, x0.xxx);
-			vec3 isYZ = step(x0.zww, x0.yyz);
-			i0.x = isX.x+isX.y+isX.z;
-			i0.yzw = 1.0-isX;
-			i0.y += isYZ.x+isYZ.y;
-			i0.zw += 1.0-isYZ.xy;
-			i0.z += isYZ.z;
-			i0.w += 1.0-isYZ.z;
-			vec4 i3 = clamp(i0, 0.0, 1.0);
-			vec4 i2 = clamp(i0-1.0, 0.0, 1.0);
-			vec4 i1 = clamp(i0-2.0, 0.0, 1.0);
-			vec4 x1 = x0-i1+C.xxxx;
-			vec4 x2 = x0-i2+C.yyyy;
-			vec4 x3 = x0-i3+C.zzzz;
-			vec4 x4 = x0+C.wwww;
-			i = i+32768.5;
-			uvec2 hash0 = _pcg4d16(uvec4(i));
-			uvec2 hash1 = _pcg4d16(uvec4(i+i1));
-			uvec2 hash2 = _pcg4d16(uvec4(i+i2));
-			uvec2 hash3 = _pcg4d16(uvec4(i+i3));
-			uvec2 hash4 = _pcg4d16(uvec4(i+1.0));
-			vec4 p00 = _gradient4d(hash0.x);
-			vec4 p01 = _gradient4d(hash0.y);
-			vec4 p10 = _gradient4d(hash1.x);
-			vec4 p11 = _gradient4d(hash1.y);
-			vec4 p20 = _gradient4d(hash2.x);
-			vec4 p21 = _gradient4d(hash2.y);
-			vec4 p30 = _gradient4d(hash3.x);
-			vec4 p31 = _gradient4d(hash3.y);
-			vec4 p40 = _gradient4d(hash4.x);
-			vec4 p41 = _gradient4d(hash4.y);
-			vec3 m0 = clamp(0.6-vec3(dot(x0, x0), dot(x1, x1), dot(x2, x2)), 0.0, 1.0);
-			vec2 m1 = clamp(0.6-vec2(dot(x3, x3), dot(x4, x4)), 0.0, 1.0);
-			vec3 m02 = m0*m0;
-			vec3 m03 = m02*m0;
-			vec2 m12 = m1*m1;
-			vec2 m13 = m12*m1;
-			vec3 temp0 = m02*vec3(dot(p00, x0), dot(p10, x1), dot(p20, x2));
-			vec2 temp1 = m12*vec2(dot(p30, x3), dot(p40, x4));
-			vec4 grad0 = -6.0*(temp0.x*x0+temp0.y*x1+temp0.z*x2+temp1.x*x3+temp1.y*x4);
-			grad0 += m03.x*p00+m03.y*p10+m03.z*p20+m13.x*p30+m13.y*p40;
-			temp0 = m02*vec3(dot(p01, x0), dot(p11, x1), dot(p21, x2));
-			temp1 = m12*vec2(dot(p31, x3), dot(p41, x4));
-			vec4 grad1 = -6.0*(temp0.x*x0+temp0.y*x1+temp0.z*x2+temp1.x*x3+temp1.y*x4);
-			grad1 += m03.x*p01+m03.y*p11+m03.z*p21+m13.x*p31+m13.y*p41;
-			return cross(grad0.xyz, grad1.xyz)*81.0;
-		}
-		float random (in vec2 _st) {
-			return fract(sin(dot(_st.xy,
-								vec2(12.9898,78.233)))*
-				43758.5453123);
-		}
-		
+  
         void main() {
             
             vec2 uv = gl_FragCoord.xy / resolution.xy;
 
             vec3 posSelf = texture2D( texturePosition, uv ).xyz;
             vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
-			vec4 posSDF = texture(texture3DSDF, posSelf.xyz);
 	
-		//	velSelf.xyz += BitangentNoise4D(vec4((posSelf.xyz) * 7.0, time * (1.0 + 0.7))) * delta;
-			//velSelf.xy += rotate(velSelf.xy,time*.001) * 0.001;
-		//	if(posSelf.x > .5 || posSelf.x < -.5 || posSelf.y > .5 || posSelf.y < -.5 || posSelf.z > .5 || posSelf.z < -.5) velSelf += random(uv);
-          
 			gl_FragColor = vec4( velSelf,1.);
 
         }
@@ -354,11 +246,11 @@
 
 		let renderer, scene, camera, stats;
 		let mesh, texturedd, dataTexture3D, dataTexture3DSample, materialCube, textureData3dOut
-		let meshLayer, matPoint
+		let meshLayer, matPoint, matInstanced
 		let delta, time, lastTime
 
 		let gpuCompute
-		let widthTexture = 258
+		let widthTexture = 128
 		let velocityVariable, positionVariable, extraVariable
 		let positionUniforms, velocityUniforms, extraUniforms
 		let monitorPos, monitorVel
@@ -424,12 +316,12 @@
 
 			positionUniforms['time'] = { value: 0.0 };
 			positionUniforms['delta'] = { value: 0.0 };
-		
-			
+
+
 			velocityUniforms['time'] = { value: 0.0 };
 			velocityUniforms['delta'] = { value: 0.0 };
 
-	
+
 			positionUniforms['start'] = { value: false };
 			positionUniforms['u_holdGPGPU'] = { value: 0.5 };
 			positionUniforms['texture3DSDF'] = { value: data3d };
@@ -461,50 +353,23 @@
 			scene = new THREE.Scene();
 
 			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.001, 10000);
-			camera.position.set(0, 0, 1);
+			camera.position.set(0, 0, 5);
 
 			new OrbitControls(camera, renderer.domElement);
 			const axesHelper = new THREE.AxesHelper(5);
 			//scene.add(axesHelper);
-			const light = new THREE.AmbientLight( 0x404040 ); // soft white light
-			scene.add( light );
-			const directionalLight = new THREE.DirectionalLight( 0xffffff, 0.5 );
-			scene.add( directionalLight );
+			const light = new THREE.AmbientLight(0x404040); // soft white light
+			scene.add(light);
+			const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+			scene.add(directionalLight);
 			stats = new Stats();
 			document.body.appendChild(stats.dom);
 
 
-			const loader = new OBJLoader();
 
-			// load a resource
-			loader.load(
-				// resource URL
-				'models/eisbar/eisbar.obj',
-				// called when resource is loaded
-				function ( object ) {
-					let m = object
-					
-					m.scale.set(.9,.9,.9)
-				
-					scene.add( m );
-
-				},
-				// called when loading is in progresses
-				function ( xhr ) {
-
-					console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
-
-				},
-				// called when loading has errors
-				function ( error ) {
-
-					console.log( 'An error happened' );
-
-				}
-			);
 
 			initTexture()
-		//	initVolume()
+			//	initVolume()
 			//initMonitor()
 			initGui()
 
@@ -541,58 +406,183 @@
 				})
 			)
 			monitorPos.position.x = -1
-			scene.add(monitorPos)
+			monitorVel = new THREE.Mesh(
+				new THREE.PlaneGeometry(1, 1),
+				new THREE.ShaderMaterial({
+					vertexShader: `
+									varying vec2 vUv;
+									void main() {
+										vUv = uv;
+										gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+									}
+								`,
+					fragmentShader: `
+									varying vec2 vUv;
+									uniform sampler2D tex;
+									void main() {
+										vec4 mapcolor = texture2D(tex, vUv);
+										gl_FragColor = mapcolor;
+										gl_FragColor = vec4(mapcolor.xy,0.,1.);
+									}
+								`,
+					uniforms: {
+						tex: { value: null }
+					},
+					transparent: true,
+
+					side: 2
+				})
+			)
+			monitorPos.position.x = -1
+			monitorVel.position.x = 1
+			scene.add(monitorPos, monitorVel)
+		}
+		function initInstancedMesh(data3d) {
+			const count = 500; // Số lượng instance
+			const geometry = new THREE.BoxGeometry(0.005, 0.02, 0.005);
+
+			// Tạo mảng lưu trữ vị trí các điểm
+			const positions = new Float32Array(count * 3);
+			const uvs = new Float32Array(count * 2); // Mảng UVs
+
+
+
+			matInstanced = new THREE.ShaderMaterial({
+				vertexShader: `
+					varying vec2 vUv;
+					uniform vec2 tSize;
+					uniform sampler2D posGpu;
+					uniform sampler2D velGpu;
+					mat4 rotationMatrix(vec3 axis, float angle) {
+						axis = normalize(axis);
+						float s = sin(angle);
+						float c = cos(angle);
+						float oc = 1.0 - c;
+						
+						return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+									oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+									oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+									0.0,                                0.0,                                0.0,                                1.0);
+					}
+					vec3 rotate(vec3 v, vec3 axis, float angle) {
+						mat4 m = rotationMatrix(axis, angle);
+						return (m * vec4(v, 1.0)).xyz;
+					}
+			
+					void main() {
+					float id = float(gl_InstanceID);
+						vec2 uvT = vec2(
+										mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
+										floor(id / tSize.x) / tSize.y  // Tính chỉ số hàng
+									);
+
+						vec3 posOfGpu = texture2D(posGpu, uvT).xyz; 
+						vec3 velOfGpu = texture2D(velGpu, uvT).xyz; 
+						vec3 pos = position;
+
+						vec3 dirC = normalize(velOfGpu);
+						vec3 axis = cross(dirC, vec3(0.0, 1.0, 0.0));
+						float angle = acos(dot(dirC, vec3(0.0, 1.0, 0.0)));
+						pos = rotate(pos, axis, angle);
+						pos += posOfGpu;
+					
+						gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+						vUv = uv; // Truyền UV đến fragment shader
+					}
+				`,
+				fragmentShader: `
+					varying vec2 vUv; // Nhận UV từ vertex shader
+					void main() {
+						gl_FragColor = vec4(vec3(0.4, 0.5, 1.0), 1.0); // Màu sắc của điểm
+					}
+				`,
+				uniforms: {
+					tSize: { value: new THREE.Vector2(widthTexture, widthTexture) },
+					posGpu: { value: null }, 
+					velGpu: { value: null },
+				},
+				transparent: false
+			});
+
+			const cInstancedMesh = new THREE.InstancedMesh(geometry, matInstanced, count);
+			const colors = [];
+			for (let i = 0; i < count; i++) {
+				// Tạo ma trận transform cho mỗi instance
+				const matrix = new THREE.Matrix4();
+
+				// Tạo vị trí ngẫu nhiên trong phạm vi từ -50 đến 50
+				const position = new THREE.Vector3(
+					(Math.random() - 0.5) * 2,
+					(Math.random() - 0.5) * 2,
+					(Math.random() - 0.5) * 2
+				);
+
+				// Tạo tỷ lệ ngẫu nhiên từ 0.5 đến 1.5
+				const scale = new THREE.Vector3(
+					Math.random() + 0.5,
+					Math.random() + 0.5,
+					Math.random() + 0.5
+				);
+
+				// Tạo rotation ngẫu nhiên
+				const rotation = new THREE.Euler(
+					Math.random() * 2 * Math.PI,
+					Math.random() * 2 * Math.PI,
+					Math.random() * 2 * Math.PI
+				);
+
+				// Áp dụng transform vào ma trận
+				matrix.makeRotationFromEuler(rotation);
+				matrix.setPosition(position);
+				matrix.scale(scale);
+
+				// Gán ma trận cho instance thứ i
+				cInstancedMesh.setMatrixAt(i, matrix);
+
+				// Tạo màu ngẫu nhiên cho mỗi instance
+				const color = new THREE.Color(Math.random(), Math.random(), Math.random());
+				colors.push(color.r, color.g, color.b);
+			}
+
+			scene.add(cInstancedMesh);
+
 		}
 		function initPoint(data3d) {
-			const count_p_size = 100
-			const cubeSize = 1
+			const count_p_size = 40;
+			const cubeSize = 1;
 			// Sử dụng BufferGeometry để tạo các điểm
 			const geometry = new THREE.BufferGeometry();
 
 			// Số lượng điểm (thay vì count_p_size ^ 3)
-			const numPoints = count_p_size * count_p_size * count_p_size;
-
+			const numPoints = widthTexture * widthTexture;
 			// Tạo mảng lưu trữ vị trí các điểm
 			const positions = new Float32Array(numPoints * 3);
-			const uvs = new Float32Array(count_p_size * count_p_size * count_p_size * 2); // Mảng UVs
-			// Tạo vị trí điểm ngẫu nhiên hoặc tính toán dựa trên grid
+			const uvs = new Float32Array(numPoints * 2); // Mảng UVs
+			// Tạo vị trí điểm ngẫu nhiên
 			let index = 0;
 
+			for (let i = 0; i < numPoints; i++) {
+				// Tạo các vị trí ngẫu nhiên trong phạm vi [-cubeSize/2, cubeSize/2]
+				const posX = Math.random() * cubeSize - cubeSize / 2;
+				const posY = Math.random() * cubeSize - cubeSize / 2;
+				const posZ = Math.random() * cubeSize - cubeSize / 2;
 
-			for (let x = 0; x < count_p_size; x++) {
-				for (let y = 0; y < count_p_size; y++) {
-					for (let z = 0; z < count_p_size; z++) {
-						// Tính toán vị trí cho từng điểm
-						const posX = (x / (count_p_size - 1)) * cubeSize - cubeSize / 2;
-						const posY = (y / (count_p_size - 1)) * cubeSize - cubeSize / 2;
-						const posZ = (z / (count_p_size - 1)) * cubeSize - cubeSize / 2;
+				// Lưu vị trí điểm vào mảng
+				positions[index * 3] = posX;
+				positions[index * 3 + 1] = posY;
+				positions[index * 3 + 2] = posZ;
 
-						// Lưu vị trí điểm vào mảng
-						positions[index * 3] = posX;
-						positions[index * 3 + 1] = posY;
-						positions[index * 3 + 2] = posZ;
+				// Tạo UVs ngẫu nhiên hoặc theo một quy tắc nào đó
+				uvs[index * 2] = Math.random(); // u
+				uvs[index * 2 + 1] = Math.random(); // v
 
-						// Tính toán UVs (sử dụng x và y làm giá trị UV)
-						uvs[index * 2] = x / (count_p_size - 1); // u
-						uvs[index * 2 + 1] = y / (count_p_size - 1); // v
-
-						index++;
-					}
-				}
+				index++;
 			}
-
 			// Thêm vị trí vào geometry
 			geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-			// Thêm UVs vào geometry
 			geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
 
-			// Sử dụng PointsMaterial thay vì ShaderMaterial nếu chỉ hiển thị điểm đơn giản
-			const material = new THREE.PointsMaterial({
-				size: 0.1,  // Kích thước của từng điểm
-				color: 0xffffff
-			});
 
 			// Hoặc sử dụng ShaderMaterial như mã của bạn nếu bạn muốn tiếp tục xử lý bằng shader
 			matPoint = new THREE.ShaderMaterial({
@@ -648,7 +638,8 @@
 						gl_FragColor = vec4(vSdf.xyz, 1.-vSdf.w);
 						gl_FragColor = vec4(vec3(.4,.6,1.), step(.5,vSdf.w));
 						gl_FragColor = vec4(vec3(.4,.6,1.),1.);
-						gl_FragColor = vec4(1.-vSdf.xyz * 2., 1.);
+						gl_FragColor = vec4(1.-vSdf.xyz * 1.4, 1.);
+						
 					}
 				`,
 				uniforms: {
@@ -725,7 +716,7 @@
 								textureData3dOut[index3D] = (imageData[imageIndex] / 255)
 								textureData3dOut[index3D + 1] = (imageData[imageIndex + 1] / 255)
 								textureData3dOut[index3D + 2] = (imageData[imageIndex + 2] / 255)
-								textureData3dOut[index3D + 3] = (imageData[imageIndex + 3] / 255) 
+								textureData3dOut[index3D + 3] = (imageData[imageIndex + 3] / 255)
 
 								// Nên xử lý cho raymarching đỡ phức tạp
 								// textureData3dOut[index3D] = 1. - imageData[imageIndex] / 255;
@@ -749,13 +740,47 @@
 				dataTexture3D.unpackAlignment = 1;
 				dataTexture3D.needsUpdate = true;
 
-			//	checkTextureData(textureData3dOut)
-				initPoint(dataTexture3D)
+
+
+				initModel()
+				//	checkTextureData(textureData3dOut)
+				//initPoint(dataTexture3D)
 				initComputeRenderer(dataTexture3D)
+				initInstancedMesh(dataTexture3D)
 			};
 
 
 
+		}
+		function initModel() {
+			const loader = new OBJLoader();
+
+			// load a resource
+			loader.load(
+				// resource URL
+				'models/eisbar/eisbar.obj',
+				// called when resource is loaded
+				function (object) {
+					let m = object
+
+					m.scale.set(.9, .9, .9)
+
+					scene.add(m);
+
+				},
+				// called when loading is in progresses
+				function (xhr) {
+
+					console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+
+				},
+				// called when loading has errors
+				function (error) {
+
+					console.log('An error happened');
+
+				}
+			);
 		}
 		function checkTextureData(data3dOut) {
 			const listSlice2D = []
@@ -801,7 +826,6 @@
 
 
 
-			console.log(data3dOut)
 
 
 			let groupSlice2D = new THREE.Group()
@@ -940,14 +964,14 @@
 
 		function initGui() {
 
-			const parameters = { threshold: 0.5, steps: 128, u_hold: .5,u_holdGPGPU:.5,start:false };
+			const parameters = { threshold: 0.5, steps: 128, u_hold: .5, u_holdGPGPU: .5, start: false };
 
 			function update() {
-				if(materialCube) {
+				if (materialCube) {
 					materialCube.uniforms.threshold.value = parameters.threshold;
 					materialCube.uniforms.steps.value = parameters.steps;
 				}
-			
+
 
 			}
 			function update2() {
@@ -956,7 +980,10 @@
 				matPoint.uniforms.u_hold.value = parameters.u_hold
 			}
 			function updatePropsGPU() {
-				positionUniforms['u_holdGPGPU'] = { value:parameters.u_holdGPGPU };
+				positionUniforms['u_holdGPGPU'] = { value: parameters.u_holdGPGPU };
+
+			}
+			function startGPU() {
 				positionUniforms['start'] = { value: !positionUniforms['start'].value };
 			}
 			const gui = new GUI();
@@ -965,8 +992,8 @@
 
 			gui.add(parameters, 'u_hold', 0, 1, .001).onChange(update2);
 
-			gui.add(parameters, 'u_holdGPGPU', 0, 1, .001).onChange(updatePropsGPU);
-			gui.add(parameters, 'start').onChange(updatePropsGPU);
+			gui.add(parameters, 'u_holdGPGPU', 0, 1.727272, .001).onChange(updatePropsGPU);
+			gui.add(parameters, 'start').onChange(startGPU);
 		}
 
 		function animate() {
@@ -977,11 +1004,11 @@
 			if (gpuCompute) runGPGPU()
 			stats.update();
 
-			if(materialCube) {
+			if (materialCube) {
 				materialCube.uniforms.cameraPos.value.copy(camera.position);
 				materialCube.uniforms.map.value = dataTexture3D
 			}
-				
+
 
 			renderer.render(scene, camera);
 
@@ -1006,8 +1033,12 @@
 				matPoint.uniforms.posGpu.value = texturePosOut
 
 			}
+			if (matInstanced) {
+				matInstanced.uniforms.posGpu.value = texturePosOut
+				matInstanced.uniforms.velGpu.value = textureVelOut
+			}
 			if (monitorPos && monitorPos.material) monitorPos.material.uniforms.tex.value = texturePosOut
-
+			if (monitorVel && monitorVel.material) monitorVel.material.uniforms.tex.value = textureVelOut
 
 		}
 
