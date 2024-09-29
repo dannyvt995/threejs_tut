@@ -363,7 +363,7 @@
 		let positionUniforms, velocityUniforms, extraUniforms
 		let monitorPos, monitorVel
 
-		const textureSDF = new THREE.TextureLoader().load('/threejs_tut/models/eisbar/sdf.png')
+		const textureSDF = new THREE.TextureLoader().load('/models/eisbar/sdf.png')
 		let textureSDFData, texture2DView, matmat
 
 		initRenderer()
@@ -479,7 +479,7 @@
 			// load a resource
 			loader.load(
 				// resource URL
-				'/threejs_tut/models/eisbar/eisbar.obj',
+				'models/eisbar/eisbar.obj',
 				// called when resource is loaded
 				function ( object ) {
 					let m = object
@@ -674,7 +674,7 @@
 		function initTexture() {
 
 			const img = new Image();
-			img.src = '/threejs_tut/models/eisbar/sdf.png';
+			img.src = '/models/eisbar/sdf.png';
 			img.onload = () => {
 				const canvas = document.createElement('canvas');
 				const context = canvas.getContext('2d');
