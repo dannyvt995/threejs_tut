@@ -113,7 +113,7 @@
         
         // Áp dụng độ mờ dựa trên vận tốc
         float alpha = smoothstep(0.0, 0.95, len * .7);
-        vec3 fc = mix(vec3(0.),color * 8.,alpha);
+        vec3 fc = mix(vec3(0.),color * 18.,alpha);
 
          // Tính độ sáng của pixel
     float luminance = dot(fc, vec3(0.299, 0.587, 0.114));

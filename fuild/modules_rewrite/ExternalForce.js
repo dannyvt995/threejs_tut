@@ -9,7 +9,10 @@ import Renderer from "./Renderer.js";
 export default class ExternalForce extends ShaderPass{
     constructor(simProps){
         super({
-            output: simProps.dst
+            output: simProps.dst,
+            material:{
+                name:"ExternalForce",
+            }
         });
         this.force = new THREE.Vector2()
         this.center = new THREE.Vector2()
@@ -25,6 +28,7 @@ export default class ExternalForce extends ShaderPass{
         );
 
         const mouseM = new THREE.RawShaderMaterial({
+            name:"ExternalForce",
             vertexShader: mouseVert,
             fragmentShader: externalForceFrag,
             blending: THREE.AdditiveBlending,

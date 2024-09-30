@@ -11,6 +11,7 @@ export default class Advection extends ShaderPass{
     constructor(simProps){
         super({
             material: {
+                name:"AdvectionPass",
                 vertexShader: faceVert,
                 fragmentShader: advectionFrag,
                 uniforms: {

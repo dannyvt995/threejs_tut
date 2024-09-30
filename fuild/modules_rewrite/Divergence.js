@@ -6,7 +6,9 @@ import ShaderPass from "./ShaderPass.js";
 export default class Divergence extends ShaderPass{
     constructor(simProps){
         super({
+            
             material: {
+                name:"DivergencePass",
                 vertexShader: faceVert,
                 fragmentShader: divergenceFrag,
                 uniforms: {

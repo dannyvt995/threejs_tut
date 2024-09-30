@@ -22,6 +22,7 @@
 <body>
 	<div class="note">
 	</div>
+	<div id="canvas"></div>
 	<script id="frag_Pos_GPGPU" type="x-shader/x-fragment">
 
         uniform float time;
@@ -29,6 +30,7 @@
 		uniform float u_holdGPGPU;
 		uniform bool start;
 		uniform sampler3D texture3DSDF;
+		uniform sampler2D uFuild;
         vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
 
         vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
@@ -165,6 +167,25 @@
 				return vec3(-0.5, 0.5, 0.5);
 			}
 		}
+
+
+		vec3 SimpleSim(in vec2 cl) {
+			float len = length(cl.xy);
+			vec3 colorSim = vec3(len);
+			float alpha = smoothstep(0.0, 0.5, len);
+			vec3 fc = mix(vec3(0.),colorSim,alpha);
+			  float luminance = dot(fc, vec3(0.299, 0.587, 0.114));
+
+			// Ngưỡng để quyết định xem pixel có sáng hay không
+			float threshold = 0.1;
+
+			// Nếu pixel sáng, làm tối nó
+			if (luminance > threshold) {
+				fc *= 0.0001;  // giảm cường độ của màu (làm tối)
+			}
+			return fc;
+		}
+
         void main()	{
 
             vec2 uv = gl_FragCoord.xy / resolution.xy;
@@ -195,7 +216,9 @@
 		
 			
 		
-			posSelf += velSelf * .4;
+			vec3 posFuild = texture2D(uFuild,posSelf.xy + .5).xyz;
+			posFuild = SimpleSim(posFuild.xy);
+			posSelf += velSelf * .5 ;
 
 			gl_FragColor = vec4(  posSelf, 1.  );
 
@@ -209,112 +232,157 @@
         uniform float delta;
 		uniform sampler3D texture3DSDF;
 		uniform float u_holdGPGPU;
-	
-		vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
+		uniform sampler2D uFuild;
+		vec4 mod289(vec4 x) {
+			return x - floor(x * (1.0 / 289.0)) * 289.0;
+		}
+		
+		float mod289(float x) {
+			return x - floor(x * (1.0 / 289.0)) * 289.0;
+		}
+		
+		vec4 permute(vec4 x) {
+			return mod289(((x*34.0)+1.0)*x);
+		}
+		
+		float permute(float x) {
+			return mod289(((x*34.0)+1.0)*x);
+		}
+		
+		vec4 taylorInvSqrt(vec4 r) {
+			return 1.79284291400159 - 0.85373472095314 * r;
+		}
+		
+		float taylorInvSqrt(float r) {
+			return 1.79284291400159 - 0.85373472095314 * r;
+		}
+		
+		vec4 grad4(float j, vec4 ip) {
+			const vec4 ones = vec4(1.0, 1.0, 1.0, -1.0);
+			vec4 p,s;
+		
+			p.xyz = floor( fract (vec3(j) * ip.xyz) * 7.0) * ip.z - 1.0;
+			p.w = 1.5 - dot(abs(p.xyz), ones.xyz);
+			s = vec4(lessThan(p, vec4(0.0)));
+			p.xyz = p.xyz + (s.xyz*2.0 - 1.0) * s.www;
+		
+			return p;
+		}
+		
+		#define F4 0.309016994374947451
+		
+		vec4 snoise4 (vec4 v) {
+			const vec4  C = vec4( 0.138196601125011,0.276393202250021,0.414589803375032,-0.447213595499958);
+		
+			vec4 i  = floor(v + dot(v, vec4(F4)) );
+			vec4 x0 = v -   i + dot(i, C.xxxx);
+		
+			vec4 i0;
+			vec3 isX = step( x0.yzw, x0.xxx );
+			vec3 isYZ = step( x0.zww, x0.yyz );
+			i0.x = isX.x + isX.y + isX.z;
+			i0.yzw = 1.0 - isX;
+			i0.y += isYZ.x + isYZ.y;
+			i0.zw += 1.0 - isYZ.xy;
+			i0.z += isYZ.z;
+			i0.w += 1.0 - isYZ.z;
+		
+			vec4 i3 = clamp( i0, 0.0, 1.0 );
+			vec4 i2 = clamp( i0-1.0, 0.0, 1.0 );
+			vec4 i1 = clamp( i0-2.0, 0.0, 1.0 );
+		
+			vec4 x1 = x0 - i1 + C.xxxx;
+			vec4 x2 = x0 - i2 + C.yyyy;
+			vec4 x3 = x0 - i3 + C.zzzz;
+			vec4 x4 = x0 + C.wwww;
+		
+			i = mod289(i);
+			float j0 = permute( permute( permute( permute(i.w) + i.z) + i.y) + i.x);
+			vec4 j1 = permute( permute( permute( permute (
+					 i.w + vec4(i1.w, i2.w, i3.w, 1.0 ))
+				   + i.z + vec4(i1.z, i2.z, i3.z, 1.0 ))
+				   + i.y + vec4(i1.y, i2.y, i3.y, 1.0 ))
+				   + i.x + vec4(i1.x, i2.x, i3.x, 1.0 ));
+		
+		
+			vec4 ip = vec4(1.0/294.0, 1.0/49.0, 1.0/7.0, 0.0) ;
+		
+			vec4 p0 = grad4(j0,   ip);
+			vec4 p1 = grad4(j1.x, ip);
+			vec4 p2 = grad4(j1.y, ip);
+			vec4 p3 = grad4(j1.z, ip);
+			vec4 p4 = grad4(j1.w, ip);
+		
+			vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+			p0 *= norm.x;
+			p1 *= norm.y;
+			p2 *= norm.z;
+			p3 *= norm.w;
+			p4 *= taylorInvSqrt(dot(p4,p4));
+		
+			vec3 values0 = vec3(dot(p0, x0), dot(p1, x1), dot(p2, x2)); //value of contributions from each corner at point
+			vec2 values1 = vec2(dot(p3, x3), dot(p4, x4));
+		
+			vec3 m0 = max(0.5 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2)), 0.0); //(0.5 - x^2) where x is the distance
+			vec2 m1 = max(0.5 - vec2(dot(x3,x3), dot(x4,x4)), 0.0);
+		
+			vec3 temp0 = -6.0 * m0 * m0 * values0;
+			vec2 temp1 = -6.0 * m1 * m1 * values1;
+		
+			vec3 mmm0 = m0 * m0 * m0;
+			vec2 mmm1 = m1 * m1 * m1;
+		
+			float dx = temp0[0] * x0.x + temp0[1] * x1.x + temp0[2] * x2.x + temp1[0] * x3.x + temp1[1] * x4.x + mmm0[0] * p0.x + mmm0[1] * p1.x + mmm0[2] * p2.x + mmm1[0] * p3.x + mmm1[1] * p4.x;
+			float dy = temp0[0] * x0.y + temp0[1] * x1.y + temp0[2] * x2.y + temp1[0] * x3.y + temp1[1] * x4.y + mmm0[0] * p0.y + mmm0[1] * p1.y + mmm0[2] * p2.y + mmm1[0] * p3.y + mmm1[1] * p4.y;
+			float dz = temp0[0] * x0.z + temp0[1] * x1.z + temp0[2] * x2.z + temp1[0] * x3.z + temp1[1] * x4.z + mmm0[0] * p0.z + mmm0[1] * p1.z + mmm0[2] * p2.z + mmm1[0] * p3.z + mmm1[1] * p4.z;
+			float dw = temp0[0] * x0.w + temp0[1] * x1.w + temp0[2] * x2.w + temp1[0] * x3.w + temp1[1] * x4.w + mmm0[0] * p0.w + mmm0[1] * p1.w + mmm0[2] * p2.w + mmm1[0] * p3.w + mmm1[1] * p4.w;
+		
+			return vec4(dx, dy, dz, dw) * 49.0;
+		}
+		
+		vec3 curl( in vec3 p, in float noiseTime, in float persistence ) {
 
-        vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
-        
-        vec4 permute(vec4 x) {  return mod289(((x*34.0)+1.0)*x);  }
-        
-        vec4 taylorInvSqrt(vec4 r) {  return 1.79284291400159 - 0.85373472095314 * r;}
-        
-        float snoise(vec3 v) { 
-            const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
-            const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
-        
-            vec3 i  = floor(v + dot(v, C.yyy) );
-            vec3 x0 =   v - i + dot(i, C.xxx) ;
-        
-            vec3 g = step(x0.yzx, x0.xyz);
-            vec3 l = 1.0 - g;
-            vec3 i1 = min( g.xyz, l.zxy );
-            vec3 i2 = max( g.xyz, l.zxy );
-        
-            vec3 x1 = x0 - i1 + C.xxx;
-            vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
-            vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
-        
-            i = mod289(i); 
-            vec4 p = permute( permute( permute( 
-                                 i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
-                             + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
-                             + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-        
-            float n_ = 0.142857142857; // 1.0/7.0
-            vec3  ns = n_ * D.wyz - D.xzx;
-        
-            vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
-        
-            vec4 x_ = floor(j * ns.z);
-            vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
-        
-            vec4 x = x_ *ns.x + ns.yyyy;
-            vec4 y = y_ *ns.x + ns.yyyy;
-            vec4 h = 1.0 - abs(x) - abs(y);
-        
-            vec4 b0 = vec4( x.xy, y.xy );
-            vec4 b1 = vec4( x.zw, y.zw );
-        
-            vec4 s0 = floor(b0)*2.0 + 1.0;
-            vec4 s1 = floor(b1)*2.0 + 1.0;
-            vec4 sh = -step(h, vec4(0.0));
-        
-            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-        
-            vec3 p0 = vec3(a0.xy,h.x);
-            vec3 p1 = vec3(a0.zw,h.y);
-            vec3 p2 = vec3(a1.xy,h.z);
-            vec3 p3 = vec3(a1.zw,h.w);
-        
-            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
-            p0 *= norm.x;
-            p1 *= norm.y;
-            p2 *= norm.z;
-            p3 *= norm.w;
-        
-            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-            m = m * m;
-            return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
-                                                                        dot(p2,x2), dot(p3,x3) ) );
-        }
-        
-        vec3 snoiseVec3( vec3 x ){
-        
-            float s  = snoise(vec3( x ));
-            float s1 = snoise(vec3( x.y - 19.1 , x.z + 33.4 , x.x + 47.2 ));
-            float s2 = snoise(vec3( x.z + 74.2 , x.x - 124.5 , x.y + 99.4 ));
-            vec3 c = vec3( s , s1 , s2 );
-            return c;
-        
-        }
-        
-        vec3 curlNoise( vec3 p ){
-            
-            const float e = .1;
-            vec3 dx = vec3( e   , 0.0 , 0.0 );
-            vec3 dy = vec3( 0.0 , e   , 0.0 );
-            vec3 dz = vec3( 0.0 , 0.0 , e   );
-        
-            vec3 p_x0 = snoiseVec3( p - dx );
-            vec3 p_x1 = snoiseVec3( p + dx );
-            vec3 p_y0 = snoiseVec3( p - dy );
-            vec3 p_y1 = snoiseVec3( p + dy );
-            vec3 p_z0 = snoiseVec3( p - dz );
-            vec3 p_z1 = snoiseVec3( p + dz );
-        
-            float x = p_y1.z - p_y0.z - p_z1.y + p_z0.y;
-            float y = p_z1.x - p_z0.x - p_x1.z + p_x0.z;
-            float z = p_x1.y - p_x0.y - p_y1.x + p_y0.x;
-        
-            const float divisor = 1.0 / ( 2.0 * e );
-            return normalize( vec3( x , y , z ) * divisor );
-        
-        }
+			vec4 xNoisePotentialDerivatives = vec4(0.0);
+			vec4 yNoisePotentialDerivatives = vec4(0.0);
+			vec4 zNoisePotentialDerivatives = vec4(0.0);
+		
+			for (int i = 0; i < 3; ++i) {
+		
+				float twoPowI = pow(2.0, float(i));
+				float scale = 0.5 * twoPowI * pow(persistence, float(i));
+		
+				xNoisePotentialDerivatives += snoise4(vec4(p * twoPowI, noiseTime)) * scale;
+				yNoisePotentialDerivatives += snoise4(vec4((p + vec3(123.4, 129845.6, -1239.1)) * twoPowI, noiseTime)) * scale;
+				zNoisePotentialDerivatives += snoise4(vec4((p + vec3(-9519.0, 9051.0, -123.0)) * twoPowI, noiseTime)) * scale;
+			}
+		
+			return vec3(
+				zNoisePotentialDerivatives[1] - yNoisePotentialDerivatives[2],
+				xNoisePotentialDerivatives[2] - zNoisePotentialDerivatives[0],
+				yNoisePotentialDerivatives[0] - xNoisePotentialDerivatives[1]
+			);
+		
+		}
 		float random (in vec2 _st) {
 			return fract(sin(dot(_st.xy,
 								vec2(12.9898,78.233)))*
 				43758.5453123);
+		}
+		vec3 SimpleSim(in vec2 cl) {
+			float len = length(cl.xy);
+			vec3 colorSim = vec3(len);
+			float alpha = smoothstep(0.0, 0.5, len);
+			vec3 fc = mix(vec3(0.),colorSim,alpha);
+			  float luminance = dot(fc, vec3(0.299, 0.587, 0.114));
+
+			// Ngưỡng để quyết định xem pixel có sáng hay không
+			float threshold = 0.1;
+
+			// Nếu pixel sáng, làm tối nó
+			if (luminance > threshold) {
+				fc *= 0.0001;  // giảm cường độ của màu (làm tối)
+			}
+			return fc;
 		}
         void main() {
             
@@ -322,9 +390,16 @@
 
             vec3 posSelf = texture2D( texturePosition, uv ).xyz;
             vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
-			
-			
+		
+
+
+			//velSelf.xyz += curl((posSelf.xyz + velSelf.xyz) * 1.7, time*.5, 0.02) * .0007;
 			posSelf += velSelf;
+
+			vec3 posFuild = texture2D(uFuild,posSelf.xy + .5).xyz;
+			posFuild = SimpleSim(posFuild.xy);
+			velSelf -= posFuild * .2;
+
 			vec4 sdf3d = texture(texture3DSDF, posSelf + .5);
 			vec4 sdf3dFormat = sdf3d * 2. - 1.;
 
@@ -359,6 +434,9 @@
 		import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
 		import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
 		import { GUI } from 'three/addons/lil-gui.module.min.js';
+		import Renderer from "./fuild/modules_rewrite/Renderer.js";
+		import Simulation from "./fuild/modules_rewrite/Simulation.js";
+		import Mouse from "./fuild/modules_rewrite/Mouse.js";
 
 		let renderer, scene, camera, stats;
 		let mesh, texturedd, dataTexture3D, dataTexture3DSample, materialCube, textureData3dOut
@@ -370,14 +448,31 @@
 		let velocityVariable, positionVariable, extraVariable
 		let positionUniforms, velocityUniforms, extraUniforms
 		let monitorPos, monitorVel
-
+		let mousePos = new THREE.Vector2()
 		const textureSDF = new THREE.TextureLoader().load('/models/eisbar/sdf.png')
 		let textureSDFData, texture2DView, matmat
 
-		initRenderer()
+		Renderer.init();
+		Mouse.init();
+		const simulation = new Simulation({
+			options: {
+				iterations_poisson: 1,
+				iterations_viscous: 1,
+				mouse_force: 10,
+				resolution: 0.4,
+				cursor_size: 100,
+				viscous: 30,
+				isBounce: false,
+				dt: 0.09,
+				isViscous: false,
+				BFECC: false
+			}
+		});
+
+
 		initMain();
 
-		function initComputeRenderer(data3d) {
+		function initComputeRenderer(renderer,data3d) {
 			function fillPosTexture(texture) {
 				const arrT = texture.image.data;
 				for (let k = 0, kl = arrT.length; k < kl; k += 4) {
@@ -444,6 +539,9 @@
 			velocityUniforms['texture3DSDF'] = { value: data3d };
 			velocityUniforms['u_holdGPGPU'] = { value: 0.5 };
 
+
+			velocityUniforms['uFuild'] = { value:  simulation.fbos.vel_0.texture };
+			positionUniforms['uFuild'] = { value:  simulation.fbos.vel_0.texture };
 			console.log(positionUniforms['texture3DSDF'])
 
 			const error = gpuCompute.init();
@@ -456,13 +554,7 @@
 
 		}
 
-		function initRenderer() {
-			renderer = new THREE.WebGLRenderer();
-			renderer.setPixelRatio(window.devicePixelRatio);
-			renderer.setSize(window.innerWidth, window.innerHeight);
-			renderer.setAnimationLoop(animate);
-			document.body.appendChild(renderer.domElement);
-		}
+	
 		function initMain() {
 
 
@@ -472,7 +564,7 @@
 			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.001, 10000);
 			camera.position.set(0, 0, 2);
 
-			new OrbitControls(camera, renderer.domElement);
+			new OrbitControls(camera, Renderer.renderer.domElement);
 			const axesHelper = new THREE.AxesHelper(5);
 			//scene.add(axesHelper);
 			const light = new THREE.AmbientLight(0x404040); // soft white light
@@ -486,8 +578,8 @@
 
 
 			initTexture()
-			//	initVolume()
-			//initMonitor()
+		//	initMonitor()
+			initModel()
 			initGui()
 
 			window.addEventListener('resize', onWindowResize);
@@ -508,10 +600,28 @@
 					fragmentShader: `
 									varying vec2 vUv;
 									uniform sampler2D tex;
+
+									vec3 SimpleSim(in vec2 cl) {
+										float len = length(cl.xy);
+										vec3 colorSim = vec3(len);
+										float alpha = smoothstep(0.0, 0.5, len);
+										vec3 fc = mix(vec3(0.),colorSim,alpha);
+									  	float luminance = dot(fc, vec3(0.299, 0.587, 0.114));
+
+										// Ngưỡng để quyết định xem pixel có sáng hay không
+										float threshold = 0.1;
+
+										// Nếu pixel sáng, làm tối nó
+										if (luminance > threshold) {
+											fc *= 0.0001;  // giảm cường độ của màu (làm tối)
+										}
+										return fc;
+									}
 									void main() {
 										vec4 mapcolor = texture2D(tex, vUv);
-										gl_FragColor = mapcolor;
-										gl_FragColor = vec4(mapcolor.xy,0.,1.);
+
+										
+										gl_FragColor = vec4( SimpleSim(mapcolor.xy),1.);
 									}
 								`,
 					uniforms: {
@@ -555,7 +665,7 @@
 			scene.add(monitorPos, monitorVel)
 		}
 		function initInstancedMesh(data3d) {
-			const count = 1000; // Số lượng instance
+			const count = 3000; // Số lượng instance
 			const geometry = new THREE.BoxGeometry(0.005, 0.02, 0.005);
 
 			// Tạo mảng lưu trữ vị trí các điểm
@@ -629,9 +739,9 @@
 
 			for (let i = 0; i < count; i++) {
 
-				offsets[i * 3 + 0] = Math.random()+.1; // X
+				offsets[i * 3 + 0] = Math.random()+.8; // X
 				offsets[i * 3 + 1] = Math.random(); // Y
-				offsets[i * 3 + 2] = Math.random()+.1; // Z
+				offsets[i * 3 + 2] = Math.random()+.3; // Z
 			}
 
 
@@ -724,11 +834,13 @@
 					attribute vec3 offset;
 					uniform sampler3D dataTexture3D;
 					uniform sampler2D posGpu;
+					
 					uniform float u_hold;
 					uniform vec2 tSize;
 					uniform float dt;
 					uniform float time;
 					varying vec2 vExtra;
+					varying vec3 vPos;
 					varying vec4 vSdf;
 				
 					void main() {
@@ -757,7 +869,7 @@
 						vSdf = vec4(posOfGpu,1.);
 
 						gl_Position = projectionMatrix * modelViewMatrix * vec4(posOfGpu , 1.0);
-						gl_PointSize = 2.5;
+						gl_PointSize = 0.5;
 
 						vUv = uv;
 						
@@ -767,18 +879,21 @@
 					varying vec2 vUv;
 					varying vec2 vExtra;
 					varying vec4 vSdf;
+					varying vec3 vPos;
+					uniform sampler2D uFuild;
 					void main() {
 						gl_FragColor = vec4(vSdf.xyz, 1.-vSdf.w);
 						gl_FragColor = vec4(vec3(.4,.6,1.), step(.5,vSdf.w));
 						gl_FragColor = vec4(vec3(.4,.6,1.),1.);
+						vec3 fuild = texture2D(uFuild,vPos.xy).xyz;
 						gl_FragColor = vec4(1.-vSdf.xyz * 1.4, 1.);
-						
 					}
 				`,
 				uniforms: {
 					texure3D: data3d,
 					dt: { value: 0 },
 					time: { value: 0 },
+					uFuild: { value: null },
 					posGpu: { value: null },
 					tSize: { value: new THREE.Vector2(widthTexture, widthTexture) },
 					u_hold: { value: .5 }
@@ -862,7 +977,7 @@
 					}
 				}
 
-				console.log(textureData3dOut)
+		
 
 				// Cấu hình, đối với trường hợp này sữ dụng RBGA , vì track bằng alpha
 				dataTexture3D = new THREE.Data3DTexture(textureData3dOut, width3D, height3D, depth3D);
@@ -875,10 +990,11 @@
 
 
 
-				initModel()
+		
 				//	checkTextureData(textureData3dOut)
 				//initPoint(dataTexture3D)
-				initComputeRenderer(dataTexture3D)
+		
+				initComputeRenderer(Renderer.renderer,dataTexture3D)
 				initInstancedMesh(dataTexture3D)
 			};
 
@@ -896,8 +1012,8 @@
 				function (object) {
 					let m = object
 
-					m.scale.set(.86,.86,.86)
-					m.position.y = -.01
+					m.scale.set(.89,.89,.89)
+					m.position.y = -.001
 					scene.add(m);
 
 				},
@@ -980,121 +1096,7 @@
 			console.log(groupSlice2D)
 			scene.add(groupSlice2D)
 		}
-		function initVolume() {
-			const vertexShader = /* glsl */ `
-				in vec3 position;
-
-					uniform mat4 modelMatrix;
-					uniform mat4 modelViewMatrix;
-					uniform mat4 projectionMatrix;
-					uniform vec3 cameraPos;
-
-					out vec3 vOrigin;
-					out vec3 vDirection;
-
-					void main() {
-						vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-
-						vOrigin = vec3( inverse( modelMatrix ) * vec4( cameraPos, 1.0 ) ).xyz;
-						vDirection = position - vOrigin;
-
-						gl_Position = projectionMatrix * mvPosition;
-					}
-			`;
-
-			const fragmentShader = /* glsl */ `
-				precision highp float;
-				precision highp sampler3D;
-
-				in vec3 vOrigin;
-				in vec3 vDirection;
-
-				out vec4 color;
-
-				uniform sampler3D map; // Texture 3D
-				uniform float threshold; // Ngưỡng alpha
-				uniform float steps; // Số bước trong ray marching
-
-				vec2 hitBox(vec3 orig, vec3 dir) {
-					const vec3 box_min = vec3(-0.5);
-					const vec3 box_max = vec3(0.5);
-					vec3 inv_dir = 1.0 / dir;
-					vec3 tmin_tmp = (box_min - orig) * inv_dir;
-					vec3 tmax_tmp = (box_max - orig) * inv_dir;
-					vec3 tmin = min(tmin_tmp, tmax_tmp);
-					vec3 tmax = max(tmin_tmp, tmax_tmp);
-					float t0 = max(tmin.x, max(tmin.y, tmin.z));
-					float t1 = min(tmax.x, min(tmax.y, tmax.z));
-					return vec2(t0, t1);
-				}
-
-				float sample1(vec3 p) {
-					return texture(map, p).a; // Lấy alpha từ texture
-				}
-
-				void main() {
-					vec3 rayDir = normalize(vDirection);
-					vec2 bounds = hitBox(vOrigin, rayDir);
-
-					if (bounds.x > bounds.y) discard;
-
-					bounds.x = max(bounds.x, 0.0);
-
-					vec3 p = vOrigin + bounds.x * rayDir;
-					p += .5; // Điều chỉnh ray về đúng vị trí, chưa biết tại sao bị lệch?
-					vec3 inc = 1.0 / abs(rayDir);
-					float delta = min(inc.x, min(inc.y, inc.z)) / steps;
-
-
-					for (float t = bounds.x; t < bounds.y; t += delta) {
-						// Bắt đầu lấy mẫu theo p , trướng hợp này lấy mẫu alpha
-						// Nên xử lý alpha ở js, để track dễ hơn 
-						float d = sample1(p);
-
-							if ( d < threshold ) {
-
-								color.rgb = p;
-								color.a = 1.;
-								break;
-
-							}else{
-								// color.rgb = 1.-p;
-								// color.a = .3;
-							}
-
-							p += rayDir * delta;
-
-					}
-
-					// Nếu alpha vẫn là 0, không vẽ
-					//if (color.a == 0.0) discard;
-					}
-				`;
-
-			const geometry = new THREE.BoxGeometry(1, 1, 1);
-			materialCube = new THREE.RawShaderMaterial({
-				glslVersion: THREE.GLSL3,
-				uniforms: {
-					base: { value: new THREE.Color(0x798aa0) },
-					map: { value: null },
-					cameraPos: { value: new THREE.Vector3() },
-					threshold: { value: 0.5 },
-					opacity: { value: 0.25 },
-					range: { value: 0.1 },
-					steps: { value: 128 },
-					frame: { value: 0 }
-				},
-				vertexShader,
-				fragmentShader,
-				side: THREE.BackSide,
-				transparent: true,
-			});
-
-			mesh = new THREE.Mesh(geometry, materialCube);
-			let meshHelper = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ wireframe: true }));
-			scene.add(mesh, meshHelper);
-		}
-
+	
 		function initGui() {
 
 			const parameters = { threshold: 0.5, steps: 128, u_hold: .5, u_holdGPGPU: .5,u_holdGPGPU_Vel:.5, start: false };
@@ -1131,7 +1133,11 @@
 			gui.add(parameters, 'start').onChange(startGPU);
 		}
 
+		Renderer.renderer.setAnimationLoop(animate);
 		function animate() {
+			Mouse.update();
+        	Renderer.update();
+			simulation.update()
 			const currentTime = performance.now();
 			delta = (currentTime - lastTime) / 1000;
 			lastTime = currentTime;
@@ -1144,8 +1150,8 @@
 				materialCube.uniforms.map.value = dataTexture3D
 			}
 
-
-			renderer.render(scene, camera);
+			Renderer.renderer.setRenderTarget(null);
+			Renderer.renderer.render(scene, camera);
 
 		}
 
@@ -1158,21 +1164,21 @@
 				velocityUniforms['delta'].value = delta;
 			}
 
-
-
+			velocityUniforms['uFuild'].value = simulation.fbos.vel_0.texture 
+			positionUniforms['uFuild'].value = simulation.fbos.vel_0.texture 
 			gpuCompute.compute();
 			const texturePosOut = gpuCompute.getCurrentRenderTarget(positionVariable).texture;
 			const textureVelOut = gpuCompute.getCurrentRenderTarget(velocityVariable).texture;
 			if (matPoint) {
 				matPoint.uniforms.dt.value = delta
 				matPoint.uniforms.posGpu.value = texturePosOut
-
+				matPoint.uniforms.uFuild.value = simulation.fbos.vel_0.texture 
 			}
 			if (matInstanced) {
 				matInstanced.uniforms.posGpu.value = texturePosOut
 				matInstanced.uniforms.velGpu.value = textureVelOut
 			}
-			if (monitorPos && monitorPos.material) monitorPos.material.uniforms.tex.value = texturePosOut
+			if (monitorPos && monitorPos.material) monitorPos.material.uniforms.tex.value = simulation.fbos.vel_0.texture 
 			if (monitorVel && monitorVel.material) monitorVel.material.uniforms.tex.value = textureVelOut
 
 		}
@@ -1182,7 +1188,7 @@
 			camera.aspect = window.innerWidth / window.innerHeight;
 			camera.updateProjectionMatrix();
 
-			renderer.setSize(window.innerWidth, window.innerHeight);
+			Renderer.renderer.setSize(window.innerWidth, window.innerHeight);
 
 		}
 

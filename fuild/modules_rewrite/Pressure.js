@@ -6,6 +6,7 @@ export default class Divergence extends ShaderPass{
     constructor(simProps){
         super({
             material: {
+                name:"Divergence_aka_Pressure",
                 vertexShader: faceVert,
                 fragmentShader: pressureFrag,
                 uniforms: {

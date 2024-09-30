@@ -6,6 +6,7 @@ import { faceVert } from './glsl/sim/faceVert.js';
 export default class ClearColor extends ShaderPass {
     constructor(simProps) {
         super({
+            name:"ClearColorPass",
             material: {
                 uniforms: {
                     velocity: { value: null },
