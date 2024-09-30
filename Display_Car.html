@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Display_Car</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+    <style>
+        body {
+            overflow: hidden;
+            margin: 0px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app"></div>
+    <script type="importmap">
+			{
+				"imports": {
+					"three": "./three.module.js",
+					"three/addons/": "./jsm/",
+          "three/addons/module_more": "./jsm/module_more"
+				}
+			}
+		</script>
+
+    <script type="module">
+
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/EffectComposer.js";
+        import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/RenderPass.js";
+        import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/UnrealBloomPass.js";
+        import { AfterimagePass } from 'https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/AfterimagePass.js';
+        import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/DRACOLoader.js';
+        import {
+            computeBoundsTree,
+            disposeBoundsTree,
+            acceleratedRaycast
+        } from "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.5/build/index.module.min.js";
+
+        import { BufferGeometryUtils } from "three/addons/module_more/BufferGeometryUtils.js";
+
+        THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+        THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+        THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+        let scene = new THREE.Scene();
+        let camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(0, 2, 3);
+        let renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        document.getElementById("app").appendChild(renderer.domElement);
+
+        let controls = new OrbitControls(camera, renderer.domElement);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 5.5);
+        scene.add(directionalLight);
+        const light = new THREE.AmbientLight(0x404040,5.); // soft white light
+        scene.add(light);
+
+
+        const loader = new GLTFLoader();
+
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+        loader.setDRACOLoader(dracoLoader);
+     
+        const listMesh = ["BG_SkyDome", "None", "VW_Golf_GTI_MY24_Ext","VW_Golf_GTI_MY24_Int","VW_Golf_GTI_MY24_Wheels_Richmond_19"]
+
+        for (let mm = 0; mm < listMesh.length; mm++) {
+            loader.load(`./models/car/${listMesh[mm]}.glb`, (gltf) => {
+                let meshDetail = gltf.scene;
+
+                meshDetail.traverse((mesh) => {
+                    if (mesh.isMesh) {
+
+                        let randomHexColor = Math.floor(Math.random() * 16777215).toString(16);
+                        randomHexColor = "#" + randomHexColor.padStart(6, '0');
+
+                        mesh.material = mesh.material.clone();
+                        mesh.material.color.set(randomHexColor);
+
+                       //console.log(mesh.name)
+                      //  console.log(mesh)
+                    console.log(mesh.material.uuid)
+                    }
+                });
+
+                scene.add(gltf.scene);
+            });
+        }
+
+
+
+
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        renderer.setAnimationLoop((_) => {
+            renderer.render(scene, camera);
+        });
+
+
+
+    </script>
+</body>
+
+</html>
