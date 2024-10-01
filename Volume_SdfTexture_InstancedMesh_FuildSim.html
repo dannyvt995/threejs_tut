@@ -232,6 +232,8 @@
         uniform float delta;
 		uniform vec2 fuildForce;
 		uniform vec2 mousePos;
+		uniform vec3 positionForShootDecal;
+		
 		uniform sampler3D texture3DSDF;
 		uniform float u_holdGPGPU;
 		uniform sampler2D uFuild;
@@ -395,7 +397,7 @@
 		
 
 
-			//velSelf.xyz += curl((posSelf.xyz + velSelf.xyz) * 1.7, time*.5, 0.02) * .0007;
+			//velSelf.xyz += curl((posSelf.xyz + velSelf.xyz) * 2., time*.5, 0.02) * .0008;
 			posSelf += velSelf;
 
 			vec3 posFuild = texture2D(uFuild,posSelf.xy + .5).xyz;
@@ -406,13 +408,27 @@
 			vec4 sdf3dFormat = sdf3d * 2. - 1.;
 
 			vec2 dirMouse = normalize(vec2(mousePos.x, mousePos.y));
+
+
+			float distanceShoot = distance(positionForShootDecal,posSelf);
+
+		
 			if(sdf3dFormat.w < 1.2) {
 				vec3 disSDF = normalize(sdf3dFormat.xyz + posSelf) * (-sdf3dFormat.w * u_holdGPGPU);
-				velSelf +=  mix(disSDF * .3,posFuild * atan(mousePos.x,mousePos.y) * 7.  ,min(.7,fuildForce.x));  
+
+				
+				vec3 targetSDF =  disSDF * .3;
+				vec3 targetShoot = vec3(0.);
+			
+				if(distanceShoot < .1) {
+
+					
+				}
+				velSelf +=  mix(disSDF * .3,posFuild * atan(mousePos.x,mousePos.y) * 2.7  ,min(.5,fuildForce.x));  
 			}else{
 						
 			}
-			
+	
 		
 			gl_FragColor = vec4( velSelf,1.);
 
@@ -441,8 +457,50 @@
 		import Renderer from "./fuild/modules_rewrite/Renderer.js";
 		import Simulation from "./fuild/modules_rewrite/Simulation.js";
 		import Mouse from "./fuild/modules_rewrite/Mouse.js";
+		import { DecalGeometry } from 'three/addons/DecalGeometry.js';
+		let renderer, scene, camera, stats, raycaster , mouseHelper, meshToRay , lineRaySample;
+		const positionForShootDecal = new THREE.Vector3();
+		const orientationForShootDecal = new THREE.Euler();
+		const sizeForShootDecal = new THREE.Vector3( 2, 2, 2 );
+		const params = {
+				minScale: 0.1,
+				maxScale: 0.15,
+				rotate: true,
+				clear: function () {
 
-		let renderer, scene, camera, stats;
+					removeDecals();
+
+				}
+			};
+
+		const intersects = [];
+		const intersection = {
+				intersects: false,
+				point: new THREE.Vector3(),
+				normal: new THREE.Vector3()
+		};
+		const mouseRay = new THREE.Vector2()
+		const textureLoader = new THREE.TextureLoader();
+		const decalDiffuse = textureLoader.load( 'textures/decal/decal-diffuse.png' );
+		decalDiffuse.colorSpace = THREE.SRGBColorSpace;
+		const decalNormal = textureLoader.load( 'textures/decal/decal-normal.jpg' );
+
+		const decalMaterial = new THREE.MeshPhongMaterial( {
+				specular: 0x444444,
+				map: decalDiffuse,
+				normalMap: decalNormal,
+				normalScale: new THREE.Vector2( 1, 1 ),
+				shininess: 30,
+				transparent: true,
+				depthTest: true,
+				depthWrite: false,
+				polygonOffset: true,
+				polygonOffsetFactor: - 4,
+				wireframe: false
+		} );
+
+		const decals = [];
+
 		let mesh, texturedd, dataTexture3D, dataTexture3DSample, materialCube, textureData3dOut, matModel
 		let meshLayer, matPoint, matInstanced
 		let delta, time, lastTime
@@ -455,7 +513,15 @@
 		let valueWH = [0,0]
 		let mouseFroceCurr =  new THREE.Vector2(0,0),mouseFrocePrev=  new THREE.Vector2(0,0)
 		let mousePos = new THREE.Vector2()
-		
+		let cubeSample
+
+
+
+
+		const loaderCube = new THREE.CubeTextureLoader();
+		loaderCube.setPath( 'textures/cube/Bridge2/' );
+		const textureCube = loaderCube.load( [ 'posx.jpg', 'negx.jpg', 'posy.jpg', 'negy.jpg', 'posz.jpg', 'negz.jpg' ] );
+			
 		const envTexture = new THREE.CubeTextureLoader().load([
 			'/textures/cube/Bridge2/posx.jpg',
 			'/textures/cube/Bridge2/negx.jpg',
@@ -563,6 +629,9 @@
 			positionUniforms['fuildForce'] = { value:   new THREE.Vector2(0,0) };
 			velocityUniforms['mousePos'] = { value:  new THREE.Vector2(0,0) };
 			positionUniforms['mousePos'] = { value:   new THREE.Vector2(0,0) };
+			velocityUniforms['positionForShootDecal'] = { value:  new THREE.Vector3(0,0,0) };
+			positionUniforms['positionForShootDecal'] = { value:   new THREE.Vector3(0,0,0) };
+
 			console.log(positionUniforms['texture3DSDF'])
 
 			const error = gpuCompute.init();
@@ -579,7 +648,7 @@
 		function initMain() {
 
 
-
+		
 			scene = new THREE.Scene();
 			scene.background = new THREE.Color(0x525453)
 			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.001, 10000);
@@ -598,15 +667,105 @@
 			stats = new Stats();
 			document.body.appendChild(stats.dom);
 
-
-
-
+			raycaster = new THREE.Raycaster();
+			const geometry = new THREE.BufferGeometry();
+			geometry.setFromPoints( [ new THREE.Vector3(), new THREE.Vector3() ] );
+			lineRaySample = new THREE.Line( geometry, new THREE.LineBasicMaterial() );
+			scene.add( lineRaySample );
 			initTexture()
 			initMonitor()
 			initModel()
 			initGui()
 
 			window.addEventListener('resize', onWindowResize);
+
+			mouseHelper = new THREE.Mesh( new THREE.BoxGeometry( 0.01, 0.01, 0.010 ), new THREE.MeshNormalMaterial() );
+				mouseHelper.visible = true;
+				scene.add( mouseHelper );
+
+				window.addEventListener( 'resize', onWindowResize );
+
+				let moved = false;
+
+				controls.addEventListener( 'change', function () {
+
+					moved = true;
+
+				} );
+
+				window.addEventListener( 'pointerdown', function () {
+
+					moved = false;
+
+				} );
+
+				window.addEventListener( 'pointerup', function ( event ) {
+
+					if ( moved === false ) {
+
+						checkIntersection( event.clientX, event.clientY );
+
+						if ( intersection.intersects ) shoot();
+
+					}
+
+				} );
+
+				window.addEventListener( 'pointermove', onPointerMove );
+
+				function onPointerMove( event ) {
+
+					if ( event.isPrimary ) {
+
+						checkIntersection( event.clientX, event.clientY );
+
+					}
+
+				}
+
+				function checkIntersection( x, y ) {
+
+					if ( meshToRay === undefined ) return;
+
+					mouseRay.x = ( x / window.innerWidth ) * 2 - 1;
+					mouseRay.y = - ( y / window.innerHeight ) * 2 + 1;
+
+					raycaster.setFromCamera( mouseRay, camera );
+					raycaster.intersectObject( meshToRay, false, intersects );
+
+					if ( intersects.length > 0 ) {
+					
+						const p = intersects[ 0 ].point;
+						mouseHelper.position.copy( p );
+						intersection.point.copy( p );
+
+						const normalMatrix = new THREE.Matrix3().getNormalMatrix( meshToRay.matrixWorld );
+
+						const n = intersects[ 0 ].face.normal.clone();
+						n.applyNormalMatrix( normalMatrix );
+						n.multiplyScalar( .1 );
+						n.add( intersects[ 0 ].point );
+
+						intersection.normal.copy( intersects[ 0 ].face.normal );
+						mouseHelper.lookAt( n );
+
+						const positions = lineRaySample.geometry.attributes.position;
+						positions.setXYZ( 0, p.x, p.y, p.z );
+						positions.setXYZ( 1, n.x, n.y, n.z );
+						positions.needsUpdate = true;
+
+						intersection.intersects = true;
+
+						intersects.length = 0;
+
+					} else {
+						console.log(">")
+						intersection.intersects = false;
+
+					}
+
+				}
+
 
 		}
 
@@ -926,44 +1085,62 @@
 
 					materialChunkModel = new THREE.MeshPhongMaterial({
 						color: 0xffffff,
-						flatShading:true,
+					//	flatShading:true,
 						emissive:0x3a2b82,
 						specular : 0x2c2a2a,
 						shininess: 100,
 					});
-					materialChunkModel.onBeforeCompile = (shader) => {
-						shader.uniforms.uFuild = { value: null };
-						shader.vertexShader = `
-							varying vec2 vUv;
-							${shader.vertexShader} 
-						`.replace(
-							`#include <uv_vertex>`,
-							`#include <uv_vertex>
-							vUv = uv;
+					// materialChunkModel.onBeforeCompile = (shader) => {
+					// 	shader.uniforms.uFuild = { value: null };
+					// 	shader.vertexShader = `
+					// 		varying vec2 vUv;
+					// 		${shader.vertexShader} 
+					// 	`.replace(
+					// 		`#include <uv_vertex>`,
+					// 		`#include <uv_vertex>
+					// 		vUv = uv;
 
-						`);
+					// 	`);
 					
-						shader.fragmentShader = `
-							varying vec2 vUv;
-							uniform sampler2D uFuild;
-							vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
-							{
-								return a + b*cos( 6.28318*(c*t+d) );
-							}
-							${shader.fragmentShader} 
-						`.replace(
-							`reflectedLight.indirectSpecular + totalEmissiveRadiance;`,
-							`reflectedLight.indirectSpecular + totalEmissiveRadiance;
-							// 
-							vec3 fuildColor  = texture2D(uFuild,vUv).xyz;
-							float len = length(fuildColor.xy);
-							 vec3 color = pal(len * 70.0, vec3(0.5,0.5,0.5), vec3(0.5,0.5,0.5), vec3(1.0,1.0,0.5), vec3(0.8,0.90,0.30));
-							 outgoingLight  += color *.1;
-						`);
+					// 	shader.fragmentShader = `
+					// 		varying vec2 vUv;
+					// 		uniform sampler2D uFuild;
+					// 		vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+					// 		{
+					// 			return a + b*cos( 6.28318*(c*t+d) );
+					// 		}
+					// 		${shader.fragmentShader} 
+					// 	`.replace(
+					// 		`reflectedLight.indirectSpecular + totalEmissiveRadiance;`,
+					// 		`reflectedLight.indirectSpecular + totalEmissiveRadiance;
+					// 		// 
+					// 		vec3 fuildColor  = texture2D(uFuild,vUv).xyz;
+					// 		float len = length(fuildColor.xy);
+					// 		 vec3 color = pal(len * 70.0, vec3(0.5,0.5,0.5), vec3(0.5,0.5,0.5), vec3(1.0,1.0,0.5), vec3(0.8,0.90,0.30));
+					// 		 //outgoingLight  += color * .2;
+					// 	`);
 				
-						matModel = shader;
-					};
+					// 	matModel = shader;
+					// };
 					m.children[0].material = materialChunkModel
+				
+
+					let  geometrySample = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+					//geometrySample = new THREE.SphereGeometry(0.2,16,16);
+					geometrySample = new THREE.OctahedronGeometry(.2,1);
+				
+					const matCube = new THREE.MeshPhongMaterial({
+					//	color: 'blue',
+					//map: textureImg,
+					envMap:textureCube
+					});
+					cubeSample = new THREE.Mesh(geometrySample, materialChunkModel);
+
+					// Thêm vào scene
+					scene.add(cubeSample);
+
+					cubeSample.position.x = -.5
+					meshToRay = m.children[0]
 				
 					scene.add(m);
 
@@ -1038,10 +1215,49 @@
 				}
 			}, 1000);
 			groupSlice2D.position.x = 1.72
-			console.log(groupSlice2D)
+			
 			scene.add(groupSlice2D)
 		}
 	
+
+		
+		function shoot() {
+
+			positionForShootDecal.copy( intersection.point );
+			velocityUniforms['positionForShootDecal'] = { value:  positionForShootDecal };
+			positionUniforms['positionForShootDecal'] = { value:   positionForShootDecal };
+		
+			if ( params.rotate ) orientationForShootDecal.z = Math.random() * 2 * Math.PI;
+
+			const scale = params.minScale + Math.random() * ( params.maxScale - params.minScale );
+			sizeForShootDecal.set( scale, scale, scale );
+
+			const material = decalMaterial.clone();
+			material.color.setHex( Math.random() * 0xffffff );
+
+			const m = new THREE.Mesh( new DecalGeometry( meshToRay, positionForShootDecal, orientationForShootDecal, sizeForShootDecal ), material );
+			m.renderOrder = decals.length; // give decals a fixed render order
+
+			decals.push( m );
+
+			meshToRay.attach( m );
+
+			}
+
+			function removeDecals() {
+
+			decals.forEach( function ( d ) {
+
+				meshToRay.remove( d );
+
+			} );
+
+			decals.length = 0;
+
+			}
+
+
+
 		function initGui() {
 
 			const parameters = { threshold: 0.5, steps: 128, u_hold: .5, u_holdGPGPU: .5,u_holdGPGPU_Vel:.5, start: false };
@@ -1132,10 +1348,15 @@
 				matPoint.uniforms.posGpu.value = texturePosOut
 				matPoint.uniforms.uFuild.value = simulation.fbos.vel_0.texture 
 			}
-		if(matModel) {
-		
-			matModel.uniforms.uFuild.value = simulation.fbos.vel_0.texture 
-		}
+			if(cubeSample) {
+				//cubeSample.material.map = simulation.fbos.vel_0.texture 
+				//cubeSample.rotation.x += delta
+				cubeSample.rotation.y += delta
+			}
+			if(matModel) {
+			
+				matModel.uniforms.uFuild.value = simulation.fbos.vel_0.texture 
+			}
 			if (matInstanced) {
 				matInstanced.uniforms.posGpu.value = texturePosOut
 				matInstanced.uniforms.velGpu.value = textureVelOut

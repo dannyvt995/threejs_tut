@@ -428,7 +428,9 @@
 		let renderer, scene, camera, stats;
 		let mesh, texturedd, dataTexture3D, dataTexture3DSample, materialCube, textureData3dOut, matModel
 		let meshLayer, matPoint, matInstanced
-		let delta, time, lastTime
+		let delta, lastTime
+		let time = 0
+		let currentTime =  0
 		let materialChunkModel
 		let gpuCompute
 
@@ -575,6 +577,7 @@
                     extras.push(Math.random(), Math.random(), Math.random());
                 }
             }
+			console.log(positions)
             console.log("uvOffsetsRibbon",uvOffsets)
             const uvOffsetAttribute = new THREE.InstancedBufferAttribute(new Float32Array(uvOffsets), 2);
             const extrasAttribute = new THREE.InstancedBufferAttribute(new Float32Array(extras), 3);
@@ -605,7 +608,14 @@
 						vec3 posMap = texture2D(uPosMap,aUVOffset).xyz;
                         vec3 posSample = position;
 						posSample.x /= 5.;
-                        posSample.x += posMap.x * 1.;
+
+						int vertexIndex = gl_VertexID % 3;
+						
+						int groupID = gl_VertexID / 3; // Mỗi nhóm có 3 vertex
+
+						// Cộng thêm một giá trị vào vị trí của nhóm 3 vertices
+						posSample.x += vec3(0.1 * float(groupID), 0.0, 0.0).x;
+
                         posSample.y += float(gl_InstanceID )/8.;
                         vec4 modelViewPosition = modelViewMatrix * vec4(posSample, 1.0);
                         gl_Position = projectionMatrix * modelViewPosition;
@@ -760,6 +770,23 @@
 			stats = new Stats();
 			document.body.appendChild(stats.dom);
 
+
+			const curve = new THREE.CubicBezierCurve3(
+				new THREE.Vector3( -1, 0, 0 ),
+				new THREE.Vector3( -1, 1, 0 ),
+				new THREE.Vector3( 1, 1, 0 ),
+				new THREE.Vector3( 1, 0, 0 )
+			);
+
+			const points = curve.getPoints( 50 );
+			const geometry = new THREE.BufferGeometry().setFromPoints( points );
+
+			const material = new THREE.LineBasicMaterial( { color: 0xff0000 } );
+
+			// Create the final object to add to the scene
+			const curveObject = new THREE.Line( geometry, material );
+			scene.add(curveObject)
+			console.log(curve)
 
 
 
@@ -1236,10 +1263,11 @@
 			Mouse.update();
         	Renderer.update();
 			simulation.update()
-			const currentTime = performance.now();
+			currentTime = performance.now();
 			delta = (currentTime - lastTime) / 1000;
 			lastTime = currentTime;
 			time += delta;
+		
 			if (gpuCompute) runGPGPU()
 			stats.update();
 
@@ -1261,6 +1289,8 @@
 
 				velocityUniforms['time'].value = time / 1000;
 				velocityUniforms['delta'].value = delta;
+
+				
 			}
 			
 			velocityUniforms['uFuild'].value = simulation.fbos.vel_0.texture 
@@ -1292,7 +1322,10 @@
 			if (monitorPos && monitorPos.material) monitorPos.material.uniforms.tex.value = texturePosOut
 			if (monitorVel && monitorVel.material) monitorVel.material.uniforms.tex.value = textureVelOut
 			if(monitorRibbon && monitorRibbon.material) monitorRibbon.material.uniforms.tex.value = dataTextureRibbon
-			if(materialRibbon) materialRibbon.uniforms.uPosMap.value = dataTextureRibbon
+			if(materialRibbon) {
+				materialRibbon.uniforms.uPosMap.value = dataTextureRibbon
+				materialRibbon.uniforms.uTime.value = currentTime/1000
+			}
 		}
 
 		function onWindowResize() {
