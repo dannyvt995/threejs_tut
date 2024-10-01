@@ -27,6 +27,32 @@
 		</script>
 
     <script type="module">
+// sxdhxuvp
+    fetch('/models/car/car_info.json')
+    .then(response => response.json())
+    .then(release => {
+     
+        console.log(release)
+    })
+    .catch(error => {
+      console.error('Error loading JSON:', error);
+    });
+
+    fetch('/models/car/release.json')
+    .then(response => response.json())
+    .then(release => {
+     
+      for (let i = 0; i < release.assets.length; i++) {
+        if(release.assets[i].id === "sxdhxuvp") {
+            console.log(release.assets[i]);
+        }
+        
+        
+      }
+    })
+    .catch(error => {
+      console.error('Error loading JSON:', error);
+    });
 
         import * as THREE from 'three';
 
@@ -46,7 +72,7 @@
         } from "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.5/build/index.module.min.js";
 
         import { BufferGeometryUtils } from "three/addons/module_more/BufferGeometryUtils.js";
-
+    
         THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
         THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
         THREE.Mesh.prototype.raycast = acceleratedRaycast;
@@ -93,9 +119,9 @@
                         mesh.material = mesh.material.clone();
                         mesh.material.color.set(randomHexColor);
 
-                       //console.log(mesh.name)
+                       console.log(mesh.name)
                       //  console.log(mesh)
-                    console.log(mesh.material.uuid)
+                    // console.log(mesh.material.uuid)
                     }
                 });
 

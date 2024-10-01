@@ -18,6 +18,7 @@ export default class ExternalForce extends ShaderPass{
         this.center = new THREE.Vector2()
         this.lastMouseCoords = { x: Mouse.coords.x, y: Mouse.coords.y };
         this.speedFactor = 1;
+        this.speed = 0.
         this.init(simProps);
     }
 
@@ -71,13 +72,13 @@ export default class ExternalForce extends ShaderPass{
         this.center.set(centerX,centerY)
         uniforms.force.value.set(forceX, forceY);
         uniforms.center.value.set(centerX, centerY);
-        
+       
 
         // Tính toán tốc độ di chuyển chuột
         const deltaX = Mouse.coords.x - this.lastMouseCoords.x;
         const deltaY = Mouse.coords.y - this.lastMouseCoords.y;
-        let speed = Math.sqrt(deltaX * deltaX + deltaY * deltaY) * 10;
-
+        let speed = Math.sqrt(deltaX * deltaX + deltaY * deltaY) * 30;
+       this.speed = speed
         let sizeOut = 0
         if(props.cursor_size * speed > 70) {
             sizeOut = 20
