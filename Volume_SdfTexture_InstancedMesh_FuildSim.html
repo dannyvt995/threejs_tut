@@ -818,125 +818,7 @@
 			scene.add(cInstancedMesh);
 
 		}
-		function initPoint(data3d) {
-			const count_p_size = 40;
-			const cubeSize = 1;
-			// Sử dụng BufferGeometry để tạo các điểm
-			const geometry = new THREE.BufferGeometry();
-
-			// Số lượng điểm (thay vì count_p_size ^ 3)
-			const numPoints = widthTexture * widthTexture;
-			// Tạo mảng lưu trữ vị trí các điểm
-			const positions = new Float32Array(numPoints * 3);
-			const uvs = new Float32Array(numPoints * 2); // Mảng UVs
-			// Tạo vị trí điểm ngẫu nhiên
-			let index = 0;
-
-			for (let i = 0; i < numPoints; i++) {
-				// Tạo các vị trí ngẫu nhiên trong phạm vi [-cubeSize/2, cubeSize/2]
-				const posX = Math.random() * cubeSize - cubeSize / 2;
-				const posY = Math.random() * cubeSize - cubeSize / 2;
-				const posZ = Math.random() * cubeSize - cubeSize / 2;
-
-				// Lưu vị trí điểm vào mảng
-				positions[index * 3] = posX;
-				positions[index * 3 + 1] = posY;
-				positions[index * 3 + 2] = posZ;
-
-				// Tạo UVs ngẫu nhiên hoặc theo một quy tắc nào đó
-				uvs[index * 2] = Math.random(); // u
-				uvs[index * 2 + 1] = Math.random(); // v
-
-				index++;
-			}
-			// Thêm vị trí vào geometry
-			geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-			geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-
-
-
-			// Hoặc sử dụng ShaderMaterial như mã của bạn nếu bạn muốn tiếp tục xử lý bằng shader
-			matPoint = new THREE.ShaderMaterial({
-				vertexShader: `
-					varying vec2 vUv;
-					attribute vec3 offset;
-					uniform sampler3D dataTexture3D;
-					uniform sampler2D posGpu;
-					
-					uniform float u_hold;
-					uniform vec2 tSize;
-					uniform float dt;
-					uniform float time;
-					varying vec2 vExtra;
-					varying vec3 vPos;
-					varying vec4 vSdf;
-				
-					void main() {
-						
-						float id = float(gl_InstanceID);
-						vec2 uvT = vec2(
-							mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
-							floor(id / tSize.x) / tSize.y  // Tính chỉ số hàng
-						);
-						
-						vec3 pos = position;
-						vec3 pos2 = position;
-						vec3 posOfGpu = texture2D(posGpu, uv).xyz;
-					
-
-
-						// vec4 sdf3d = texture(dataTexture3D, pos + .5);
-						// vec4 sdf3dFormat = sdf3d * 2. - 1.;
-						
-						//  if(sdf3dFormat.w <  .5) {
-						// 	pos -= normalize(sdf3dFormat.xyz + pos) * (sdf3dFormat.w * u_hold);
-						// }else{
-						// 	//pos = vec3(.5);
-						// }
-						
-						vSdf = vec4(posOfGpu,1.);
-
-						gl_Position = projectionMatrix * modelViewMatrix * vec4(position , 1.0);
-						gl_PointSize = 0.5;
-
-						vUv = uv;
-						
-					}
-				`,
-				fragmentShader: `
-					varying vec2 vUv;
-					varying vec2 vExtra;
-					varying vec4 vSdf;
-					varying vec3 vPos;
-					uniform sampler2D uFuild;
-					void main() {
-						gl_FragColor = vec4(vSdf.xyz, 1.-vSdf.w);
-						gl_FragColor = vec4(vec3(.4,.6,1.), step(.5,vSdf.w));
-						gl_FragColor = vec4(vec3(.4,.6,1.),1.);
-						vec3 fuild = texture2D(uFuild,vPos.xy).xyz;
-						gl_FragColor = vec4(1.-vSdf.xyz * 1.4, .2);
-					}
-				`,
-				uniforms: {
-					texure3D: data3d,
-					dt: { value: 0 },
-					time: { value: 0 },
-					uFuild: { value: null },
-					posGpu: { value: null },
-					tSize: { value: new THREE.Vector2(widthTexture, widthTexture) },
-					u_hold: { value: .5 }
-				},
-				transparent: true,
-				blending: THREE.NormalBlending
-			});
-
-			// Tạo Points (thay vì InstancedMesh)
-			const points = new THREE.Points(geometry, matPoint);
-
-			// Thêm các điểm vào scene
-			scene.add(points);
-
-		}
+	
 
 		function initTexture() {
 
@@ -1020,8 +902,7 @@
 
 		
 				//	checkTextureData(textureData3dOut)
-				initPoint(dataTexture3D)
-		
+			
 				initComputeRenderer(Renderer.renderer,dataTexture3D)
 				initInstancedMesh(dataTexture3D)
 			};
