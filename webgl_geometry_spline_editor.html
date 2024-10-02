@@ -17,8 +17,9 @@
 	<script type="importmap">
             {
                 "imports": {
-					"three": "./three.module.js",
-                    "three/addons/": "./jsm/"
+					"three": "https://cdn.skypack.dev/three@0.169.0/build/three.module",
+                    "three/addons/": "./jsm/",
+                    "three/": "https://cdn.skypack.dev/three@0.169.0/"
                 }
             }
 		</script>
@@ -27,13 +28,11 @@
 
 		import * as THREE from 'three';
 	
-		import Stats from 'three/addons/stats.module.js';
-		import { GUI } from 'three/addons/lil-gui.module.min.js';
-		import { OBJLoader } from 'three/addons/OBJLoader.js';
-		
-		import { OrbitControls } from 'three/addons/OrbitControls.js';
+		// import Stats from 'three/addons/stats.module.js';
+		// import { GUI } from 'three/addons/lil-gui.module.min.js';
+	
 
-        import { TransformControls } from 'three/addons/TransformControls.js';
+        import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 
 let container;
 let camera, scene, renderer;

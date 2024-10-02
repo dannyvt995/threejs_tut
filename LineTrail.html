@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>LineTrail</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+</head>
+<style>
+	body {
+		margin: 0
+	}
+</style>
+
+<body>
+
+	<div id="container"></div>
+
+	<script type="importmap">
+            {
+                "imports": {
+					"three": "./three.module.js",
+                    "three/addons/": "./jsm/"
+                }
+            }
+		</script>
+
+	<script type="module">
+
+		import * as THREE from 'three';
+
+		import Stats from 'three/addons/stats.module.js';
+		import { GUI } from 'three/addons/lil-gui.module.min.js';
+
+		import { OrbitControls } from 'three/addons/OrbitControls.js';
+
+
+		let renderer = new THREE.WebGLRenderer({ antialias: false});
+		renderer.setPixelRatio(window.devicePixelRatio);
+		renderer.setSize(window.innerWidth, window.innerHeight);
+		document.body.appendChild(renderer.domElement);
+		const stats = new Stats();
+		document.body.appendChild(stats.dom);
+		let camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+		camera.position.set(0, 10, 20);
+		camera.layers.enableAll();
+		camera.layers.toggle(1);
+
+
+		const controls = new OrbitControls(camera, renderer.domElement);
+		controls.minDistance = 5;
+		controls.maxDistance = 100;
+
+
+		const scene = new THREE.Scene();
+		const clock = new THREE.Clock();
+
+
+		let propsPos = [];
+		let meshLineTrail = [];
+		let tempDirection = new THREE.Vector3(); 
+	
+		const countTrail = 100
+		const lengthTrail = 20
+		const speedAll = .2
+
+		let tempPositions = new Float32Array(lengthTrail * 3); 
+		initMeshTrail()
+
+		function initMeshTrail() {
+				function getRandomHexColor() {
+					return '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+				}
+				for (let e = 0; e < countTrail; e++) {
+					let clr = getRandomHexColor();
+					propsPos.push({})
+					meshLineTrail.push( new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color:clr })))
+				}
+				
+				for (let i = 0; i < propsPos.length; i++) {
+					propsPos[i].positionCustom = new THREE.Vector3(0,0,0);
+					propsPos[i].trailLength = lengthTrail;
+					propsPos[i].trailPoints = [];
+				
+					propsPos[i].targetPosition = new THREE.Vector3();
+					propsPos[i].currentDirection = new THREE.Vector3(1, 0, 0);
+					propsPos[i].getTargetPosition = (data2d) => {
+						propsPos[i].targetPosition.set((Math.random() - 0.5) * 10,   Math.random() * 10 , (Math.random() - 0.5) * 10);
+					}
+					propsPos[i].getTargetPosition();
+					
+					scene.add(meshLineTrail[i]);
+				}
+			
+				
+		
+		}
+		function updateTrailNoLerp() {
+			for (let ii = 0; ii < propsPos.length; ii++) {
+
+				propsPos[ii].positionCustom.lerp(propsPos[ii].targetPosition,speedAll);
+
+
+				if(propsPos[ii].positionCustom.distanceTo(propsPos[ii].targetPosition)<0.1){
+				propsPos[ii].getTargetPosition();
+				}
+
+
+				propsPos[ii].trailPoints.push(propsPos[ii].positionCustom.clone());
+
+
+				if(propsPos[ii].trailPoints.length>propsPos[ii].trailLength){
+				propsPos[ii].trailPoints.shift();
+				}
+
+
+				let positions=new Float32Array(propsPos[ii].trailPoints.length*3);
+				for(let i=0;i<propsPos[ii].trailPoints.length;i++){
+				positions.set(propsPos[ii].trailPoints[i].toArray(),i*3);
+				}
+
+
+				meshLineTrail[ii].geometry.setAttribute("position",new THREE.BufferAttribute(positions,3));
+				meshLineTrail[ii].geometry.needsUpdate=true;
+			}
+		}
+		
+
+		function updateMeshTrail() {
+			for (let ii = 0; ii < propsPos.length; ii++) {
+				tempDirection.copy(propsPos[ii].targetPosition).sub(propsPos[ii].positionCustom).normalize();
+
+
+				propsPos[ii].currentDirection.lerp(tempDirection, speedAll);
+
+
+				propsPos[ii].positionCustom.add(propsPos[ii].currentDirection.clone().multiplyScalar(speedAll));
+
+		
+				if (propsPos[ii].positionCustom.distanceTo(propsPos[ii].targetPosition) < 0.1) {
+					propsPos[ii].getTargetPosition();
+				}	
+		
+
+				propsPos[ii].trailPoints.push(propsPos[ii].positionCustom.clone());
+
+
+				if (propsPos[ii].trailPoints.length > propsPos[ii].trailLength) {
+					propsPos[ii].trailPoints.shift();
+				}
+
+
+				tempPositions = new Float32Array(propsPos[ii].trailPoints.length * 3);
+				for (let i = 0; i < propsPos[ii].trailPoints.length; i++) {
+					tempPositions.set(propsPos[ii].trailPoints[i].toArray(), i * 3);
+				}
+			
+				meshLineTrail[ii].geometry.setAttribute('position', new THREE.BufferAttribute(tempPositions, 3));
+				meshLineTrail[ii].geometry.needsUpdate = true;
+				
+			}
+			
+		}
+		
+		function loop() {
+			stats.update();
+
+			requestAnimationFrame(loop);
+
+
+			//console.time()
+			updateMeshTrail()
+			//console.timeEnd()
+			
+
+
+
+
+			controls.update();
+			renderer.render(scene, camera);
+
+
+		}
+
+
+		loop();
+
+	</script>
+
+</body>
+
+</html>

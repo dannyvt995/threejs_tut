@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>three.js webgl - decal splatter</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+</head>
+<style>
+	body{margin:0}
+</style>
+<body>
+
+	<div id="container"></div>
+
+	<script type="importmap">
+            {
+                "imports": {
+					"three": "./three.module.js",
+                    "three/addons/": "./jsm/"
+                }
+            }
+		</script>
+
+	<script type="module">
+
+		import * as THREE from 'three';
+	
+		import Stats from 'three/addons/stats.module.js';
+		import { GUI } from 'three/addons/lil-gui.module.min.js';
+		import { OBJLoader } from 'three/addons/OBJLoader.js';
+		
+		import { OrbitControls } from 'three/addons/OrbitControls.js';
+
+
+
+		let objUniforms,stats
+		let shaderChunk,shaderChunk2
+		let texDataCurve,curve
+
+		const scene = new THREE.Scene();
+		const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 11500);
+		camera.position.set(0, -25, 50);
+		const renderer = new THREE.WebGLRenderer({ antialias: false });
+		renderer.setClearColor(0x181005);
+		renderer.setSize(innerWidth, innerHeight);
+		document.body.appendChild(renderer.domElement);
+		stats = new Stats();
+		document.body.appendChild(stats.dom);
+		const controls = new OrbitControls(camera, renderer.domElement);
+	
+		controls.enableDamping = true;
+		const axesHelper = new THREE.AxesHelper( 5 );
+		scene.add( axesHelper );
+		
+		function getRandomHexColor() {
+				return '#' + Math.floor(Math.random()*16777215).toString(16);
+			}
+		// path
+		console.time()
+			const countCur = 1
+			const data = [];
+			const numPoints = 250;
+			const cSegments = 6;
+			const cPts = [];
+			for (let ii = 0; ii < countCur; ii++) {
+				
+
+				for (let i = 0; i < cSegments; i++) {
+					cPts.push(
+						new THREE.Vector3(Math.random()*50,-Math.random()*50,Math.random()*50)
+					);
+				}
+
+				curve = new THREE.CatmullRomCurve3(cPts);
+				curve.verticesNeedUpdate = true;
+				curve.closed = true;
+			
+				const cPoints = curve.getSpacedPoints(numPoints);
+				const cObjects = curve.computeFrenetFrames(numPoints, true);
+
+
+				
+				console.log("cPts",cPts,"curve",curve,"cPoints",cPoints,"cObjects",cObjects);
+			
+				cPoints.forEach(v => { data.push(v.x, v.y, v.z,1.); });
+				cObjects.binormals.forEach(v => { data.push(v.x, v.y, v.z,1.); });
+				cObjects.normals.forEach(v => { data.push(v.x, v.y, v.z,1.); });
+				cObjects.tangents.forEach(v => { data.push(v.x, v.y, v.z,1.); });
+
+				
+				const pGeom = new THREE.BufferGeometry().setFromPoints(cPoints);
+				const pMat = new THREE.LineBasicMaterial({ color: getRandomHexColor() });
+				const pathLine = new THREE.Line(pGeom, pMat);
+	
+				 scene.add(pathLine);
+
+			
+			}
+	
+		
+
+			const dataArray = new Float32Array(data);
+
+			texDataCurve = new THREE.DataTexture(dataArray, numPoints + 1, 4 * countCur, THREE.RGBAFormat, THREE.FloatType);
+			texDataCurve.magFilter = THREE.NearestFilter;
+			texDataCurve.needsUpdate = true
+			console.log(texDataCurve);
+			console.timeEnd()
+
+
+			// setInterval(()=>{
+			// 		updateCurve(curve, cPts, dataArray, texDataCurve)
+			// 	},2000)
+
+
+			const planeCheck = new THREE.Mesh(
+				new THREE.PlaneGeometry(25,25),
+				new THREE.MeshBasicMaterial({map:texDataCurve})
+			)
+			scene.add(planeCheck);
+
+
+
+		// Koi
+		function updateCurve(curve, cPts, dataArray, texDataCurve) {
+    // Xóa điểm đầu tiên
+    // cPts.shift();
+
+    // Thêm điểm mới vào cuối
+    const newPoint = new THREE.Vector3(Math.random() * 50, -Math.random() * 50, Math.random() * 50);
+    cPts.push(newPoint);
+
+    // Tạo lại đường cong và các dữ liệu
+    const numPoints = 250;
+    const countCur = cPts.length; // Đảm bảo số điểm tương thích
+    const curveUpdated = new THREE.CatmullRomCurve3(cPts);
+    curveUpdated.closed = true;
+
+    // Tính lại các điểm
+    const cPoints = curveUpdated.getSpacedPoints(numPoints);
+    const cObjects = curveUpdated.computeFrenetFrames(numPoints, true);
+
+    // Xóa data cũ và thêm data mới
+    const data = [];
+    cPoints.forEach(v => { data.push(v.x, v.y, v.z, 1.); });
+    cObjects.binormals.forEach(v => { data.push(v.x, v.y, v.z, 1.); });
+    cObjects.normals.forEach(v => { data.push(v.x, v.y, v.z, 1.); });
+    cObjects.tangents.forEach(v => { data.push(v.x, v.y, v.z, 1.); });
+
+    // Cập nhật lại dataArray
+    const newDataArray = new Float32Array(data);
+
+    // Cập nhật lại DataTexture
+    texDataCurve.image.data = newDataArray;
+    texDataCurve.needsUpdate = true;
+
+    // In ra thông tin cập nhật
+    console.log("Cập nhật điểm: ", cPts);
+    console.log("Cập nhật texture: ", texDataCurve);
+	const pGeom = new THREE.BufferGeometry().setFromPoints(cPoints);
+				const pMat = new THREE.LineBasicMaterial({ color: getRandomHexColor() });
+				const pathLine = new THREE.Line(pGeom, pMat);
+	
+				 scene.add(pathLine);
+
+}
+
+
+
+		const oUs = [];
+	
+		const loader = new OBJLoader();
+		loader.load("/models/fish.obj", obj => {
+
+		
+			let objGeom = obj.children[0].geometry
+		
+			objGeom.center();
+			objGeom.rotateX(-Math.PI * 0.5);
+			objGeom.scale(0.05, 0.05, 0.05);
+			const objBox = new THREE.Box3().setFromBufferAttribute(objGeom.getAttribute("position"));
+			const objSize = new THREE.Vector3();
+			objBox.getSize(objSize);
+			//objGeom.translate(0, 0, objBox.z);
+	
+			const objUniforms = {
+				uSpatialTexture: { value: texDataCurve },
+				uTextureSize: { value: new THREE.Vector2(numPoints + 1, 4) },
+				uTime: { value: 0 },
+				stt: { value: new THREE.Vector2(countCur, 0) },
+				uLengthRatio: { value: new THREE.Vector2( .02, .02)  }, // objSize.z / curve.cacheArcLengths[200] more or less real lenght along the path
+				uObjSize: { value: objSize } // lenght
+			}
+			oUs.push(objUniforms);
+			console.log(objUniforms)
+			const objMat = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true });
+			objMat.onBeforeCompile = (shader) => {
+				shader.uniforms.uSpatialTexture = objUniforms.uSpatialTexture;
+				shader.uniforms.uTextureSize = objUniforms.uTextureSize;
+				shader.uniforms.uTime = objUniforms.uTime;
+				shader.uniforms.stt = objUniforms.stt;
+				shader.uniforms.uLengthRatio = objUniforms.uLengthRatio;
+				shader.uniforms.uObjSize = objUniforms.uObjSize;
+		
+				shader.vertexShader = `
+					uniform sampler2D uSpatialTexture;
+					uniform vec2 uTextureSize;
+					uniform float uTime;
+					uniform vec2 stt;
+					uniform vec2 uLengthRatio;
+					uniform vec3 uObjSize;
+
+					struct splineData {
+						vec3 point;
+						vec3 binormal;
+						vec3 normal;
+					};
+
+					splineData getSplineData(float t){
+						float step = (1. / uTextureSize.y) / stt.x ;
+						float halfStep = step * 0.5;
+						splineData sd;
+						sd.point    = texture2D(uSpatialTexture, vec2(t, step * (0.+4.*stt.y) + halfStep)).rgb;
+						sd.binormal = texture2D(uSpatialTexture, vec2(t, step * (1.+4.*stt.y) + halfStep)).rgb;
+						sd.normal   = texture2D(uSpatialTexture, vec2(t, step * (2.+4.*stt.y) + halfStep)).rgb;
+						return sd;
+					}
+				` + shader.vertexShader;
+				shader.vertexShader = shader.vertexShader.replace(
+					`#include <begin_vertex>`,
+					`#include <begin_vertex>
+
+					vec3 pos = position;
+
+					float wStep = 1. / uTextureSize.x;
+					float hWStep = wStep * 0.5;
+
+					float d = pos.z / uObjSize.z;
+					float t = fract((uTime * 0.1) + (d * uLengthRatio.x));
+					float numPrev = floor(t / wStep);
+					float numNext = numPrev + 1.;
+					//numNext = numNext > (uTextureSize.x - 1.) ? 0. : numNext;
+					float tPrev = numPrev * wStep + hWStep;
+					float tNext = numNext * wStep + hWStep;
+					//float tDiff = tNext - tPrev;
+					splineData splinePrev = getSplineData(tPrev);
+					splineData splineNext = getSplineData(tNext);
+
+					float f = (t - tPrev) / wStep;
+					vec3 P = mix(splinePrev.point, splineNext.point, f);
+					vec3 B = mix(splinePrev.binormal, splineNext.binormal, f);
+					vec3 N = mix(splinePrev.normal, splineNext.normal, f);
+
+
+				
+					transformed = P + (N * pos.x) + (B * pos.y) ;
+						
+  `		
+				);
+		
+			 shaderChunk = shader
+			 console.log(shader)
+			}
+			const model = new THREE.Mesh(objGeom, objMat);
+			// scene.add(model);
+
+
+
+
+
+
+			const objMat2 = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true });
+			objMat2.onBeforeCompile = (shader) => {
+				shader.uniforms.uSpatialTexture = objUniforms.uSpatialTexture;
+				shader.uniforms.uTextureSize = objUniforms.uTextureSize;
+				shader.uniforms.uTime = objUniforms.uTime;
+				shader.uniforms.stt = objUniforms.stt;
+				shader.uniforms.uLengthRatio = objUniforms.uLengthRatio;
+				shader.uniforms.uObjSize = objUniforms.uObjSize;
+		
+				shader.vertexShader = `
+					uniform sampler2D uSpatialTexture;
+					uniform vec2 uTextureSize;
+					uniform float uTime;
+					uniform vec2 stt;
+					uniform vec2 uLengthRatio;
+					uniform vec3 uObjSize;
+
+					struct splineData {
+						vec3 point;
+						vec3 binormal;
+						vec3 normal;
+					};
+
+					splineData getSplineData(float t){
+						float step = (1. / uTextureSize.y) / stt.x ;
+						float halfStep = step * 0.5;
+						splineData sd;
+						sd.point    = texture2D(uSpatialTexture, vec2(t, step * (0.+4.*float(gl_InstanceID)) + halfStep)).rgb;
+						sd.binormal = texture2D(uSpatialTexture, vec2(t, step * (1.+4.*float(gl_InstanceID)) + halfStep)).rgb;
+						sd.normal   = texture2D(uSpatialTexture, vec2(t, step * (2.+4.*float(gl_InstanceID)) + halfStep)).rgb;
+						return sd;
+					}
+				` + shader.vertexShader;
+				shader.vertexShader = shader.vertexShader.replace(
+					`#include <begin_vertex>`,
+					`#include <begin_vertex>
+
+					vec3 pos = position;
+
+					float wStep = 1. / uTextureSize.x;
+					float hWStep = wStep * 0.5;
+
+					float d = pos.z / uObjSize.z;
+					float t = fract((uTime * 0.1) + (d * uLengthRatio.x));
+					float numPrev = floor(t / wStep);
+					float numNext = numPrev + 1.;
+					//numNext = numNext > (uTextureSize.x - 1.) ? 0. : numNext;
+					float tPrev = numPrev * wStep + hWStep;
+					float tNext = numNext * wStep + hWStep;
+					//float tDiff = tNext - tPrev;
+					splineData splinePrev = getSplineData(tPrev);
+					splineData splineNext = getSplineData(tNext);
+
+					float f = (t - tPrev) / wStep;
+					vec3 P = mix(splinePrev.point, splineNext.point, f);
+					vec3 B = mix(splinePrev.binormal, splineNext.binormal, f);
+					vec3 N = mix(splinePrev.normal, splineNext.normal, f);
+
+
+				
+					transformed = P + (N * pos.x) + (B * pos.y) ;
+			
+						
+  `		
+				);
+		
+			 shaderChunk2 = shader
+			 console.log(shader)
+			}
+			const cInstancedMesh = new THREE.InstancedMesh(objGeom,objMat2 /*  new THREE.MeshBasicMaterial({color:'blue'}) */, countCur);
+			scene.add(cInstancedMesh);
+		});
+
+		initGui()
+		function initGui() {
+
+			const parameters = { stt: 0 };
+
+			function update() {
+				if(shaderChunk) shaderChunk.uniforms.stt.value.y = parameters.stt
+
+
+			}
+			
+			const gui = new GUI();
+			gui.add(parameters, 'stt', 0, countCur -1, 1).onChange(update);
+			
+			}
+
+
+		const clock = new THREE.Clock();
+
+		renderer.setAnimationLoop(() => {
+			stats.update();
+			controls.update();
+			const t = clock.getElapsedTime();
+			if(shaderChunk) shaderChunk.uniforms.uTime.value = t
+			if(shaderChunk2) shaderChunk2.uniforms.uTime.value = t/5
+			renderer.render(scene, camera);
+		});
+
+	</script>
+
+</body>
+
+</html>
