@@ -168,24 +168,6 @@
 			}
 		}
 
-
-		vec3 SimpleSim(in vec2 cl) {
-			float len = length(cl.xy);
-			vec3 colorSim = vec3(len);
-			float alpha = smoothstep(0.0, 0.5, len);
-			vec3 fc = mix(vec3(0.),colorSim,alpha);
-			  float luminance = dot(fc, vec3(0.299, 0.587, 0.114));
-
-			// Ngưỡng để quyết định xem pixel có sáng hay không
-			float threshold = 0.1;
-
-			// Nếu pixel sáng, làm tối nó
-			if (luminance > threshold) {
-				fc *= 0.0001;  // giảm cường độ của màu (làm tối)
-			}
-			return fc;
-		}
-
         void main()	{
 
             vec2 uv = gl_FragCoord.xy / resolution.xy;
@@ -194,7 +176,7 @@
             vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
 
 			posSelf += velSelf * .5 ;
-		
+			
 			gl_FragColor = vec4(  posSelf, 1.  );
 
         }
@@ -372,7 +354,7 @@
 		
 
 
-		//	velSelf.xyz += curl((posSelf.xyz + velSelf.xyz) * 2., time*.5, 0.02) * .0008;
+			//velSelf.xyz += curl((posSelf.xyz+ velSelf.xyz) * 2., time*.5, 0.02) * .0008;
 			posSelf += velSelf;
 
 			vec3 posFuild = texture2D(uFuild,posSelf.xy + .5).xyz;
@@ -399,7 +381,7 @@
 
 					
 				}
-				velSelf +=  mix(disSDF * .5,posFuild * atan(mousePos.x,mousePos.y) * 2.7  ,min(.5,fuildForce.x) * 1.) ;  
+				velSelf +=  mix(disSDF * .5,posFuild * atan(mousePos.x,mousePos.y) * 2.7  ,min(.5,fuildForce.x) * 0.) ;  
 			}else{
 						
 			}
@@ -415,7 +397,8 @@
             {
                 "imports": {
                     "three": "./three.module.js",
-                    "three/addons/": "./jsm/"
+                    "three/addons/": "./jsm/",
+					"three/addonsmore/": "https://unpkg.com/three@0.169.0/examples/jsm/"
                 }
             }
 		</script>
@@ -425,60 +408,20 @@
 		import * as THREE from 'three';
 		import { OrbitControls } from 'three/addons/OrbitControls.js';
 		import { OBJLoader } from 'three/addons/OBJLoader.js';
-		import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
 		import { calcSizeFitCamPerspective } from './utils/calcSizeFitCamPerspective.js'
 		import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
 		import { GUI } from 'three/addons/lil-gui.module.min.js';
 		import Renderer from "./fuild/modules_rewrite/Renderer.js";
 		import Simulation from "./fuild/modules_rewrite/Simulation.js";
 		import Mouse from "./fuild/modules_rewrite/Mouse.js";
-		import { DecalGeometry } from 'three/addons/DecalGeometry.js';
+
+		import { LineMaterial } from 'three/addonsmore/lines/LineMaterial.js';
+		import { LineSegments2 } from 'three/addonsmore/lines/LineSegments2.js';
+		import { LineSegmentsGeometry } from 'three/addonsmore/lines/LineSegmentsGeometry.js';
 
 
 
-
-		let renderer, scene, camera, stats, raycaster , mouseHelper, meshToRay , lineRaySample,currentTime;
-		const positionForShootDecal = new THREE.Vector3();
-		const orientationForShootDecal = new THREE.Euler();
-		const sizeForShootDecal = new THREE.Vector3( 2, 2, 2 );
-		const params = {
-				minScale: 0.1,
-				maxScale: 0.15,
-				rotate: true,
-				clear: function () {
-
-					removeDecals();
-
-				}
-			};
-
-		const intersects = [];
-		const intersection = {
-				intersects: false,
-				point: new THREE.Vector3(),
-				normal: new THREE.Vector3()
-		};
-		const mouseRay = new THREE.Vector2()
-		const textureLoader = new THREE.TextureLoader();
-		const decalDiffuse = textureLoader.load( 'textures/decal/decal-diffuse.png' );
-		decalDiffuse.colorSpace = THREE.SRGBColorSpace;
-		const decalNormal = textureLoader.load( 'textures/decal/decal-normal.jpg' );
-
-		const decalMaterial = new THREE.MeshPhongMaterial( {
-				specular: 0x444444,
-				map: decalDiffuse,
-				normalMap: decalNormal,
-				normalScale: new THREE.Vector2( 1, 1 ),
-				shininess: 30,
-				transparent: true,
-				depthTest: true,
-				depthWrite: false,
-				polygonOffset: true,
-				polygonOffsetFactor: - 4,
-				wireframe: false
-		} );
-
-		const decals = [];
+		let renderer, scene, camera, stats, raycaster, mouseHelper, meshToRay, lineRaySample, currentTime;
 
 		let mesh, texturedd, dataTexture3D, dataTexture3DSample, materialCube, textureData3dOut, matModel
 		let meshLayer, matPoint, matInstanced
@@ -488,42 +431,18 @@
 		let widthTexture = 128
 		let velocityVariable, positionVariable, extraVariable
 		let positionUniforms, velocityUniforms, extraUniforms
-		let targetMonitor,monitorPos, monitorVel,sceneMonitor,cameraMonitor
-		let valueWH = [0,0]
-		let mouseFroceCurr =  new THREE.Vector2(0,0),mouseFrocePrev=  new THREE.Vector2(0,0)
+		let targetMonitor, monitorPos, monitorVel, sceneMonitor, cameraMonitor
+		let valueWH = [0, 0]
+		let mouseFroceCurr = new THREE.Vector2(0, 0), mouseFrocePrev = new THREE.Vector2(0, 0)
 		let mousePos = new THREE.Vector2()
-		let cubeSample,sphereSample
+		let cubeSample, sphereSample
 
-		let propsPos = [];
-		let meshLineTrail = [];
-		let tempDirection = new THREE.Vector3(); 
-		const countInstancedMesh = 200;
-		const countTrail = countInstancedMesh
-		const lengthTrail = 50
-		const speedAll = .6
 
-		let tempPositions = new Float32Array(lengthTrail * 3); 
-		
-
-		const loaderCube = new THREE.CubeTextureLoader();
-		loaderCube.setPath( 'textures/cube/Bridge2/' );
-		const textureCube = loaderCube.load( [ 'posx.jpg', 'negx.jpg', 'posy.jpg', 'negy.jpg', 'posz.jpg', 'negz.jpg' ] );
-			
-		const envTexture = new THREE.CubeTextureLoader().load([
-			'/textures/cube/Bridge2/posx.jpg',
-			'/textures/cube/Bridge2/negx.jpg',
-			'/textures/cube/Bridge2/posy.jpg',
-			'/textures/cube/Bridge2/negy.jpg',
-			'/textures/cube/Bridge2/posz.jpg',
-			'/textures/cube/Bridge2/negz.jpg',
-		])
-		envTexture.mapping = THREE.CubeReflectionMapping
-		const textureImg = new THREE.TextureLoader().load('/textures/cat.jpg')
-		const textureSDF = new THREE.TextureLoader().load('/models/eisbar/sdf.png')
+		const textureSDF = new THREE.TextureLoader().load('/threejs_tut/models/eisbar/sdf.png')
 		let textureSDFData, texture2DView, matmat
 		const width = window.innerWidth;
 		const height = window.innerHeight;
-		const ratioView = window.innerWidth/window.innerHeight
+		const ratioView = window.innerWidth / window.innerHeight
 		const pixelBuffer = new Float32Array(widthTexture * widthTexture * 4);
 		Renderer.init();
 		const glContaxt = Renderer.renderer.getContext();
@@ -543,10 +462,66 @@
 			}
 		});
 
+		const countInstancedMesh = 200
+		let savePtsFatline
+		const instCount = countInstancedMesh;
+		const verticesPerInstance = 72;
+		let dataTextureFatline, meshCheckMeshTrail
+		let ListcurvesOfFatLine = [];
+		const sizeTextureFatLine = 2000
+
+		class InstDataTexture extends THREE.DataTexture {
+			constructor(verticesPerInstance, instanceCount) {
+				const totalAmountPerInstance = verticesPerInstance + 1; // vertices + color (vec4 * 1)
+				const instancePerRow = Math.floor(sizeTextureFatLine / totalAmountPerInstance);
+				const rows = Math.ceil(instanceCount / instancePerRow);
+				const w = totalAmountPerInstance * instancePerRow;
+				const h = rows;
+				const totalData = new Float32Array(w * h * 4).fill(1);
+				super(totalData, w, h, THREE.RGBAFormat, THREE.FloatType);
+				this.needsUpdate = true;
+				this.instanceCount = instanceCount;
+				this.totalAmountPerInstance = totalAmountPerInstance;
+				this.instancePerRow = instancePerRow;
+				this.rows = rows;
+				this.uniforms = {
+					totalAmountPerInstance: { value: totalAmountPerInstance },
+					instancePerRow: { value: instancePerRow },
+					width: { value: w },
+					height: { value: h }
+				};
+			}
+			setDataAt(idx, data) {
+				// data - array of Vector3
+				if (idx >= this.instanceCount) {
+					return;
+				}
+				let sourceData = this.source.data.data;
+				let startIdx = this.totalAmountPerInstance * idx;
+				data.forEach((p, pIdx) => {
+					let currIdx = startIdx + pIdx;
+					sourceData[currIdx * 4 + 0] = p.x;
+					sourceData[currIdx * 4 + 1] = p.y;
+					sourceData[currIdx * 4 + 2] = p.z;
+					sourceData[currIdx * 4 + 3] = 1;
+				});
+			}
+			setColorAt(idx, color, alpha = 1) {
+				let sourceData = this.source.data.data;
+				let startIdx = this.totalAmountPerInstance * (idx + 1) - 1;
+				sourceData[startIdx * 4 + 0] = color.r;
+				sourceData[startIdx * 4 + 1] = color.g;
+				sourceData[startIdx * 4 + 2] = color.b;
+				// sourceData[startIdx * 4 + 0] = 0;
+				// sourceData[startIdx * 4 + 1] = 0;
+				// sourceData[startIdx * 4 + 2] = 0;
+				sourceData[startIdx * 4 + 3] = alpha;
+			}
+		}
 
 		initMain();
 
-		function initComputeRenderer(renderer,data3d) {
+		function initComputeRenderer(renderer, data3d) {
 			function fillPosTexture(texture) {
 				const arrT = texture.image.data;
 				for (let k = 0, kl = arrT.length; k < kl; k += 4) {
@@ -613,15 +588,15 @@
 			velocityUniforms['texture3DSDF'] = { value: data3d };
 			velocityUniforms['u_holdGPGPU'] = { value: 0.5 };
 
-			
-			velocityUniforms['uFuild'] = { value:  simulation.fbos.vel_0.texture };
-			positionUniforms['uFuild'] = { value:  simulation.fbos.vel_0.texture };
-			velocityUniforms['fuildForce'] = { value:  new THREE.Vector2(0,0) };
-			positionUniforms['fuildForce'] = { value:   new THREE.Vector2(0,0) };
-			velocityUniforms['mousePos'] = { value:  new THREE.Vector2(0,0) };
-			positionUniforms['mousePos'] = { value:   new THREE.Vector2(0,0) };
-			velocityUniforms['positionForShootDecal'] = { value:  new THREE.Vector3(0,0,0) };
-			positionUniforms['positionForShootDecal'] = { value:   new THREE.Vector3(0,0,0) };
+
+			velocityUniforms['uFuild'] = { value: simulation.fbos.vel_0.texture };
+			positionUniforms['uFuild'] = { value: simulation.fbos.vel_0.texture };
+			velocityUniforms['fuildForce'] = { value: new THREE.Vector2(0, 0) };
+			positionUniforms['fuildForce'] = { value: new THREE.Vector2(0, 0) };
+			velocityUniforms['mousePos'] = { value: new THREE.Vector2(0, 0) };
+			positionUniforms['mousePos'] = { value: new THREE.Vector2(0, 0) };
+			velocityUniforms['positionForShootDecal'] = { value: new THREE.Vector3(0, 0, 0) };
+			positionUniforms['positionForShootDecal'] = { value: new THREE.Vector3(0, 0, 0) };
 
 			console.log(positionUniforms['texture3DSDF'])
 
@@ -635,17 +610,17 @@
 
 		}
 
-	
+
 		function initMain() {
 
 
-		
+
 			scene = new THREE.Scene();
 			scene.background = new THREE.Color(0x525453)
 			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.001, 10000);
-			
-			camera.position.set(0, 0, 1.5)
-		
+
+			camera.position.set(0, 0, 3.5)
+
 
 			const controls = new OrbitControls(camera, Renderer.renderer.domElement);
 			// controls.enableZoom = false
@@ -658,70 +633,176 @@
 			stats = new Stats();
 			document.body.appendChild(stats.dom);
 
-			raycaster = new THREE.Raycaster();
-			const geometry = new THREE.BufferGeometry();
-			geometry.setFromPoints( [ new THREE.Vector3(), new THREE.Vector3() ] );
-			lineRaySample = new THREE.Line( geometry, new THREE.LineBasicMaterial({}) );
-			scene.add( lineRaySample );
-			
+
 			initTexture()
 			initMonitor()
 			initModel()
-			initGui()
+
 			initMeshTrail()
 			window.addEventListener('resize', onWindowResize);
 
 			sphereSample = new THREE.Mesh(
-				new THREE.SphereGeometry(.01,16,16),
-				new THREE.MeshBasicMaterial({color:'blue'})
+				new THREE.SphereGeometry(.01, 16, 16),
+				new THREE.MeshBasicMaterial({ color: 'blue' })
 			)
 			scene.add(sphereSample)
-		}	
-	
+		}
+
+
+
+		function getTension(phase) {
+			return (Math.sin(phase * Math.PI * 2) * 0.5 + 0.5) * 2;
+		}
+
+		function initFatLine() {
+			let curve = new THREE.CatmullRomCurve3(
+				new Array(5).fill().map((p) => {
+					return new THREE.Vector3();
+				}), false, "catmullrom", 2
+			);
+			let color = new THREE.Color();
+
+			for (let i = 0; i < instCount; i++) {
+				curve.points.forEach((p) => {
+					// console.log(p)
+					// p.random().subScalar(0.5).multiplyScalar(1);
+				});
+
+				let crv = curve.clone();
+				crv.userData = {
+					phase: (i / instCount)
+				}
+				crv.tension = getTension(crv.userData.phase);
+				crv.updateArcLengths();
+
+				let pts = crv.getPoints(verticesPerInstance - 1);
+
+				ListcurvesOfFatLine.push(pts);
+				savePtsFatline = pts
+				dataTextureFatline.setDataAt(i, pts);
+				dataTextureFatline.setColorAt(
+					i,
+					color.setHSL(i / instCount, 1, 0.15)
+				);
+			}
+			dataTextureFatline.needsUpdate = true;
+			let dt = { value: dataTextureFatline };
+
+
+			let flg = new LineSegmentsGeometry();
+			flg.instanceCount = instCount * (verticesPerInstance + 1);
+			let flm = new LineMaterial({
+				linewidth: 0.015,
+				worldUnits: true,
+				vertexColors: true,
+				// wireframe: true,
+				transparent:true,
+			  //alphaToCoverage: true,
+				onBeforeCompile: shader => {
+					shader.uniforms.data = dt;
+					shader.uniforms.totalAmountPerInstance = dataTextureFatline.uniforms.totalAmountPerInstance;
+					shader.uniforms.instancePerRow = dataTextureFatline.uniforms.instancePerRow;
+					shader.vertexShader = `
+                    uniform sampler2D data;
+                    uniform float totalAmountPerInstance;
+                    uniform float instancePerRow;
+                    ${shader.vertexShader}
+                    `.replace(
+						`#ifdef USE_COLOR
+
+				vColor.xyz = ( position.y < 0.5 ) ? instanceColorStart : instanceColorEnd;
+
+			#endif`,
+
+						`
+                        ivec2 tSize = textureSize(data, 0);
+      
+                        int vertID = int(mod(float(gl_InstanceID), totalAmountPerInstance - 2.));
+                        int instID = int(floor(float(gl_InstanceID) / totalAmountPerInstance));
+                        
+                        int fetchY = tSize.y - 1 - int(instID / int(instancePerRow));
+                        int fetchX = int(mod(float(instID), instancePerRow) * totalAmountPerInstance);
+                        
+            #ifdef USE_COLOR
+				vColor.xyz = vec3(texelFetch(data, ivec2(fetchX + int(totalAmountPerInstance) - 1, fetchY), 0));
+			#endif`
+					)
+						.replace(
+							`// camera space
+			vec4 start = modelViewMatrix * vec4( instanceStart, 1.0 );
+			vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );`,
+
+							`// camera space
+                    vec4 instStart = texelFetch(data, ivec2(fetchX + vertID, fetchY), 0);
+                    vec4 instEnd = texelFetch(data, ivec2(fetchX + vertID + 1, fetchY), 0);
+                
+                    vec4 start = modelViewMatrix * instStart;
+                    vec4 end = modelViewMatrix * instEnd;`
+						);
+					 console.log(shader.fragmentShader);
+				}
+			});
+		
+			let fl = new LineSegments2(flg, flm);
+		
+			scene.add(fl);
+		}
+
 
 		function initMeshTrail() {
-				function getRandomHexColor() {
-					return '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-				}
-				for (let e = 0; e < countTrail; e++) {
-					let clr = getRandomHexColor();
-					propsPos.push({})
-					meshLineTrail.push( new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color:clr,linewidth: 4 })))
-				}
-				
-				for (let i = 0; i < propsPos.length; i++) {
-					propsPos[i].positionCustom = new THREE.Vector3(0,0,0);
-					propsPos[i].trailLength = lengthTrail;
-					propsPos[i].trailPoints = [];
-				
-					propsPos[i].targetPosition = new THREE.Vector3(0,0,0);
-					propsPos[i].currentDirection = new THREE.Vector3(0, .001, 0);
-					propsPos[i].getTargetPosition = () => {
-						if(!pixelBuffer) return
-					
-						propsPos[i].targetPosition.set(pixelBuffer[i * 4],pixelBuffer[i* 4+1],pixelBuffer[i* 4+2])
-					}
-			
-					
-					scene.add(meshLineTrail[i]);
-				}
-			
-				
+			meshCheckMeshTrail = new THREE.Mesh(
+				new THREE.PlaneGeometry(.5, .5),
+				new THREE.MeshBasicMaterial({ map: null })
+			)
+
+			scene.add(meshCheckMeshTrail)
+			dataTextureFatline = new InstDataTexture(verticesPerInstance, instCount);
+			initFatLine()
 
 		}
+
+
+		function updateMeshTrail(dataGpu) {
+			if (!dataGpu || dataGpu.length < 3) return; // Đảm bảo có dữ liệu
+
+
+			for (let i = 0; i < ListcurvesOfFatLine.length; i++) {
+
+
+				const index = i * 4; // Cập nhật chỉ số cho dataGpu
+
+				const newVector = new THREE.Vector3(dataGpu[index], dataGpu[index + 1], dataGpu[index + 2]);
+			
+				ListcurvesOfFatLine[i].unshift(newVector.clone().multiplyScalar(5.));
+				ListcurvesOfFatLine[i].pop()
+
+				dataTextureFatline.setDataAt(i, ListcurvesOfFatLine[i]); // Kiểm tra để đảm bảo setDataAt làm việc
+			}
+
+			dataTextureFatline.needsUpdate = true;
+		}
+
+
+
+
+
+
+
+
+
 		function initMonitor() {
-			targetMonitor =  new THREE.WebGLRenderTarget(widthTexture,widthTexture, {
-				    minFilter: THREE.LinearFilter,
-   				 magFilter: THREE.LinearFilter,
+			targetMonitor = new THREE.WebGLRenderTarget(widthTexture, widthTexture, {
+				minFilter: THREE.LinearFilter,
+				magFilter: THREE.LinearFilter,
 				format: THREE.RGBAFormat,
 				type: THREE.FloatType,
 			});
 			sceneMonitor = new THREE.Scene();
 			cameraMonitor = new THREE.OrthographicCamera(- 2, 2, 2, -2, 0, 1);
-		
+
 			monitorPos = new THREE.Mesh(
-				new THREE.PlaneGeometry(4,4),
-			
+				new THREE.PlaneGeometry(4, 4),
+
 				new THREE.ShaderMaterial({
 					vertexShader: `
 									varying vec2 vUv;
@@ -742,14 +823,15 @@
 					uniforms: {
 						tex: { value: null }
 					},
-					
+
 				})
 			)
-		
+
 			sceneMonitor.add(monitorPos)
 		}
+
 		function initInstancedMesh(data3d) {
-		
+
 			const geometry = new THREE.BoxGeometry(0.005, 0.02, 0.005);
 
 			// Tạo mảng lưu trữ vị trí các điểm
@@ -757,18 +839,18 @@
 			const uvs = new Float32Array(countInstancedMesh * 2); // Mảng UVs
 
 			const materialChunk = new THREE.MeshPhongMaterial({
-                color: 0xc5461b,
+				color: 0xc5461b,
 				//emissive:0x3a2b82,
-                specular : 0x2c2a2a,
-                shininess: 100,
-            });
-            materialChunk.onBeforeCompile = (shader) => {
-                shader.uniforms.posGpu = { value: null };
-                shader.uniforms.velGpu = { value: null };
-                shader.uniforms.tSize = { value: new THREE.Vector2(widthTexture, widthTexture) };
-			
-                // Sửa đổi vertex shader
-                shader.vertexShader = `
+				specular: 0x2c2a2a,
+				shininess: 100,
+			});
+			materialChunk.onBeforeCompile = (shader) => {
+				shader.uniforms.posGpu = { value: null };
+				shader.uniforms.velGpu = { value: null };
+				shader.uniforms.tSize = { value: new THREE.Vector2(widthTexture, widthTexture) };
+
+				// Sửa đổi vertex shader
+				shader.vertexShader = `
 					attribute vec3 offset;
                    	varying vec2 vUv;
 					uniform vec2 tSize;
@@ -792,8 +874,8 @@
                     #define axisX vec3(0.0, 1.0, 0.0)
                     ${shader.vertexShader} 
                 `.replace(
-                    `#include <fog_vertex>`,
-                    `#include <fog_vertex>
+					`#include <fog_vertex>`,
+					`#include <fog_vertex>
                   		float id = float(gl_InstanceID);
 						vec2 uvT = vec2(
 										mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
@@ -810,22 +892,22 @@
 						pos = rotate(pos, axis, angle);
 						pos += posOfGpu;
 					
-						gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+						gl_Position = projectionMatrix * modelViewMatrix * vec4(pos * 5., 1.0);
 						vUv = uv; // Truyền UV đến fragment shader
 
                 `);
-        
-				matInstanced = shader;
-            };
 
-			
+				matInstanced = shader;
+			};
+
+
 			const offsets = new Float32Array(countInstancedMesh * 3);
 
 			for (let i = 0; i < countInstancedMesh; i++) {
 
-				offsets[i * 3 + 0] = Math.random()+.8; // X
+				offsets[i * 3 + 0] = Math.random() + .8; // X
 				offsets[i * 3 + 1] = Math.random(); // Y
-				offsets[i * 3 + 2] = Math.random()+.3; // Z
+				offsets[i * 3 + 2] = Math.random() + .3; // Z
 			}
 
 
@@ -874,12 +956,12 @@
 			scene.add(cInstancedMesh);
 
 		}
-	
+
 
 		function initTexture() {
 
 			const img = new Image();
-			img.src = '/models/eisbar/sdf.png';
+			img.src = '/threejs_tut/models/eisbar/sdf.png';
 			img.onload = () => {
 				const canvas = document.createElement('canvas');
 				const context = canvas.getContext('2d');
@@ -888,7 +970,7 @@
 				canvas.height = img.height;
 				context.drawImage(img, 0, 0);
 
-	
+
 				const imageData = context.getImageData(0, 0, img.width, img.height);
 				textureSDFData = imageData.data;
 
@@ -942,7 +1024,7 @@
 					}
 				}
 
-		
+
 				console.log(textureData3dOut)
 				// Cấu hình, đối với trường hợp này sữ dụng RBGA , vì track bằng alpha
 				dataTexture3D = new THREE.Data3DTexture(textureData3dOut, width3D, height3D, depth3D);
@@ -955,89 +1037,35 @@
 
 
 
-		
+
 				//	checkTextureData(textureData3dOut)
-			
-				initComputeRenderer(Renderer.renderer,dataTexture3D)
-			//	initInstancedMesh(dataTexture3D)
+
+				initComputeRenderer(Renderer.renderer, dataTexture3D)
+				initInstancedMesh(dataTexture3D)
 			};
 
 
 
 		}
+
 		function initModel() {
 			const loader = new OBJLoader();
-
-			// load a resource
 			loader.load(
-				// resource URL
 				'models/eisbar/eisbar.obj',
-				// called when resource is loaded
+
 				function (object) {
 					let m = object
 
-					m.scale.set(.89,.89,.89)
-					m.position.y = -.001
+					m.scale.set(4.2, 4.4, 4.2)
+					m.position.y = -.01
 
 					materialChunkModel = new THREE.MeshPhongMaterial({
 						color: 0xc2c2c2,
-					//	flatShading:true,
-						// emissive:0x3a2b82,
-						// specular : 0x2c2a2a,
 						shininess: 100,
 					});
-					// materialChunkModel.onBeforeCompile = (shader) => {
-					// 	shader.uniforms.uFuild = { value: null };
-					// 	shader.vertexShader = `
-					// 		varying vec2 vUv;
-					// 		${shader.vertexShader} 
-					// 	`.replace(
-					// 		`#include <uv_vertex>`,
-					// 		`#include <uv_vertex>
-					// 		vUv = uv;
 
-					// 	`);
-					
-					// 	shader.fragmentShader = `
-					// 		varying vec2 vUv;
-					// 		uniform sampler2D uFuild;
-					// 		vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
-					// 		{
-					// 			return a + b*cos( 6.28318*(c*t+d) );
-					// 		}
-					// 		${shader.fragmentShader} 
-					// 	`.replace(
-					// 		`reflectedLight.indirectSpecular + totalEmissiveRadiance;`,
-					// 		`reflectedLight.indirectSpecular + totalEmissiveRadiance;
-					// 		// 
-					// 		vec3 fuildColor  = texture2D(uFuild,vUv).xyz;
-					// 		float len = length(fuildColor.xy);
-					// 		 vec3 color = pal(len * 70.0, vec3(0.5,0.5,0.5), vec3(0.5,0.5,0.5), vec3(1.0,1.0,0.5), vec3(0.8,0.90,0.30));
-					// 		 //outgoingLight  += color * .2;
-					// 	`);
-				
-					// 	matModel = shader;
-					// };
 					m.children[0].material = materialChunkModel
-				
 
-					let  geometrySample = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-					//geometrySample = new THREE.SphereGeometry(0.2,16,16);
-					geometrySample = new THREE.OctahedronGeometry(.2,1);
-				
-					const matCube = new THREE.MeshPhongMaterial({
-					//	color: 'blue',
-					//map: textureImg,
-					envMap:textureCube
-					});
-					cubeSample = new THREE.Mesh(geometrySample, materialChunkModel);
-
-					// Thêm vào scene
-				//	scene.add(cubeSample);
-
-		
-					meshToRay = m.children[0]
-				
 					scene.add(m);
 
 				},
@@ -1049,6 +1077,7 @@
 				}
 			);
 		}
+
 		function checkTextureData(data3dOut) {
 			const listSlice2D = []
 			const countFrom = 30
@@ -1111,133 +1140,17 @@
 				}
 			}, 1000);
 			groupSlice2D.position.x = 1.72
-			
+
 			scene.add(groupSlice2D)
 		}
-	
 
-		
-		function shoot() {
-
-			positionForShootDecal.copy( intersection.point );
-			velocityUniforms['positionForShootDecal'] = { value:  positionForShootDecal };
-			positionUniforms['positionForShootDecal'] = { value:   positionForShootDecal };
-		
-			if ( params.rotate ) orientationForShootDecal.z = Math.random() * 2 * Math.PI;
-
-			const scale = params.minScale + Math.random() * ( params.maxScale - params.minScale );
-			sizeForShootDecal.set( scale, scale, scale );
-
-			const material = decalMaterial.clone();
-			material.color.setHex( Math.random() * 0xffffff );
-
-			const m = new THREE.Mesh( new DecalGeometry( meshToRay, positionForShootDecal, orientationForShootDecal, sizeForShootDecal ), material );
-			m.renderOrder = decals.length; // give decals a fixed render order
-
-			decals.push( m );
-
-			meshToRay.attach( m );
-
-			}
-
-			function removeDecals() {
-
-			decals.forEach( function ( d ) {
-
-				meshToRay.remove( d );
-
-			} );
-
-			decals.length = 0;
-
-			}
-
-
-
-		function initGui() {
-
-			const parameters = { threshold: 0.5, steps: 128, u_hold: .5, u_holdGPGPU: .5,u_holdGPGPU_Vel:.5, start: false };
-
-			function update() {
-				if (materialCube) {
-					materialCube.uniforms.threshold.value = parameters.threshold;
-					materialCube.uniforms.steps.value = parameters.steps;
-				}
-
-
-			}
-			function update2() {
-
-				matPoint.uniforms.time.value = time
-				matPoint.uniforms.u_hold.value = parameters.u_hold
-			}
-			function updatePropsGPU() {
-				positionUniforms['u_holdGPGPU'] = { value: parameters.u_holdGPGPU };
-				velocityUniforms['u_holdGPGPU'] = { value: parameters.u_holdGPGPU_Vel };
-			
-			}
-			function startGPU() {
-				positionUniforms['start'] = { value: !positionUniforms['start'].value };
-			}
-			const gui = new GUI();
-			gui.add(parameters, 'threshold', 0, 1, 0.01).onChange(update);
-			gui.add(parameters, 'steps', 0, 128, 1).onChange(update);
-
-			gui.add(parameters, 'u_hold', 0, 1, .001).onChange(update2);
-
-			gui.add(parameters, 'u_holdGPGPU', 0, 1.727272, .001).onChange(updatePropsGPU);
-			gui.add(parameters, 'u_holdGPGPU_Vel', 0, 1.727272, .001).onChange(updatePropsGPU);
-			gui.add(parameters, 'start').onChange(startGPU);
-		}
-		let cc = 0
-		function updateMeshTrail() {
-			let tt = performance.now()/1000
-		
-			if(Math.floor(tt)%1 === 0){
-				for (let ii = 0; ii < propsPos.length; ii++) {
-				tempDirection.copy(propsPos[ii].targetPosition).sub(propsPos[ii].positionCustom).normalize(); // / vec vel + dir vel
-
-
-				propsPos[ii].currentDirection.lerp(tempDirection, speedAll);
-
-
-				propsPos[ii].positionCustom.add(propsPos[ii].currentDirection.clone().multiplyScalar(0.5));
-	
-				let distance = propsPos[ii].positionCustom.distanceTo(propsPos[ii].targetPosition)
-				if (distance < .1) {
-					propsPos[ii].getTargetPosition();
-				}	
-		
-				propsPos[ii].getTargetPosition();
-				propsPos[ii].trailPoints.push(propsPos[ii].targetPosition.clone());
-				
-
-				if (propsPos[ii].trailPoints.length > propsPos[ii].trailLength) {
-					propsPos[ii].trailPoints.shift();
-				}
-
-
-				tempPositions = new Float32Array(propsPos[ii].trailPoints.length * 3);
-			
-				for (let i = 0; i < propsPos[ii].trailPoints.length; i++) {
-					tempPositions.set(propsPos[ii].trailPoints[i].toArray(), i * 3);
-				}
-			
-				meshLineTrail[ii].geometry.setAttribute('position', new THREE.BufferAttribute(tempPositions, 3));
-				meshLineTrail[ii].geometry.needsUpdate = true;
-				
-			}
-			}
-			
-			
-
-		}
-		
 		Renderer.renderer.setAnimationLoop(animate);
+
+		let cc = 0
 		function animate() {
-			cc+=.5
+		
 			Mouse.update();
-        	Renderer.update();
+			Renderer.update();
 			simulation.update()
 			currentTime = performance.now();
 			delta = (currentTime - lastTime) / 1000;
@@ -1245,29 +1158,28 @@
 			time += delta;
 			if (gpuCompute) runGPGPU()
 			stats.update();
-		
-			if (materialCube) {
-				materialCube.uniforms.cameraPos.value.copy(camera.position);
-				materialCube.uniforms.map.value = dataTexture3D
+
+			if (meshCheckMeshTrail) {
+				meshCheckMeshTrail.material.map = dataTextureFatline
 			}
 
 
-		
 			Renderer.renderer.setRenderTarget(targetMonitor)
 			Renderer.renderer.render(sceneMonitor, cameraMonitor);
 			glContaxt.readPixels(
 				0, 0, widthTexture, widthTexture,
 				glContaxt.RGBA,
-				glContaxt.FLOAT, 
-				pixelBuffer 
+				glContaxt.FLOAT,
+				pixelBuffer
 			);
-			if(pixelBuffer !== 0) 	updateMeshTrail()
-		
-			sphereSample.position.set(pixelBuffer[0],pixelBuffer[1],pixelBuffer[2])
+			cc += .5
+			 updateMeshTrail(pixelBuffer)
+			
+			sphereSample.position.set(pixelBuffer[0], pixelBuffer[1], pixelBuffer[2])
 			Renderer.renderer.setRenderTarget(null);
 			Renderer.renderer.render(scene, camera);
-		//	Renderer.renderer.render(sceneMonitor, cameraMonitor);
-			
+			//	Renderer.renderer.render(sceneMonitor, cameraMonitor);
+
 		}
 
 		function runGPGPU() {
@@ -1278,18 +1190,18 @@
 				velocityUniforms['time'].value = time / 1000;
 				velocityUniforms['delta'].value = delta;
 			}
-			
-			velocityUniforms['uFuild'].value = simulation.fbos.vel_0.texture 
-			positionUniforms['uFuild'].value = simulation.fbos.vel_0.texture 
+
+			velocityUniforms['uFuild'].value = simulation.fbos.vel_0.texture
+			positionUniforms['uFuild'].value = simulation.fbos.vel_0.texture
 
 			mouseFroceCurr.x = simulation.externalForce.speed
 			mousePos = simulation.externalForce.center
-			mouseFrocePrev.lerp(mouseFroceCurr,.1)
-			if(mouseFrocePrev.x < 0.001) mouseFrocePrev.x = 0
-			velocityUniforms['fuildForce'] = { value: mouseFrocePrev};
+			mouseFrocePrev.lerp(mouseFroceCurr, .1)
+			if (mouseFrocePrev.x < 0.001) mouseFrocePrev.x = 0
+			velocityUniforms['fuildForce'] = { value: mouseFrocePrev };
 			positionUniforms['fuildForce'] = { value: mouseFrocePrev };
 
-			velocityUniforms['mousePos'] = { value: mousePos};
+			velocityUniforms['mousePos'] = { value: mousePos };
 			positionUniforms['mousePos'] = { value: mousePos };
 
 			// console.log(mouseFrocePrev.x)
@@ -1299,23 +1211,18 @@
 			if (matPoint) {
 				matPoint.uniforms.dt.value = delta
 				matPoint.uniforms.posGpu.value = texturePosOut
-				matPoint.uniforms.uFuild.value = simulation.fbos.vel_0.texture 
-				
+				matPoint.uniforms.uFuild.value = simulation.fbos.vel_0.texture
+
 			}
-			if(cubeSample) {
-				//cubeSample.material.map = simulation.fbos.vel_0.texture 
-				//cubeSample.rotation.x += delta
-				cubeSample.rotation.y += delta
-			}
-			if(matModel) {
-			
-				matModel.uniforms.uFuild.value = simulation.fbos.vel_0.texture 
+			if (matModel) {
+
+				matModel.uniforms.uFuild.value = simulation.fbos.vel_0.texture
 			}
 			if (matInstanced) {
 				matInstanced.uniforms.posGpu.value = texturePosOut
 				matInstanced.uniforms.velGpu.value = textureVelOut
 			}
-		
+
 			if (monitorPos && monitorPos.material) monitorPos.material.uniforms.tex.value = texturePosOut
 			if (monitorVel && monitorVel.material) monitorVel.material.uniforms.tex.value = textureVelOut
 

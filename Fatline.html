@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Fatline</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+</head>
+<style>
+    body {
+        margin: 0
+    }
+</style>
+
+<body>
+    <p>https://codepen.io/prisoner849/pen/wvdBerm</p>
+    <div id="container"></div>
+
+    <script type="importmap">
+        {
+          "imports": {
+            "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+          }
+        }
+      </script>
+
+    <script type="module">
+
+        import * as THREE from "three";
+        import { OrbitControls } from "three/addons/controls/OrbitControls";
+        import { GUI } from "three/addons/libs/lil-gui.module.min.js";
+
+        import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+        import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+        import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+
+        console.clear();
+        const sizeTexture = 100
+        class InstDataTexture extends THREE.DataTexture {
+            constructor(verticesPerInstance, instanceCount) {
+                const totalAmountPerInstance = verticesPerInstance + 1; // vertices + color (vec4 * 1)
+                const instancePerRow = Math.floor(sizeTexture / totalAmountPerInstance);
+                const rows = Math.ceil(instanceCount / instancePerRow);
+                const w = totalAmountPerInstance * instancePerRow;
+                const h = rows;
+                const totalData = new Float32Array(w * h * 4).fill(1);
+                super(totalData, w, h, THREE.RGBAFormat, THREE.FloatType);
+                this.needsUpdate = true;
+                this.instanceCount = instanceCount;
+                this.totalAmountPerInstance = totalAmountPerInstance;
+                this.instancePerRow = instancePerRow;
+                this.rows = rows;
+                this.uniforms = {
+                    totalAmountPerInstance: { value: totalAmountPerInstance },
+                    instancePerRow: { value: instancePerRow },
+                    width: { value: w },
+                    height: { value: h }
+                };
+            }
+            setDataAt(idx, data) {
+                // data - array of Vector3
+                if (idx >= this.instanceCount) {
+                    return;
+                }
+                let sourceData = this.source.data.data;
+                let startIdx = this.totalAmountPerInstance * idx;
+                data.forEach((p, pIdx) => {
+                    let currIdx = startIdx + pIdx;
+                    sourceData[currIdx * 4 + 0] = p.x;
+                    sourceData[currIdx * 4 + 1] = p.y;
+                    sourceData[currIdx * 4 + 2] = p.z;
+                    sourceData[currIdx * 4 + 3] = 1;
+                });
+            }
+            setColorAt(idx, color, alpha = 1) {
+                let sourceData = this.source.data.data;
+                let startIdx = this.totalAmountPerInstance * (idx + 1) - 1;
+                sourceData[startIdx * 4 + 0] = color.r;
+                sourceData[startIdx * 4 + 1] = color.g;
+                sourceData[startIdx * 4 + 2] = color.b;
+                // sourceData[startIdx * 4 + 0] = 0;
+                // sourceData[startIdx * 4 + 1] = 0;
+                // sourceData[startIdx * 4 + 2] = 0;
+                sourceData[startIdx * 4 + 3] = alpha;
+            }
+        }
+
+        let scene = new THREE.Scene();
+        scene.background = new THREE.Color().multiplyScalar(0.1);
+        let camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, 1000);
+        camera.position.set(5, 8, 13).setLength(21);
+        let renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(innerWidth, innerHeight);
+        document.body.appendChild(renderer.domElement);
+        window.addEventListener("resize", (event) => {
+            camera.aspect = innerWidth / innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+        const axesHelper = new THREE.AxesHelper(5);
+        scene.add(axesHelper);
+        let controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        //controls.enablePan = false;
+
+        let box = new THREE.Box3Helper(new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3().setScalar(10)), 0x7f7f7f);
+        scene.add(box);
+
+        let meshCheck = new THREE.Mesh(
+            new THREE.PlaneGeometry(4, 4),
+            new THREE.MeshBasicMaterial({ map: null })
+        )
+        meshCheck.position.z = -1
+        scene.add(meshCheck)
+
+
+        let savePts
+        const instCount = 2;
+        const verticesPerInstance = 3;
+        let dataTexture = new InstDataTexture(verticesPerInstance, instCount);
+
+        initFatLine()
+        function initFatLine() {
+            let curve = new THREE.CatmullRomCurve3(
+                new Array(5).fill().map((p) => {
+                    return new THREE.Vector3();
+                }), false, "catmullrom", 2
+            );
+            let color = new THREE.Color();
+            let curves = [];
+            for (let i = 0; i < instCount; i++) {
+                curve.points.forEach((p) => {
+                    p.random().subScalar(0.5).multiplyScalar(10);
+                });
+
+                let crv = curve.clone();
+                crv.userData = {
+                    phase: (i / instCount)
+                }
+                crv.tension = getTension(crv.userData.phase);
+                crv.updateArcLengths();
+                curves.push(crv);
+                let pts = crv.getPoints(verticesPerInstance - 1);
+                console.log(pts)
+                savePts = pts
+                dataTexture.setDataAt(i, pts);
+                dataTexture.setColorAt(
+                    i,
+                    color.setHSL(i / instCount, 1, 0.5)
+                );
+            }
+            dataTexture.needsUpdate = true;
+            let dt = { value: dataTexture };
+            console.log(curves);
+
+            let flg = new LineSegmentsGeometry();
+            flg.instanceCount = instCount * (verticesPerInstance + 1);
+            let flm = new LineMaterial({
+                linewidth: 0.105,
+                worldUnits: true,
+                vertexColors: true,
+                wireframe: true,
+                //   alphaToCoverage: true,
+                onBeforeCompile: shader => {
+                    shader.uniforms.data = dt;
+                    shader.uniforms.totalAmountPerInstance = dataTexture.uniforms.totalAmountPerInstance;
+                    shader.uniforms.instancePerRow = dataTexture.uniforms.instancePerRow;
+                    shader.vertexShader = `
+                    uniform sampler2D data;
+                    uniform float totalAmountPerInstance;
+                    uniform float instancePerRow;
+                    ${shader.vertexShader}
+                    `.replace(
+                        `#ifdef USE_COLOR
+
+				vColor.xyz = ( position.y < 0.5 ) ? instanceColorStart : instanceColorEnd;
+
+			#endif`,
+
+                        `
+                        ivec2 tSize = textureSize(data, 0);
+      
+                        int vertID = int(mod(float(gl_InstanceID), totalAmountPerInstance - 2.));
+                        int instID = int(floor(float(gl_InstanceID) / totalAmountPerInstance));
+                        
+                        int fetchY = tSize.y - 1 - int(instID / int(instancePerRow));
+                        int fetchX = int(mod(float(instID), instancePerRow) * totalAmountPerInstance);
+                        
+            #ifdef USE_COLOR
+				vColor.xyz = vec3(texelFetch(data, ivec2(fetchX + int(totalAmountPerInstance) - 1, fetchY), 0));
+			#endif`
+                    )
+                        .replace(
+                            `// camera space
+			vec4 start = modelViewMatrix * vec4( instanceStart, 1.0 );
+			vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );`,
+
+                            `// camera space
+                    vec4 instStart = texelFetch(data, ivec2(fetchX + vertID, fetchY), 0);
+                    vec4 instEnd = texelFetch(data, ivec2(fetchX + vertID + 1, fetchY), 0);
+                
+                    vec4 start = modelViewMatrix * instStart;
+                    vec4 end = modelViewMatrix * instEnd;`
+                        );
+                    //  console.log(shader.vertexShader);
+                }
+            });
+            let fl = new LineSegments2(flg, flm);
+            scene.add(fl);
+        }
+
+
+        let clock = new THREE.Clock();
+
+        setInterval(() => {
+            console.log("run", dataTexture)
+            for (let i = 0; i < instCount; i++) {
+                dataTexture.setDataAt(i, [new THREE.Vector3(0, Math.random(), 0), new THREE.Vector3(0, Math.random(), 0), new THREE.Vector3(0, Math.random(), 0)]);
+                dataTexture.needsUpdate = true;
+            }
+
+
+        }, 1000);
+        renderer.setAnimationLoop(() => {
+            let t = clock.getElapsedTime();
+            controls.update();
+
+            // curves.forEach((crv, cIdx) => {
+
+            //     let ud = crv.userData;
+            //     crv.tension = getTension(ud.phase + t * 0.1);
+            //     crv.updateArcLengths();
+            //     let pts = crv.getPoints(verticesPerInstance - 1);
+            //     dataTexture.setDataAt(cIdx, pts);
+            // })
+            // dataTexture.needsUpdate = true;
+            meshCheck.material.map = dataTexture
+            renderer.render(scene, camera);
+        });
+
+        function getTension(phase) {
+            return (Math.sin(phase * Math.PI * 2) * 0.5 + 0.5) * 2;
+        }
+
+    </script>
+
+</body>
+
+</html>
