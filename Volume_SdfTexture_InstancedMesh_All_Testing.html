@@ -461,8 +461,9 @@
 				BFECC: false
 			}
 		});
-
+		
 		const countInstancedMesh = 200
+		//fATLINE
 		let savePtsFatline
 		const instCount = countInstancedMesh;
 		const verticesPerInstance = 72;
@@ -470,7 +471,18 @@
 		let ListcurvesOfFatLine = [];
 		const sizeTextureFatLine = 2000
 
-		class InstDataTexture extends THREE.DataTexture {
+
+		//FISH
+		const countFish = 1
+		const numPointsOfCruveFish = 200;
+		const cSegmentsOfCruveFish = 3;
+		const heigthDataFistEachFish = 3
+		let shaderInstancedFish,uniformsFish,textureDataOfFish
+
+		function getRandomHexColor() {
+				return '#' + Math.floor(Math.random()*16777215).toString(16);
+			}
+		class TexttureOfFatLine extends THREE.DataTexture {
 			constructor(verticesPerInstance, instanceCount) {
 				const totalAmountPerInstance = verticesPerInstance + 1; // vertices + color (vec4 * 1)
 				const instancePerRow = Math.floor(sizeTextureFatLine / totalAmountPerInstance);
@@ -619,7 +631,7 @@
 			scene.background = new THREE.Color(0x525453)
 			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.001, 10000);
 
-			camera.position.set(0, 0, 3.5)
+			camera.position.set(0, 0, 5.5)
 
 
 			const controls = new OrbitControls(camera, Renderer.renderer.domElement);
@@ -636,9 +648,9 @@
 
 			initTexture()
 			initMonitor()
-			initModel()
-
-			initMeshTrail()
+			// initModel()
+			// initMeshTrail()
+			initDataOfFishAndFish()
 			window.addEventListener('resize', onWindowResize);
 
 			sphereSample = new THREE.Mesh(
@@ -647,6 +659,176 @@
 			)
 			scene.add(sphereSample)
 		}
+
+
+		
+		function initDataOfFishAndFish() {
+			const groupOfFish = new THREE.Group()
+			const data = [];
+			for (let ii = 0; ii < countFish; ii++) {
+				let cPts = [];
+				
+				// for (let i = 0; i < cSegmentsOfCruveFish; i++) {
+				// 	cPts.push(
+				// 		new THREE.Vector3(Math.random()*2,-Math.random()*2,Math.random()*2)
+				// 	);
+				// }
+				cPts = [
+					new THREE.Vector3(1,0,0),
+					new THREE.Vector3(0,1,0),
+					new THREE.Vector3(0,0,1)
+				]
+				const curve = new THREE.CatmullRomCurve3(cPts);
+				curve.verticesNeedUpdate = true;
+				curve.closed = true;
+			
+				const cPoints = curve.getSpacedPoints(numPointsOfCruveFish);
+				const cObjects = curve.computeFrenetFrames(numPointsOfCruveFish, true);
+			
+
+
+				cPoints.forEach(v => { data.push(v.x, v.y, v.z,1.); });
+				cObjects.binormals.forEach(v => { data.push(v.x, v.y, v.z,1.); });
+				cObjects.normals.forEach(v => { data.push(v.x, v.y, v.z,1.); });
+				// cObjects.tangents.forEach(v => { data.push(v.x, v.y, v.z,1.); });
+				//=> 3 row each fish
+
+				const pGeom = new THREE.BufferGeometry().setFromPoints(cPoints);
+				const pMat = new THREE.LineBasicMaterial({ color: getRandomHexColor() });
+				const pathLine = new THREE.Line(pGeom, pMat);
+	
+				groupOfFish.add(pathLine);
+			}
+	
+		
+
+			const dataArray = new Float32Array(data);
+
+			textureDataOfFish = new THREE.DataTexture(dataArray, numPointsOfCruveFish + 1, heigthDataFistEachFish * countFish, THREE.RGBAFormat, THREE.FloatType);
+			textureDataOfFish.magFilter = THREE.NearestFilter;
+			textureDataOfFish.needsUpdate = true
+
+
+			const planeCheck = new THREE.Mesh(
+				new THREE.PlaneGeometry(2,2),
+				new THREE.MeshBasicMaterial({map:textureDataOfFish})
+			)
+			planeCheck.position.x=3
+			scene.add(planeCheck);
+
+		
+			const loader = new OBJLoader();
+			loader.load("/models/fish.obj", obj => {
+
+			
+				let objGeom = obj.children[0].geometry
+			
+				objGeom.center();
+				objGeom.rotateX(-Math.PI * 0.5);
+				objGeom.scale(0.005, 0.005, 0.005);
+				const objBox = new THREE.Box3().setFromBufferAttribute(objGeom.getAttribute("position"));
+				const objSize = new THREE.Vector3();
+				objBox.getSize(objSize);
+				//objGeom.translate(0, 0, objBox.z);
+		
+				const uniformsFish = {
+					uSpatialTexture: { value: textureDataOfFish },
+					uTextureSize: { value: new THREE.Vector2(numPointsOfCruveFish + 1, heigthDataFistEachFish) },
+					uTime: { value: 0 },
+					stt: { value: new THREE.Vector2(countFish, 0) },
+					uLengthRatio: { value: new THREE.Vector2( .07, .07)  }, // objSize.z / curve.cacheArcLengths[200] more or less real lenght along the path
+					uObjSize: { value: objSize } // lenght
+				}
+				
+
+
+				const objMat2 = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true });
+				objMat2.onBeforeCompile = (shader) => {
+					shader.uniforms.uSpatialTexture = uniformsFish.uSpatialTexture;
+					shader.uniforms.uTextureSize = uniformsFish.uTextureSize;
+					shader.uniforms.uTime = uniformsFish.uTime;
+					shader.uniforms.stt = uniformsFish.stt;
+					shader.uniforms.uLengthRatio = uniformsFish.uLengthRatio;
+					shader.uniforms.uObjSize = uniformsFish.uObjSize;
+			
+					shader.vertexShader = `
+						uniform sampler2D uSpatialTexture;
+						uniform vec2 uTextureSize;
+						uniform float uTime;
+						uniform vec2 stt;
+						uniform vec2 uLengthRatio;
+						uniform vec3 uObjSize;
+
+						struct splineData {
+							vec3 point;
+							vec3 binormal;
+							vec3 normal;
+						};
+
+						splineData getSplineData(float t){
+							float step = (1. / uTextureSize.y) / stt.x ;
+							float halfStep = step * 0.5;
+							splineData sd;
+							sd.point    = texture2D(uSpatialTexture, vec2(t, step * (0.+uTextureSize.y*float(gl_InstanceID)) + halfStep)).rgb;
+							sd.binormal = texture2D(uSpatialTexture, vec2(t, step * (1.+uTextureSize.y*float(gl_InstanceID)) + halfStep)).rgb;
+							sd.normal   = texture2D(uSpatialTexture, vec2(t, step * (2.+uTextureSize.y*float(gl_InstanceID)) + halfStep)).rgb;
+							return sd;
+						}
+					` + shader.vertexShader;
+					shader.vertexShader = shader.vertexShader.replace(
+						`#include <begin_vertex>`,
+						`#include <begin_vertex>
+
+						vec3 pos = position;
+
+						float wStep = 1. / uTextureSize.x;
+						float hWStep = wStep * 0.5;
+
+						float d = pos.z / uObjSize.z;
+						float t = fract((uTime * 0.1) + (d * uLengthRatio.x));
+						float numPrev = floor(t / wStep);
+						float numNext = numPrev + 1.;
+						//numNext = numNext > (uTextureSize.x - 1.) ? 0. : numNext;
+						float tPrev = numPrev * wStep + hWStep;
+						float tNext = numNext * wStep + hWStep;
+						//float tDiff = tNext - tPrev;
+						splineData splinePrev = getSplineData(tPrev);
+						splineData splineNext = getSplineData(tNext);
+
+						float f = (t - tPrev) / wStep;
+						vec3 P = mix(splinePrev.point, splineNext.point, f);
+						vec3 B = mix(splinePrev.binormal, splineNext.binormal, f);
+						vec3 N = mix(splinePrev.normal, splineNext.normal, f);
+
+
+					
+						transformed = P + (N * pos.x) + (B * pos.y) ;
+				
+							
+	`		
+					);
+			
+				shaderInstancedFish = shader
+				}
+				const cInstancedMesh = new THREE.InstancedMesh(objGeom,objMat2, countFish);
+			
+				groupOfFish.add(cInstancedMesh);
+				groupOfFish.position.x =3
+				scene.add(groupOfFish)
+			});
+
+
+		}
+			
+	
+
+
+
+
+
+
+
+
 
 
 
@@ -756,7 +938,7 @@
 			)
 
 			scene.add(meshCheckMeshTrail)
-			dataTextureFatline = new InstDataTexture(verticesPerInstance, instCount);
+			dataTextureFatline = new TexttureOfFatLine(verticesPerInstance, instCount);
 			initFatLine()
 
 		}
@@ -1162,7 +1344,7 @@
 			if (meshCheckMeshTrail) {
 				meshCheckMeshTrail.material.map = dataTextureFatline
 			}
-
+			if(shaderInstancedFish) shaderInstancedFish.uniforms.uTime.value = performance.now()/1000
 
 			Renderer.renderer.setRenderTarget(targetMonitor)
 			Renderer.renderer.render(sceneMonitor, cameraMonitor);
@@ -1173,7 +1355,7 @@
 				pixelBuffer
 			);
 			cc += .5
-			 updateMeshTrail(pixelBuffer)
+			if(dataTextureFatline) updateMeshTrail(pixelBuffer)
 			
 			sphereSample.position.set(pixelBuffer[0], pixelBuffer[1], pixelBuffer[2])
 			Renderer.renderer.setRenderTarget(null);
