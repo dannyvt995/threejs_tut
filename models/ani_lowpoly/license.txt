@@ -1,0 +1,11 @@
+Model Information:
+* title:	Sly Walk // HOPPERS HOTEL
+* source:	https://sketchfab.com/3d-models/sly-walk-hoppers-hotel-716bd1f168e94ae880fae9503c350bd4
+* author:	Nelam0n (https://sketchfab.com/nelam0n)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Sly Walk // HOPPERS HOTEL" (https://sketchfab.com/3d-models/sly-walk-hoppers-hotel-716bd1f168e94ae880fae9503c350bd4) by Nelam0n (https://sketchfab.com/nelam0n) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
