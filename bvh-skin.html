@@ -32,7 +32,7 @@
         import { GLTFLoader } from 'three/addons/GLTFLoader.js';
         import Stats from 'three/addons/stats.module.js';
         import { GUI } from 'three/addons/lil-gui.module.min.js';
-        import { computeBoundsTree, MeshBVHHelper, getBVHExtremes, StaticGeometryGenerator } from 'three-mesh-bvh';
+        import { computeBoundsTree, MeshBVHHelper, getBVHExtremes, StaticGeometryGenerator, MeshBVH } from 'three-mesh-bvh';
         import { OrbitControls } from 'three/addons/OrbitControls.js';
 
         THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -119,12 +119,13 @@
                     mixer = new THREE.AnimationMixer(model);
 
                     animationAction = mixer.clipAction(animations[0]);
-                    animationAction.play();
+                  animationAction.play();
                     animationAction.paused = params.pause;
 
-
-
-
+                    //1 -> 4
+                    console.log(model.children[0].children[0].children[0].children[0].children[0].children                    )
+                    const bvh = new MeshBVH(model.children[0].children[0].children[0].children[0].children[0].children[1].geometry)
+                   console.log(bvh)
                     // prep the geometry
                     staticGeometryGenerator = new StaticGeometryGenerator(model);
                     originalMaterials = staticGeometryGenerator.getMaterials();
@@ -181,7 +182,7 @@
                 startTime = window.performance.now();
                 staticGeometryGenerator.generate(meshHelper.geometry);
                 generateTime = window.performance.now() - startTime;
-
+              
                 // time the bvh refitting
                 startTime = window.performance.now();
                 if (!meshHelper.geometry.boundsTree) {
@@ -200,6 +201,7 @@
                 timeSinceUpdate = 0;
 
                 const extremes = getBVHExtremes(meshHelper.geometry.boundsTree);
+               
                 if (initialExtremes === null) {
 
                     initialExtremes = extremes;
@@ -212,7 +214,7 @@
 
                     score += extremes[i].surfaceAreaScore;
                     initialScore += initialExtremes[i].surfaceAreaScore;
-
+                  
                 }
 
                 const degradation = (score / initialScore) - 1.0;
