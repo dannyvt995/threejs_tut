@@ -93,12 +93,13 @@ export class RenderSDFLayerMaterial extends ShaderMaterial {
 						outGradient = pow(outGradient, vec3(2.0)); 
 						outGradient = mix(vec3(0.0), outGradient, 0.8); 
 					}
-					vec3 distanceOut = dist > 0.0 ? vec3( dist ) : vec3( - dist );
+					vec3 distanceOut =  dist > 0.0 ? vec3( 0, dist, 0 ) : vec3( - dist, 0, 0 );
 				
 					vec3 combine2 = outGradient * 1. + distanceOut * 0.;
 		
 
-					gl_FragColor = vec4(combine2, 1.0);
+					gl_FragColor = vec4(combine2, dist + .5);
+				//	gl_FragColor = vec4(step(.1,vec3(dist)), dist + .5);
 					#else
 
 					float dist = texture( sdfTex, vec3( vUv, layer ) ).r;
@@ -137,9 +138,9 @@ export class RenderSDFLayerMaterial extends ShaderMaterial {
 						outGradient = pow(outGradient, vec3(2.0)); 
 						outGradient = mix(vec3(0.0), outGradient, 0.8); 
 					}
-					vec3 distanceOut = dist > 0.0 ? vec3( dist ) : vec3( - dist );
+					vec3 distanceOut = 	 dist > 0.0 ? vec3( 0, dist, 0 ) : vec3( - dist, 0, 0 );
 				
-					vec3 combine2 = outGradient * 1. + distanceOut * 0.;
+					vec3 combine2 = outGradient * 0. + distanceOut * 1.;
 		
 
 					gl_FragColor = vec4(combine2, 1.0);

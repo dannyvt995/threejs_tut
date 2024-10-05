@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>three-mesh-bvh - Skinned Mesh BVH</title>
+    <title>BVH_SDFGen_Complete_NotRealtime</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 
     <style type="text/css">
@@ -107,7 +107,7 @@
         };
 
 
-        let countTig = 0
+        let countTriggle = 0
         let renderTargetGenImg, meshCheckFbo
 
         const RENDERSDF = false
@@ -119,9 +119,8 @@
         let bvhGenerationWorker, staticGeometryGenerator222, bvhHelper222, meshHelper222;
         const inverseBoundsMatrix = new THREE.Matrix4();
 
-        let save = []
         let matInstanced
-        const dim = params.resolution;
+       
 
         clock = new THREE.Clock();
 
@@ -129,6 +128,13 @@
         let timeSinceUpdate = 0;
         let initialExtremes = null;
         let model, skeletonHelper, mixer, animationAction, staticGeometryGenerator, wireframeMaterial, meshHelper, bvhHelper
+
+
+        //config
+        const dim = params.resolution;
+        const pxWidth = 1 / dim;
+        const halfWidth = .5 * pxWidth;
+
 
         initSDFtextureFBO()
         function initSDFtextureFBO() {
@@ -227,9 +233,11 @@
                             vec4 texxx = texture2D(tex,vUv);
                             gl_FragColor = texxx;
                         }
-                        `
-
-                })
+                        `,
+                        transparent:true,
+                        side:2
+                }),
+             
             )
             scene.add(meshCheckFbo)
             initFboToGenImg()
@@ -261,73 +269,76 @@
             );
 
 
+            // new GLTFLoader()
+            //     .setMeshoptDecoder(MeshoptDecoder)
+            //     .loadAsync('https://raw.githubusercontent.com/gkjohnson/3d-demo-data/main/models/stanford-bunny/bunny.glb')
+            //     .then(gltf => {
+
+            //         gltf.scene.updateMatrixWorld(true);
+            //         console.log(gltf.scene)
+            //         const staticGen = new StaticGeometryGenerator(meshBear);
+            //         staticGen.attributes = ['position', 'normal'];
+            //         staticGen.useGroups = false;
+
+            //         geometry = staticGen.generate().center();
+
+
+            //         const geometryTorus = new THREE.TorusGeometry(.2, .1, 16, 100);
+            //         const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            //         const torusKnot = new THREE.Mesh(geometryTorus, material);
+
+
+
+            //         return new MeshBVH(geometry);
+
+            //     })
+            //     .then(result => {
+                   
+            //         if (RENDERSDF) {
+            //             bvh = result;
+            //             console.log("bvh sampler SDF", bvh)
+            //             updateSDF();
+            //             meshSampleSdf = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
+            //             staticGeometryGenerator222 = new StaticGeometryGenerator(meshSampleSdf);
+            //             staticGeometryGenerator222.generate(meshHelper222.geometry);
+            //             console.log("staticGeometryGenerator222", staticGeometryGenerator222)
+            //             meshHelper222.geometry.computeBoundsTree();
+            //             bvhHelper222 = new MeshBVHHelper(meshHelper222, 5);
+            //             scene.add(bvhHelper222);
+
+            //             // scene.add(meshSampleSdf);
+            //         }
+            //     });
+
+
             new GLTFLoader()
-                .setMeshoptDecoder(MeshoptDecoder)
-                .loadAsync('https://raw.githubusercontent.com/gkjohnson/3d-demo-data/main/models/stanford-bunny/bunny.glb')
-                .then(gltf => {
-
-                    gltf.scene.updateMatrixWorld(true);
-                    console.log(gltf.scene)
-                    const staticGen = new StaticGeometryGenerator(meshBear);
-                    staticGen.attributes = ['position', 'normal'];
-                    staticGen.useGroups = false;
-
-                    geometry = staticGen.generate().center();
-
-
-                    const geometryTorus = new THREE.TorusGeometry(.2, .1, 16, 100);
-                    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-                    const torusKnot = new THREE.Mesh(geometryTorus, material);
-
-
-
-                    return new MeshBVH(geometry);
-
-                })
-                .then(result => {
-                    if (RENDERSDF) {
-                        bvh = result;
-                        console.log("bvh sampler SDF", bvh)
-                        updateSDF();
-                        meshSampleSdf = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
-                        staticGeometryGenerator222 = new StaticGeometryGenerator(meshSampleSdf);
-                        staticGeometryGenerator222.generate(meshHelper222.geometry);
-                        console.log("staticGeometryGenerator222", staticGeometryGenerator222)
-                        meshHelper222.geometry.computeBoundsTree();
-                        bvhHelper222 = new MeshBVHHelper(meshHelper222, 5);
-                        scene.add(bvhHelper222);
-
-                        // scene.add(meshSampleSdf);
-                    }
-                });
-
-
-            new GLTFLoader()
-                .load('models/ani_lowpoly/scene.gltf', gltf => {
+                .load('models/mei/scene.gltf', gltf => {
                     gltf.scene.updateMatrixWorld(true);
                     // prep the model and add it to the scene
                     model = gltf.scene;
-
+                    model.scale.set(.0042,.0042,.0042)
+                 
+                    model.position.y = -.2
+                    model.position.z = -.1
                     let listM = []
                     model.updateMatrixWorld(true);
 
                     model.traverse((child) => {
                         if (child.isMesh) {
-                            console.log(child)
+                      
                             if (child.type === 'Mesh') {
                                 // child.removeFromParent()
                                 child.visible = false
                             } else if (child.type === 'SkinnedMesh') {
-                                // console.log(child.geometry)
-                                //  child.geometry.center()
+                                
+                        
                                 let bfd = child.clone()
-
-
-                                listM.push(child)
+                            
+                                listM.push(bfd)
                             }
                         }
                     });
-                    console.log(model)
+     
 
 
 
@@ -336,9 +347,9 @@
                         if (isRenderSkinCheck) {
                             const geometryTorus = new THREE.TorusGeometry(.2, .1, 16, 100);
 
-                            bvh = new MeshBVH(listM[1].geometry);
-                            console.log(bvh)
-                              updateSDF();
+                            bvh = new MeshBVH(listM[0].geometry);
+                            meshSampleSdf = new THREE.Mesh(listM[0].geometry, new THREE.MeshStandardMaterial());
+                            //updateSDF();
                         }
                    
                        scene.add(model)
@@ -454,53 +465,58 @@
                   
                     meshHelper.geometry.boundsTree.refit();
 
-                    // let pxWidth = 1 / dim;
-                    // let halfWidth = .5 * pxWidth;
+         
+                  if(countTriggle % 10 === 0)  {
 
-          
-                    // if (!params.gpuGeneration) {
-                    //     // create a new 3d data texture
+                    if (!params.gpuGeneration) {
+                        // create a new 3d data texture
 
-                    //     console.log("=>>>updateSDF")
-                    //     let point = new THREE.Vector3();
-                    //     let ray = new THREE.Ray();
-                    //     let target = {};
+                        console.log("=>>>updateSDF","res",dim)
+                        console.time()
+                        let point = new THREE.Vector3();
+                        let ray = new THREE.Ray();
+                        let target = {};
                 
-                    //     for (let x = 0; x < dim; x++) {
+                        for (let x = 0; x < dim; x++) {
 
-                    //         for (let y = 0; y < dim; y++) {
+                            for (let y = 0; y < dim; y++) {
 
-                    //             for (let z = 0; z < dim; z++) {
+                                for (let z = 0; z < dim; z++) {
 
-                    //                 // adjust by half width of the pixel so we sample the pixel center
-                    //                 // and offset by half the box size.
-                    //                 point.set(
-                    //                     halfWidth + x * pxWidth - 0.5,
-                    //                     halfWidth + y * pxWidth - 0.5,
-                    //                     halfWidth + z * pxWidth - 0.5,
-                    //                 ).applyMatrix4(matrix);
+                                    // adjust by half width of the pixel so we sample the pixel center
+                                    // and offset by half the box size.
+                                    point.set(
+                                        halfWidth + x * pxWidth - 0.5,
+                                        halfWidth + y * pxWidth - 0.5,
+                                        halfWidth + z * pxWidth - 0.5,
+                                    ).applyMatrix4(matrix);
 
-                    //                 let index = x + y * dim + z * dim * dim;
-                    //                 let dist = meshHelper.geometry.boundsTree.closestPointToPoint(point, target).distance;
+                                    let index = x + y * dim + z * dim * dim;
+                                    let dist = meshHelper.geometry.boundsTree.closestPointToPoint(point, target).distance;
 
-                    //                 // raycast inside the mesh to determine if the distance should be positive or negative
-                    //                 ray.origin.copy(point);
-                    //                 ray.direction.set(0, 0, 1);
-                    //                 let hit = meshHelper.geometry.boundsTree.raycastFirst(ray, THREE.DoubleSide);
+                                    // raycast inside the mesh to determine if the distance should be positive or negative
+                                    ray.origin.copy(point);
+                                    ray.direction.set(0, 0, 1);
+                                    let hit = meshHelper.geometry.boundsTree.raycastFirst(ray, THREE.DoubleSide);
 
-                    //                 let isInside = hit && hit.face.normal.dot(ray.direction) > 0.0;
+                                    let isInside = hit && hit.face.normal.dot(ray.direction) > 0.0;
 
-                    //                 // set the distance in the texture data
-                    //                 sdfTex.image.data[index] = isInside ? - dist : dist;
+                                    // set the distance in the texture data
+                                    sdfTex.image.data[index] = isInside ? - dist : dist;
                     
-                    //                 sdfTex.needsUpdate = true
-                    //             }
+                                    sdfTex.needsUpdate = true
+                                }
 
-                    //         }
+                            }
 
-                    //     }
+                        }
 
-                    // }
+
+
+                        console.timeEnd()
+                    }
+                  }
+          
 
 
                     refitTime = (window.performance.now() - startTime).toFixed(2);
@@ -616,8 +632,7 @@
 
             }
 
-            const pxWidth = 1 / dim;
-            const halfWidth = .5 * pxWidth;
+
 
             const startTime = window.performance.now();
             if (!params.gpuGeneration) {
@@ -854,7 +869,7 @@
                 mixer.update(delta);
 
             }
-            countTig += .5
+            countTriggle += .25
             if (RENDERSDF || isRenderSkinCheck) {
                 if (!sdfTex) {
 
@@ -868,7 +883,7 @@
 
                 } else if (params.mode === 'layer' || params.mode === 'grid layers') {
 
-                 //   if (countTig === 10) updateSDF()
+                 //   if (countTriggle === 10) updateSDF()
                     // render a layer of the 3d texture
                     let tex;
                     const material = layerPass.material;
@@ -907,23 +922,23 @@
                     renderer.render(scene, camera);
 
 
-                } else if (params.mode === 'raymarching' && meshSampleSdf) {
+                } else if (params.mode === 'raymarching' ) {
 
                     // render the ray marched texture
                     camera.updateMatrixWorld();
                     meshSampleSdf.updateMatrixWorld();
-
+                 
                     let tex;
                     if (sdfTex.isData3DTexture) {
-
+                     
                         tex = sdfTex;
 
                     } else {
-
+                   
                         tex = sdfTex.texture;
 
                     }
-
+                
                     const { width, depth, height } = tex.image;
                     raymarchPass.material.uniforms.sdfTex.value = tex;
                     raymarchPass.material.uniforms.normalStep.value.set(1 / width, 1 / height, 1 / depth);
