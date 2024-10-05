@@ -1,0 +1,1817 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>Volume SDF Surface Track _ Final</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+</head>
+<style>
+	body {
+		margin: 0;
+		overflow: hidden;
+	}
+
+	.note {
+		position: fixed;
+		color: white;
+	}
+</style>
+
+<body>
+	<div class="note">
+	</div>
+	<div id="canvas"></div>
+	<script id="frag_Pos_GPGPU" type="x-shader/x-fragment">
+
+        uniform float time;
+        uniform float delta;
+		uniform float u_holdGPGPU;
+		uniform bool start;
+		uniform sampler3D texture3DSDF;
+		uniform sampler2D uFuild;
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
+
+        vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0;  }
+        
+        vec4 permute(vec4 x) {  return mod289(((x*34.0)+1.0)*x);  }
+        
+        vec4 taylorInvSqrt(vec4 r) {  return 1.79284291400159 - 0.85373472095314 * r;}
+        
+        float snoise(vec3 v) { 
+            const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+            const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+        
+            vec3 i  = floor(v + dot(v, C.yyy) );
+            vec3 x0 =   v - i + dot(i, C.xxx) ;
+        
+            vec3 g = step(x0.yzx, x0.xyz);
+            vec3 l = 1.0 - g;
+            vec3 i1 = min( g.xyz, l.zxy );
+            vec3 i2 = max( g.xyz, l.zxy );
+        
+            vec3 x1 = x0 - i1 + C.xxx;
+            vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+            vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
+        
+            i = mod289(i); 
+            vec4 p = permute( permute( permute( 
+                                 i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                             + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                             + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+        
+            float n_ = 0.142857142857; // 1.0/7.0
+            vec3  ns = n_ * D.wyz - D.xzx;
+        
+            vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
+        
+            vec4 x_ = floor(j * ns.z);
+            vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+        
+            vec4 x = x_ *ns.x + ns.yyyy;
+            vec4 y = y_ *ns.x + ns.yyyy;
+            vec4 h = 1.0 - abs(x) - abs(y);
+        
+            vec4 b0 = vec4( x.xy, y.xy );
+            vec4 b1 = vec4( x.zw, y.zw );
+        
+            vec4 s0 = floor(b0)*2.0 + 1.0;
+            vec4 s1 = floor(b1)*2.0 + 1.0;
+            vec4 sh = -step(h, vec4(0.0));
+        
+            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+        
+            vec3 p0 = vec3(a0.xy,h.x);
+            vec3 p1 = vec3(a0.zw,h.y);
+            vec3 p2 = vec3(a1.xy,h.z);
+            vec3 p3 = vec3(a1.zw,h.w);
+        
+            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+            p0 *= norm.x;
+            p1 *= norm.y;
+            p2 *= norm.z;
+            p3 *= norm.w;
+        
+            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+            m = m * m;
+            return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                                                        dot(p2,x2), dot(p3,x3) ) );
+        }
+        
+        vec3 snoiseVec3( vec3 x ){
+        
+            float s  = snoise(vec3( x ));
+            float s1 = snoise(vec3( x.y - 19.1 , x.z + 33.4 , x.x + 47.2 ));
+            float s2 = snoise(vec3( x.z + 74.2 , x.x - 124.5 , x.y + 99.4 ));
+            vec3 c = vec3( s , s1 , s2 );
+            return c;
+        
+        }
+        
+        vec3 curlNoise( vec3 p ){
+            
+            const float e = .1;
+            vec3 dx = vec3( e   , 0.0 , 0.0 );
+            vec3 dy = vec3( 0.0 , e   , 0.0 );
+            vec3 dz = vec3( 0.0 , 0.0 , e   );
+        
+            vec3 p_x0 = snoiseVec3( p - dx );
+            vec3 p_x1 = snoiseVec3( p + dx );
+            vec3 p_y0 = snoiseVec3( p - dy );
+            vec3 p_y1 = snoiseVec3( p + dy );
+            vec3 p_z0 = snoiseVec3( p - dz );
+            vec3 p_z1 = snoiseVec3( p + dz );
+        
+            float x = p_y1.z - p_y0.z - p_z1.y + p_z0.y;
+            float y = p_z1.x - p_z0.x - p_x1.z + p_x0.z;
+            float z = p_x1.y - p_x0.y - p_y1.x + p_y0.x;
+        
+            const float divisor = 1.0 / ( 2.0 * e );
+            return normalize( vec3( x , y , z ) * divisor );
+        
+        }
+      
+        
+		float random (in vec2 _st) {
+			return fract(sin(dot(_st.xy,
+								vec2(12.9898,78.233)))*
+				43758.5453123);
+		}
+		mat3 rotateY(float angle) {
+			float c = cos(angle);
+			float s = sin(angle);
+			return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
+		}
+		vec3 randomVec3(float randVal) {
+			if (randVal < 0.15) {
+				return vec3(-0.5);
+
+			} else if (randVal < 0.25) {
+				return vec3(0.5); 
+
+			} else if (randVal < 0.35) {
+				return vec3(0.5, 0.5, -0.5); 
+
+			} else if (randVal < 0.45) {
+				return vec3(0.5, -0.5, 0.5); 
+
+			} else if (randVal < 0.55) {
+				return vec3(-0.5, -0.5, 0.5); 
+				
+			}else if (randVal < 0.65) {
+				return vec3(-0.5, 0.5, -0.5); 
+				
+			} else {
+				return vec3(-0.5, 0.5, 0.5);
+			}
+		}
+
+        void main()	{
+
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec4 tmpPos = texture2D( texturePosition, uv );
+            vec3 posSelf = tmpPos.xyz;
+            vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
+
+			posSelf += velSelf * .5 ;
+			
+			gl_FragColor = vec4(  posSelf, 1.  );
+
+        }
+
+    </script>
+
+	<script id="frag_Vel_GPGPU" type="x-shader/x-fragment">
+
+        uniform float time;
+        uniform float delta;
+		uniform vec2 fuildForce;
+		uniform vec2 mousePos;
+		uniform vec3 positionForShootDecal;
+		
+		uniform sampler3D texture3DSDF;
+		uniform float u_holdGPGPU;
+		uniform sampler2D uFuild;
+		vec4 mod289(vec4 x) {
+			return x - floor(x * (1.0 / 289.0)) * 289.0;
+		}
+		
+		float mod289(float x) {
+			return x - floor(x * (1.0 / 289.0)) * 289.0;
+		}
+		
+		vec4 permute(vec4 x) {
+			return mod289(((x*34.0)+1.0)*x);
+		}
+		
+		float permute(float x) {
+			return mod289(((x*34.0)+1.0)*x);
+		}
+		
+		vec4 taylorInvSqrt(vec4 r) {
+			return 1.79284291400159 - 0.85373472095314 * r;
+		}
+		
+		float taylorInvSqrt(float r) {
+			return 1.79284291400159 - 0.85373472095314 * r;
+		}
+		
+		vec4 grad4(float j, vec4 ip) {
+			const vec4 ones = vec4(1.0, 1.0, 1.0, -1.0);
+			vec4 p,s;
+		
+			p.xyz = floor( fract (vec3(j) * ip.xyz) * 7.0) * ip.z - 1.0;
+			p.w = 1.5 - dot(abs(p.xyz), ones.xyz);
+			s = vec4(lessThan(p, vec4(0.0)));
+			p.xyz = p.xyz + (s.xyz*2.0 - 1.0) * s.www;
+		
+			return p;
+		}
+		
+		#define F4 0.309016994374947451
+		
+		vec4 snoise4 (vec4 v) {
+			const vec4  C = vec4( 0.138196601125011,0.276393202250021,0.414589803375032,-0.447213595499958);
+		
+			vec4 i  = floor(v + dot(v, vec4(F4)) );
+			vec4 x0 = v -   i + dot(i, C.xxxx);
+		
+			vec4 i0;
+			vec3 isX = step( x0.yzw, x0.xxx );
+			vec3 isYZ = step( x0.zww, x0.yyz );
+			i0.x = isX.x + isX.y + isX.z;
+			i0.yzw = 1.0 - isX;
+			i0.y += isYZ.x + isYZ.y;
+			i0.zw += 1.0 - isYZ.xy;
+			i0.z += isYZ.z;
+			i0.w += 1.0 - isYZ.z;
+		
+			vec4 i3 = clamp( i0, 0.0, 1.0 );
+			vec4 i2 = clamp( i0-1.0, 0.0, 1.0 );
+			vec4 i1 = clamp( i0-2.0, 0.0, 1.0 );
+		
+			vec4 x1 = x0 - i1 + C.xxxx;
+			vec4 x2 = x0 - i2 + C.yyyy;
+			vec4 x3 = x0 - i3 + C.zzzz;
+			vec4 x4 = x0 + C.wwww;
+		
+			i = mod289(i);
+			float j0 = permute( permute( permute( permute(i.w) + i.z) + i.y) + i.x);
+			vec4 j1 = permute( permute( permute( permute (
+					 i.w + vec4(i1.w, i2.w, i3.w, 1.0 ))
+				   + i.z + vec4(i1.z, i2.z, i3.z, 1.0 ))
+				   + i.y + vec4(i1.y, i2.y, i3.y, 1.0 ))
+				   + i.x + vec4(i1.x, i2.x, i3.x, 1.0 ));
+		
+		
+			vec4 ip = vec4(1.0/294.0, 1.0/49.0, 1.0/7.0, 0.0) ;
+		
+			vec4 p0 = grad4(j0,   ip);
+			vec4 p1 = grad4(j1.x, ip);
+			vec4 p2 = grad4(j1.y, ip);
+			vec4 p3 = grad4(j1.z, ip);
+			vec4 p4 = grad4(j1.w, ip);
+		
+			vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+			p0 *= norm.x;
+			p1 *= norm.y;
+			p2 *= norm.z;
+			p3 *= norm.w;
+			p4 *= taylorInvSqrt(dot(p4,p4));
+		
+			vec3 values0 = vec3(dot(p0, x0), dot(p1, x1), dot(p2, x2)); //value of contributions from each corner at point
+			vec2 values1 = vec2(dot(p3, x3), dot(p4, x4));
+		
+			vec3 m0 = max(0.5 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2)), 0.0); //(0.5 - x^2) where x is the distance
+			vec2 m1 = max(0.5 - vec2(dot(x3,x3), dot(x4,x4)), 0.0);
+		
+			vec3 temp0 = -6.0 * m0 * m0 * values0;
+			vec2 temp1 = -6.0 * m1 * m1 * values1;
+		
+			vec3 mmm0 = m0 * m0 * m0;
+			vec2 mmm1 = m1 * m1 * m1;
+		
+			float dx = temp0[0] * x0.x + temp0[1] * x1.x + temp0[2] * x2.x + temp1[0] * x3.x + temp1[1] * x4.x + mmm0[0] * p0.x + mmm0[1] * p1.x + mmm0[2] * p2.x + mmm1[0] * p3.x + mmm1[1] * p4.x;
+			float dy = temp0[0] * x0.y + temp0[1] * x1.y + temp0[2] * x2.y + temp1[0] * x3.y + temp1[1] * x4.y + mmm0[0] * p0.y + mmm0[1] * p1.y + mmm0[2] * p2.y + mmm1[0] * p3.y + mmm1[1] * p4.y;
+			float dz = temp0[0] * x0.z + temp0[1] * x1.z + temp0[2] * x2.z + temp1[0] * x3.z + temp1[1] * x4.z + mmm0[0] * p0.z + mmm0[1] * p1.z + mmm0[2] * p2.z + mmm1[0] * p3.z + mmm1[1] * p4.z;
+			float dw = temp0[0] * x0.w + temp0[1] * x1.w + temp0[2] * x2.w + temp1[0] * x3.w + temp1[1] * x4.w + mmm0[0] * p0.w + mmm0[1] * p1.w + mmm0[2] * p2.w + mmm1[0] * p3.w + mmm1[1] * p4.w;
+		
+			return vec4(dx, dy, dz, dw) * 49.0;
+		}
+		
+		vec3 curl( in vec3 p, in float noiseTime, in float persistence ) {
+
+			vec4 xNoisePotentialDerivatives = vec4(0.0);
+			vec4 yNoisePotentialDerivatives = vec4(0.0);
+			vec4 zNoisePotentialDerivatives = vec4(0.0);
+		
+			for (int i = 0; i < 3; ++i) {
+		
+				float twoPowI = pow(2.0, float(i));
+				float scale = 0.5 * twoPowI * pow(persistence, float(i));
+		
+				xNoisePotentialDerivatives += snoise4(vec4(p * twoPowI, noiseTime)) * scale;
+				yNoisePotentialDerivatives += snoise4(vec4((p + vec3(123.4, 129845.6, -1239.1)) * twoPowI, noiseTime)) * scale;
+				zNoisePotentialDerivatives += snoise4(vec4((p + vec3(-9519.0, 9051.0, -123.0)) * twoPowI, noiseTime)) * scale;
+			}
+		
+			return vec3(
+				zNoisePotentialDerivatives[1] - yNoisePotentialDerivatives[2],
+				xNoisePotentialDerivatives[2] - zNoisePotentialDerivatives[0],
+				yNoisePotentialDerivatives[0] - xNoisePotentialDerivatives[1]
+			);
+		
+		}
+		float random (in vec2 _st) {
+			return fract(sin(dot(_st.xy,
+								vec2(12.9898,78.233)))*
+				43758.5453123);
+		}
+		vec3 SimpleSim(in vec2 cl) {
+			float len = length(cl.xy);
+			vec3 colorSim = vec3(len);
+			float alpha = smoothstep(0.0, 0.5, len);
+			vec3 fc = mix(vec3(0.),colorSim,alpha);
+			  float luminance = dot(fc, vec3(0.299, 0.587, 0.114));
+
+			// Ngưỡng để quyết định xem pixel có sáng hay không
+			float threshold = 0.1;
+
+			// Nếu pixel sáng, làm tối nó
+			if (luminance > threshold) {
+				fc *= 0.0001;  // giảm cường độ của màu (làm tối)
+			}
+			return fc;
+		}
+        void main() {
+            
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+
+            vec3 posSelf = texture2D( texturePosition, uv ).xyz;
+            vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
+		
+
+
+			//velSelf.xyz += curl((posSelf.xyz) * 1., time*.05, 0.002) * .0008;
+			posSelf += velSelf;
+
+			vec3 posFuild = texture2D(uFuild,posSelf.xy + .5).xyz;
+			posFuild = SimpleSim(posFuild.xy);
+			
+
+			vec4 sdf3d = texture(texture3DSDF, posSelf + .5);
+			vec4 sdf3dFormat = sdf3d * 2. - 1.;
+
+			vec2 dirMouse = normalize(vec2(mousePos.x, mousePos.y));
+
+
+			float distanceShoot = distance(positionForShootDecal,posSelf);
+
+		
+			if(sdf3dFormat.w < 1.2) {
+				vec3 disSDF = normalize(sdf3dFormat.xyz + posSelf) * (-sdf3dFormat.w * u_holdGPGPU);
+
+				
+				vec3 targetSDF =  disSDF * .3;
+				vec3 targetShoot = vec3(0.);
+			
+				if(distanceShoot < .1) {
+
+					
+				}
+				velSelf +=  mix(disSDF * .5,posFuild * atan(mousePos.x,mousePos.y) * 2.7  ,min(.5,fuildForce.x) * 0.) ;  
+			}else{
+						
+			}
+	
+		
+			gl_FragColor = vec4( velSelf,1.);
+
+        }
+
+    </script>
+
+	<script type="importmap">
+            {
+                "imports": {
+                    "three": "./three.module.js",
+                    "three/addons/": "./jsm/",
+					"three/addonsmore/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+                }
+            }
+		</script>
+
+	<script type="module">
+		import Stats from 'three/addons/stats.module.js';
+		import * as THREE from 'three';
+		import { OrbitControls } from 'three/addons/OrbitControls.js';
+		import { OBJLoader } from 'three/addons/OBJLoader.js';
+		import { calcSizeFitCamPerspective } from './utils/calcSizeFitCamPerspective.js'
+		import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
+		import { GUI } from 'three/addons/lil-gui.module.min.js';
+		import Renderer from "./fuild/modules_rewrite/Renderer.js";
+		import Simulation from "./fuild/modules_rewrite/Simulation.js";
+		import Mouse from "./fuild/modules_rewrite/Mouse.js";
+
+		import { LineMaterial } from 'three/addonsmore/lines/LineMaterial.js';
+		import { LineSegments2 } from 'three/addonsmore/lines/LineSegments2.js';
+		import { LineSegmentsGeometry } from 'three/addonsmore/lines/LineSegmentsGeometry.js';
+
+
+
+		let renderer, scene, camera, stats, raycaster, mouseHelper, meshToRay, lineRaySample, currentTime;
+
+		let mesh, texturedd, dataTexture3D, dataTexture3DSample, materialCube, textureData3dOut, matModel
+		let meshLayer, matPoint, matInstanced
+		let delta, time, lastTime
+		let materialChunkModel
+		let gpuCompute
+		let widthTexture = 128
+		let velocityVariable, positionVariable, extraVariable
+		let positionUniforms, velocityUniforms, extraUniforms
+		let targetMonitor, monitorPos, monitorVel, sceneMonitor, cameraMonitor
+		let valueWH = [0, 0]
+		let mouseFroceCurr = new THREE.Vector2(0, 0), mouseFrocePrev = new THREE.Vector2(0, 0)
+		let mousePos = new THREE.Vector2()
+		let cubeSample, sphereSample
+
+
+		const textureSDF = new THREE.TextureLoader().load('/models/eisbar/sdf.png')
+		let textureSDFData, texture2DView, matmat
+		const width = window.innerWidth;
+		const height = window.innerHeight;
+		const ratioView = window.innerWidth / window.innerHeight
+		const pixelBuffer = new Float32Array(widthTexture * widthTexture * 4);
+		Renderer.init();
+		const glContaxt = Renderer.renderer.getContext();
+		Mouse.init();
+		const simulation = new Simulation({
+			options: {
+				iterations_poisson: 1,
+				iterations_viscous: 1,
+				mouse_force: 10,
+				resolution: 0.4,
+				cursor_size: 50,
+				viscous: 30,
+				isBounce: false,
+				dt: 0.09,
+				isViscous: false,
+				BFECC: false
+			}
+		});
+
+		// confiog
+		const groupModel = new THREE.Group()
+		const groupFish = new THREE.Group()
+		const countInstancedMesh = 500
+		//fATLINE
+		let savePtsFatline
+		const instCount = countInstancedMesh;
+		const verticesPerInstance = 72;
+		let dataTextureFatline, meshCheckMeshTrail
+		let ListcurvesOfFatLine = [];
+		const sizeTextureFatLine = 2000
+
+
+		//FISH
+		const countFish = 2
+		const numPointsOfCruveFish = 511;
+		const cSegmentsOfCruveFish = 10;
+		const heigthDataFistEachFish = 3
+		let shaderInstancedFish, uniformsFish, textureDataOfFish
+		let savePtsOfFish = []
+		let savePointOfFish = []
+		const groupOfFish = new THREE.Group()
+		const groupOfFish_Visual = new THREE.Group()
+
+		function getRandomHexColor() {
+			return '#' + Math.floor(Math.random() * 16777215).toString(16);
+		}
+		class TexttureOfFatLine extends THREE.DataTexture {
+			constructor(verticesPerInstance, instanceCount) {
+				const totalAmountPerInstance = verticesPerInstance + 1; // vertices + color (vec4 * 1)
+				const instancePerRow = Math.floor(sizeTextureFatLine / totalAmountPerInstance);
+				const rows = Math.ceil(instanceCount / instancePerRow);
+				const w = totalAmountPerInstance * instancePerRow;
+				const h = rows;
+				const totalData = new Float32Array(w * h * 4).fill(1);
+				super(totalData, w, h, THREE.RGBAFormat, THREE.FloatType);
+				this.needsUpdate = true;
+				this.instanceCount = instanceCount;
+				this.totalAmountPerInstance = totalAmountPerInstance;
+				this.instancePerRow = instancePerRow;
+				this.rows = rows;
+				this.uniforms = {
+					totalAmountPerInstance: { value: totalAmountPerInstance },
+					instancePerRow: { value: instancePerRow },
+					width: { value: w },
+					height: { value: h }
+				};
+			}
+			setDataAt(idx, data) {
+				// data - array of Vector3
+				if (idx >= this.instanceCount) {
+					return;
+				}
+				let sourceData = this.source.data.data;
+				let startIdx = this.totalAmountPerInstance * idx;
+				data.forEach((p, pIdx) => {
+					let currIdx = startIdx + pIdx;
+					sourceData[currIdx * 4 + 0] = p.x;
+					sourceData[currIdx * 4 + 1] = p.y;
+					sourceData[currIdx * 4 + 2] = p.z;
+					sourceData[currIdx * 4 + 3] = 1;
+				});
+			}
+			setColorAt(idx, color, alpha = 1) {
+				let sourceData = this.source.data.data;
+				let startIdx = this.totalAmountPerInstance * (idx + 1) - 1;
+				sourceData[startIdx * 4 + 0] = color.r;
+				sourceData[startIdx * 4 + 1] = color.g;
+				sourceData[startIdx * 4 + 2] = color.b;
+				// sourceData[startIdx * 4 + 0] = 0;
+				// sourceData[startIdx * 4 + 1] = 0;
+				// sourceData[startIdx * 4 + 2] = 0;
+				sourceData[startIdx * 4 + 3] = alpha;
+			}
+		}
+		class FishDataTexture extends THREE.DataTexture {
+			constructor(numPointsOfCruveFish, countFish, heigthDataFistEachFish) {
+				// Chuẩn bị data texture với chiều cao = heigthDataFistEachFish * countFish
+				const dataPrepare = new Float32Array((numPointsOfCruveFish + 1) * 4 * heigthDataFistEachFish * countFish);
+				super(dataPrepare, numPointsOfCruveFish + 1, heigthDataFistEachFish * countFish, THREE.RGBAFormat, THREE.FloatType);
+
+				this.magFilter = THREE.NearestFilter;
+				this.needsUpdate = true;
+
+				this.numPointsOfCruveFish = numPointsOfCruveFish;
+				this.countFish = countFish;
+				this.heigthDataFistEachFish = heigthDataFistEachFish;
+
+
+			}
+
+			// Phương thức sinh dữ liệu cho các con cá
+			generateFishData() {
+				console.log("generateFishData")
+				let countRowData = 0;
+
+				for (let ii = 0; ii < this.countFish; ii++) {
+					let cPts = [];
+					console.log("generateFishData--1")
+					// Tạo các điểm cho đường cong
+					for (let i = 0; i < this.numPointsOfCruveFish; i++) {
+						cPts.push(
+							new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random())
+						);
+					}
+
+					const curve = new THREE.CatmullRomCurve3(cPts);
+					curve.verticesNeedUpdate = true;
+					curve.closed = false;
+
+					const cPoints = curve.getSpacedPoints(this.numPointsOfCruveFish);
+					const cObjects = curve.computeFrenetFrames(this.numPointsOfCruveFish, true);
+
+					// Tổng số pixel cho mỗi hàng
+					const totalPixel1Row = (this.numPointsOfCruveFish + 1) * 4;
+
+					// Bắt đầu dòng của con cá thứ ii
+					const startRowForFish = ii * 3 * totalPixel1Row;
+
+					const totalPixelRowpoint = startRowForFish;
+					const totalPixelRowbinormals = startRowForFish + totalPixel1Row;
+					const totalPixelRownormals = startRowForFish + 2 * totalPixel1Row;
+				
+
+					
+					cPoints.forEach((v, id) => {
+						this.image.data[(id * 4) + totalPixelRowpoint] = v.x;
+						this.image.data[(id * 4) + 1 + totalPixelRowpoint] = v.y;
+						this.image.data[(id * 4) + 2 + totalPixelRowpoint] = v.z;
+						this.image.data[(id * 4) + 3 + totalPixelRowpoint] = 1.;
+					
+						setTimeout(() => {
+							initVisual(v, "blue")
+						}, 100 * id);
+					});
+					cObjects.binormals.forEach((v, id) => {
+						this.image.data[((id * 4)) + totalPixelRowbinormals] = v.x;
+						this.image.data[((id * 4) + 1) + totalPixelRowbinormals] = v.y;
+						this.image.data[((id * 4) + 2) + totalPixelRowbinormals] = v.z;
+						this.image.data[((id * 4) + 3) + totalPixelRowbinormals] = 1.;
+						setTimeout(() => {
+							initVisual(v, "pink")
+						}, 100 * id);
+					});
+					cObjects.normals.forEach((v, id) => {
+						this.image.data[((id * 4)) + totalPixelRownormals] = v.x;
+						this.image.data[((id * 4) + 1) + totalPixelRownormals] = v.y;
+						this.image.data[((id * 4) + 2) + totalPixelRownormals] = v.z;
+						this.image.data[((id * 4) + 3) + totalPixelRownormals] = 1.;
+						setTimeout(() => {
+							initVisual(v, "yellow")
+						}, 100 * id);
+					});
+
+					this.needsUpdate = true;
+					console.log(this.image.data)
+					countRowData += this.heigthDataFistEachFish;
+				}
+			}
+
+			// Phương thức lưu dữ liệu vào texture
+			_storeData(dataArray, startRow, color) {
+				dataArray.forEach((v, id) => {
+					const baseIdx = (id * 4);
+					this.image.data[baseIdx + startRow] = v.x;
+					this.image.data[baseIdx + 1 + startRow] = v.y;
+					this.image.data[baseIdx + 2 + startRow] = v.z;
+					this.image.data[baseIdx + 3 + startRow] = 1.0;
+
+					setTimeout(() => {
+						initVisual(v, color);
+					}, 100 * id);
+				});
+			}
+		}
+
+
+
+
+		initMain();
+
+		function initComputeRenderer(renderer, data3d) {
+			function fillPosTexture(texture) {
+				const arrT = texture.image.data;
+				for (let k = 0, kl = arrT.length; k < kl; k += 4) {
+					const x = Math.random() * 2 - 1;
+					const y = Math.random() * 2 - 1;
+					const z = Math.random() * 2 - 1;
+					let vp = new THREE.Vector3(x, y, z)
+					vp.multiplyScalar(.5)
+					arrT[k + 0] = vp.x
+					arrT[k + 1] = vp.y
+					arrT[k + 2] = vp.z
+					arrT[k + 3] = 1
+				}
+			}
+
+			function fillVelTexture(texture) {
+				const arrT = texture.image.data;
+				for (let k = 0, kl = arrT.length; k < kl; k += 4) {
+					const x = Math.random() * 2 - 1;
+					const y = Math.random() * 2 - 1;
+					const z = Math.random() * 2 - 1;
+					let vv = new THREE.Vector3(x, y, z)
+					vv.multiplyScalar(.005)
+					arrT[k + 0] = vv.x
+					arrT[k + 1] = vv.y
+					arrT[k + 2] = vv.z
+					arrT[k + 3] = 1
+				}
+			}
+			gpuCompute = new GPUComputationRenderer(widthTexture, widthTexture, renderer);
+
+			const dtPosition = gpuCompute.createTexture();
+			const dtVelocity = gpuCompute.createTexture();
+			const dtExtra = gpuCompute.createTexture();
+
+			fillPosTexture(dtPosition);
+			fillVelTexture(dtVelocity);
+
+			velocityVariable = gpuCompute.addVariable('textureVelocity', document.getElementById('frag_Vel_GPGPU').textContent, dtVelocity);
+			positionVariable = gpuCompute.addVariable('texturePosition', document.getElementById('frag_Pos_GPGPU').textContent, dtPosition);
+
+			velocityVariable.wrapS = THREE.RepeatWrapping;
+			velocityVariable.wrapT = THREE.RepeatWrapping;
+			positionVariable.wrapS = THREE.RepeatWrapping;
+			positionVariable.wrapT = THREE.RepeatWrapping;
+
+			gpuCompute.setVariableDependencies(velocityVariable, [positionVariable, velocityVariable]);
+			gpuCompute.setVariableDependencies(positionVariable, [positionVariable, velocityVariable]);
+
+			positionUniforms = positionVariable.material.uniforms;
+			velocityUniforms = velocityVariable.material.uniforms;
+
+			positionUniforms['time'] = { value: 0.0 };
+			positionUniforms['delta'] = { value: 0.0 };
+
+
+			velocityUniforms['time'] = { value: 0.0 };
+			velocityUniforms['delta'] = { value: 0.0 };
+
+
+			positionUniforms['start'] = { value: false };
+			positionUniforms['u_holdGPGPU'] = { value: 0.5 };
+			positionUniforms['texture3DSDF'] = { value: data3d };
+			velocityUniforms['texture3DSDF'] = { value: data3d };
+			velocityUniforms['u_holdGPGPU'] = { value: 0.5 };
+
+
+			velocityUniforms['uFuild'] = { value: simulation.fbos.vel_0.texture };
+			positionUniforms['uFuild'] = { value: simulation.fbos.vel_0.texture };
+			velocityUniforms['fuildForce'] = { value: new THREE.Vector2(0, 0) };
+			positionUniforms['fuildForce'] = { value: new THREE.Vector2(0, 0) };
+			velocityUniforms['mousePos'] = { value: new THREE.Vector2(0, 0) };
+			positionUniforms['mousePos'] = { value: new THREE.Vector2(0, 0) };
+			velocityUniforms['positionForShootDecal'] = { value: new THREE.Vector3(0, 0, 0) };
+			positionUniforms['positionForShootDecal'] = { value: new THREE.Vector3(0, 0, 0) };
+
+			console.log(positionUniforms['texture3DSDF'])
+
+			const error = gpuCompute.init();
+
+			if (error !== null) {
+
+				console.error(error);
+
+			}
+
+		}
+
+
+		function initMain() {
+
+
+
+			scene = new THREE.Scene();
+			scene.background = new THREE.Color(0x525453)
+			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.001, 10000);
+
+			camera.position.set(0, 0, 2.5)
+
+
+			const controls = new OrbitControls(camera, Renderer.renderer.domElement);
+			// controls.enableZoom = false
+			const axesHelper = new THREE.AxesHelper(5);
+			//scene.add(axesHelper);
+			const light = new THREE.AmbientLight(0x404040); // soft white light
+			scene.add(light);
+			const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+			scene.add(directionalLight);
+			stats = new Stats();
+			document.body.appendChild(stats.dom);
+			groupModel.position.x = -7
+			scene.add(groupModel, groupFish)
+			initTexture()
+			initFBOSwapPos()
+			initModel()
+			initMeshTrail()
+			initDataOfFishAndFish()
+			window.addEventListener('resize', onWindowResize);
+
+			sphereSample = new THREE.Mesh(
+				new THREE.SphereGeometry(.01, 16, 16),
+				new THREE.MeshBasicMaterial({ color: 'blue' })
+			)
+			scene.add(sphereSample)
+		}
+
+		function initVisualLine(point) {
+			let a = new THREE.Line(
+				new THREE.BufferGeometry().setFromPoints(point),
+				new THREE.LineBasicMaterial({ color: 0xfffff /* getRandomHexColor() */ })
+			)
+
+			groupOfFish_Visual.add(a);
+		}
+		function initVisual(pos, color) {
+			let a = new THREE.Mesh(
+				new THREE.SphereGeometry(.004, 5, 5),
+				new THREE.MeshBasicMaterial({ color: color })
+			)
+			a.position.copy(pos)
+			groupOfFish_Visual.add(a)
+		}
+
+		function updateDatatextureFish(fbo) {
+	
+			if (!fbo || fbo.length < 3) return; // Đảm bảo có dữ liệu
+
+
+			let countRowData = 0
+			for (let ii = 0; ii < countFish; ii++) {
+				let cPts = savePtsOfFish[ii];
+
+				const newVector = new THREE.Vector3(fbo[ii], fbo[ii + 1], fbo[ii + 2]);
+			
+				savePointOfFish[ii].unshift(newVector.clone());
+				savePointOfFish[ii].pop()
+
+				const curve = new THREE.CatmullRomCurve3(cPts);
+				curve.verticesNeedUpdate = true;
+				curve.closed = false;
+
+
+
+				const cPoints = curve.getSpacedPoints(numPointsOfCruveFish);
+			
+				const cObjects = curve.computeFrenetFrames(numPointsOfCruveFish, true);
+
+				const totalPixel1Row = (numPointsOfCruveFish + 1) * 4;
+
+				const startRowForFish = ii * 3 * totalPixel1Row;
+
+				const totalPixelRowpoint = startRowForFish;
+				const totalPixelRowbinormals = startRowForFish + totalPixel1Row;
+				const totalPixelRownormals = startRowForFish + 2 * totalPixel1Row;
+
+				cPoints.forEach((v, id) => {
+					textureDataOfFish.source.data.data[(id * 4)		+ totalPixelRowpoint	] = v.x;
+					textureDataOfFish.source.data.data[(id * 4)+1	+ totalPixelRowpoint	] = v.y;
+					textureDataOfFish.source.data.data[(id * 4)+2	+ totalPixelRowpoint	] = v.z;
+					textureDataOfFish.source.data.data[(id * 4)+3	+ totalPixelRowpoint	] = 1.;
+
+					// setTimeout(() => {
+					// 	initVisual(v, "blue")
+					// }, 100 * id);
+				});
+				cObjects.binormals.forEach((v, id) => {
+					textureDataOfFish.source.data.data[((id * 4)) 	+ totalPixelRowbinormals		] = v.x;
+					textureDataOfFish.source.data.data[((id * 4)+1)	+ totalPixelRowbinormals		] = v.y;
+					textureDataOfFish.source.data.data[((id * 4)+2)	+ totalPixelRowbinormals		] = v.z;
+					textureDataOfFish.source.data.data[((id * 4)+3)	+ totalPixelRowbinormals		] = 1.;
+					// setTimeout(() => {
+					// 	initVisual(v, "pink")
+					// }, 100 * id);
+				});
+				cObjects.normals.forEach((v, id) => {
+					textureDataOfFish.source.data.data[((id * 4)) 	+ totalPixelRownormals		] = v.x;
+					textureDataOfFish.source.data.data[((id * 4)+1)	+ totalPixelRownormals		] = v.y;
+					textureDataOfFish.source.data.data[((id * 4)+2)	+ totalPixelRownormals		] = v.z;
+					textureDataOfFish.source.data.data[((id * 4)+3)	+ totalPixelRownormals		] = 1.;
+					// setTimeout(() => {
+					// 	initVisual(v, "yellow")
+					// }, 100 * id);
+				});
+				//=> 3 row each fish
+				textureDataOfFish.needsUpdate = true
+
+				// let a = new THREE.Line(
+				// 	new THREE.BufferGeometry().setFromPoints(cPoints),
+				// 	new THREE.LineBasicMaterial({ color: 0xfffff /* getRandomHexColor() */ })
+				// )
+
+				// scene.add(a);
+				countRowData+= heigthDataFistEachFish
+			}
+			
+
+			textureDataOfFish.needsUpdate = true;
+
+		}
+
+		function initDataOfFishAndFish() {
+
+
+			// 3 row each fish , each row , we have (numPointsOfCruveFish + 1) pixel , +1 because this is curl
+			const dataPrepare = new Float32Array((numPointsOfCruveFish + 1) * 4 * heigthDataFistEachFish * countFish)
+			textureDataOfFish = new THREE.DataTexture(dataPrepare, numPointsOfCruveFish + 1, heigthDataFistEachFish * countFish, THREE.RGBAFormat, THREE.FloatType);
+			textureDataOfFish.magFilter = THREE.NearestFilter;
+			textureDataOfFish.needsUpdate = true
+	
+			let countRowData = 0
+			for (let ii = 0; ii < countFish; ii++) {
+				let cPts = [];
+
+				for (let i = 0; i < cSegmentsOfCruveFish; i++) {
+					cPts.push(
+						new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random())
+					);
+				}
+				savePtsOfFish.push(cPts)
+				const curve = new THREE.CatmullRomCurve3(cPts);
+				curve.verticesNeedUpdate = true;
+				curve.closed = false;
+
+				const cPoints = curve.getSpacedPoints(numPointsOfCruveFish);
+				savePointOfFish.push(cPoints)
+				const cObjects = curve.computeFrenetFrames(numPointsOfCruveFish, true);
+
+				const totalPixel1Row = (numPointsOfCruveFish + 1) * 4;
+
+				const startRowForFish = ii * 3 * totalPixel1Row;
+
+				const totalPixelRowpoint = startRowForFish;
+				const totalPixelRowbinormals = startRowForFish + totalPixel1Row;
+				const totalPixelRownormals = startRowForFish + 2 * totalPixel1Row;
+
+				cPoints.forEach((v, id) => {
+					textureDataOfFish.source.data.data[(id * 4)		+ totalPixelRowpoint	] = v.x;
+					textureDataOfFish.source.data.data[(id * 4)+1	+ totalPixelRowpoint	] = v.y;
+					textureDataOfFish.source.data.data[(id * 4)+2	+ totalPixelRowpoint	] = v.z;
+					textureDataOfFish.source.data.data[(id * 4)+3	+ totalPixelRowpoint	] = 1.;
+
+					// setTimeout(() => {
+					// 	initVisual(v, "blue")
+					// }, 100 * id);
+				});
+				cObjects.binormals.forEach((v, id) => {
+					textureDataOfFish.source.data.data[((id * 4)) 	+ totalPixelRowbinormals		] = v.x;
+					textureDataOfFish.source.data.data[((id * 4)+1)	+ totalPixelRowbinormals		] = v.y;
+					textureDataOfFish.source.data.data[((id * 4)+2)	+ totalPixelRowbinormals		] = v.z;
+					textureDataOfFish.source.data.data[((id * 4)+3)	+ totalPixelRowbinormals		] = 1.;
+					// setTimeout(() => {
+					// 	initVisual(v, "pink")
+					// }, 100 * id);
+				});
+				cObjects.normals.forEach((v, id) => {
+					textureDataOfFish.source.data.data[((id * 4)) 	+ totalPixelRownormals		] = v.x;
+					textureDataOfFish.source.data.data[((id * 4)+1)	+ totalPixelRownormals		] = v.y;
+					textureDataOfFish.source.data.data[((id * 4)+2)	+ totalPixelRownormals		] = v.z;
+					textureDataOfFish.source.data.data[((id * 4)+3)	+ totalPixelRownormals		] = 1.;
+					// setTimeout(() => {
+					// 	initVisual(v, "yellow")
+					// }, 100 * id);
+				});
+				//=> 3 row each fish
+				textureDataOfFish.needsUpdate = true
+				countRowData+= heigthDataFistEachFish
+				console.log(textureDataOfFish)
+
+
+				initVisualLine(cPoints)
+			}
+
+
+
+
+			const planeCheck = new THREE.Mesh(
+				new THREE.PlaneGeometry(2, .5),
+				new THREE.ShaderMaterial({
+					vertexShader: `
+									varying vec2 vUv;
+									void main() {
+										vUv = uv;
+										gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+									}
+								`,
+					fragmentShader: `
+									varying vec2 vUv;
+									uniform sampler2D tex;
+									uniform vec2 uSlice;
+									void main() {
+										vec4 mapcolor = texture2D(tex, vUv);
+										float margin = 0.06;
+									
+							
+										float gridX = mod(vUv.x * uSlice.x, 1.0);
+										
+										float gridLine = step(gridX, margin) + step(1.0 - gridX, margin) ;
+						
+										float grid = 1.0 - clamp(gridLine, 0.0, 1.0);
+										gl_FragColor = vec4(mapcolor.xy,0.,1.) * grid;
+									}
+								`,
+					uniforms: {
+						tex: { value: textureDataOfFish },
+						uSlice:{value:new THREE.Vector2(numPointsOfCruveFish + 1,heigthDataFistEachFish)}
+					},
+					transparent: true,
+
+					side: 2
+				})
+			)
+			planeCheck.position.x = 2
+			groupFish.add(planeCheck);
+			groupOfFish.add(groupOfFish_Visual);
+
+
+			const loader = new OBJLoader();
+			loader.load("/models/fish.obj", obj => {
+
+
+				let objGeom = obj.children[0].geometry
+				//objGeom = new THREE.BoxGeometry(2,6,2,1,10,1);
+				objGeom.center();
+				objGeom.rotateX(-Math.PI * 0.5);
+				objGeom.scale(0.005, 0.005, 0.005);
+				const objBox = new THREE.Box3().setFromBufferAttribute(objGeom.getAttribute("position"));
+				const objSize = new THREE.Vector3();
+				objBox.getSize(objSize);
+				//objGeom.translate(0, 0, objBox.z);
+
+				const uniformsFish = {
+					uSpatialTexture: { value: textureDataOfFish },
+					uTextureSize: { value: new THREE.Vector2(numPointsOfCruveFish + 1, heigthDataFistEachFish) },
+					uTime: { value: 0 },
+					stt: { value: new THREE.Vector2(countFish, 0) },
+					uLengthRatio: { value: new THREE.Vector2(.06, .07) }, // objSize.z / curve.cacheArcLengths[200] more or less real lenght along the path
+					uObjSize: { value: objSize } // lenght
+				}
+
+
+
+				const objMat2 = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true });
+				objMat2.onBeforeCompile = (shader) => {
+					shader.uniforms.uSpatialTexture = uniformsFish.uSpatialTexture;
+					shader.uniforms.uTextureSize = uniformsFish.uTextureSize;
+					shader.uniforms.uTime = uniformsFish.uTime;
+					shader.uniforms.stt = uniformsFish.stt;
+					shader.uniforms.uLengthRatio = uniformsFish.uLengthRatio;
+					shader.uniforms.uObjSize = uniformsFish.uObjSize;
+
+					shader.vertexShader = `
+						uniform sampler2D uSpatialTexture;
+						uniform vec2 uTextureSize;
+						uniform float uTime;
+						uniform vec2 stt;
+						uniform vec2 uLengthRatio;
+						uniform vec3 uObjSize;
+
+						struct splineData {
+							vec3 point;
+							vec3 binormal;
+							vec3 normal;
+						};
+
+						splineData getSplineData(float t){
+							float step = (1. / uTextureSize.y) / stt.x ;
+							float halfStep = step * 0.5;
+							splineData sd;
+							sd.point    = texture2D(uSpatialTexture, vec2(t, step * (0.+uTextureSize.y*float(gl_InstanceID)) + halfStep)).rgb;
+							sd.binormal = texture2D(uSpatialTexture, vec2(t, step * (1.+uTextureSize.y*float(gl_InstanceID)) + halfStep)).rgb;
+							sd.normal   = texture2D(uSpatialTexture, vec2(t, step * (2.+uTextureSize.y*float(gl_InstanceID)) + halfStep)).rgb;
+							return sd;
+						}
+					` + shader.vertexShader;
+					shader.vertexShader = shader.vertexShader.replace(
+						`#include <begin_vertex>`,
+						`#include <begin_vertex>
+
+						vec3 pos = position;
+
+						float wStep = 1. / uTextureSize.x;
+						float hWStep = wStep * 0.5;
+
+						float d = pos.z / uObjSize.z;
+						float t = fract((uTime * 0.1) + (d * uLengthRatio.x));
+						float numPrev = floor(t / wStep);
+						float numNext = numPrev + 1.;
+						//numNext = numNext > (uTextureSize.x - 1.) ? 0. : numNext;
+						float tPrev = numPrev * wStep + hWStep;
+						float tNext = numNext * wStep + hWStep;
+						//float tDiff = tNext - tPrev;
+						splineData splinePrev = getSplineData(tPrev);
+						splineData splineNext = getSplineData(tNext);
+						splineData splineOutRule = getSplineData(floor(t / wStep) * wStep + hWStep);
+						float f = (t - tPrev) / wStep;
+						vec3 P = mix(splinePrev.point, splineNext.point, f);
+						vec3 B = mix(splinePrev.binormal, splineNext.binormal, f);
+						vec3 N = mix(splinePrev.normal, splineNext.normal, f);
+
+
+					
+						transformed = P + (N * pos.x) + (B * pos.y) ;
+					//	transformed = splineOutRule.point + (splineOutRule.normal * pos.x) + (splineOutRule.binormal * pos.y) ;
+							
+	`
+					);
+
+					shaderInstancedFish = shader
+				}
+				const cInstancedMesh = new THREE.InstancedMesh(objGeom, objMat2, countFish);
+
+				groupOfFish.add(cInstancedMesh);
+				groupFish.add(groupOfFish)
+
+			});
+
+
+		}
+
+
+
+
+
+
+
+
+
+
+
+
+
+		function getTension(phase) {
+			return (Math.sin(phase * Math.PI * 2) * 0.5 + 0.5) * 2;
+		}
+
+		function initFatLine() {
+			let curve = new THREE.CatmullRomCurve3(
+				new Array(5).fill().map((p) => {
+					return new THREE.Vector3();
+				}), false, "catmullrom", 2
+			);
+			let color = new THREE.Color();
+
+			for (let i = 0; i < instCount; i++) {
+				curve.points.forEach((p) => {
+					// console.log(p)
+					// p.random().subScalar(0.5).multiplyScalar(1);
+				});
+
+				let crv = curve.clone();
+				crv.userData = {
+					phase: (i / instCount)
+				}
+				crv.tension = getTension(crv.userData.phase);
+				crv.updateArcLengths();
+
+				let pts = crv.getPoints(verticesPerInstance - 1);
+
+				ListcurvesOfFatLine.push(pts);
+				savePtsFatline = pts
+				dataTextureFatline.setDataAt(i, pts);
+				dataTextureFatline.setColorAt(
+					i,
+					color.setHSL(i / instCount, 1, 0.15)
+				);
+			}
+			dataTextureFatline.needsUpdate = true;
+			let dt = { value: dataTextureFatline };
+
+
+			let flg = new LineSegmentsGeometry();
+			flg.instanceCount = instCount * (verticesPerInstance + 1);
+			let flm = new LineMaterial({
+				linewidth: 0.015,
+				worldUnits: true,
+				vertexColors: true,
+				// wireframe: true,
+				transparent: true,
+				//alphaToCoverage: true,
+				onBeforeCompile: shader => {
+					shader.uniforms.data = dt;
+					shader.uniforms.totalAmountPerInstance = dataTextureFatline.uniforms.totalAmountPerInstance;
+					shader.uniforms.instancePerRow = dataTextureFatline.uniforms.instancePerRow;
+					shader.vertexShader = `
+                    uniform sampler2D data;
+                    uniform float totalAmountPerInstance;
+                    uniform float instancePerRow;
+                    ${shader.vertexShader}
+                    `.replace(
+						`#ifdef USE_COLOR
+
+				vColor.xyz = ( position.y < 0.5 ) ? instanceColorStart : instanceColorEnd;
+
+			#endif`,
+
+						`
+                        ivec2 tSize = textureSize(data, 0);
+      
+                        int vertID = int(mod(float(gl_InstanceID), totalAmountPerInstance - 2.));
+                        int instID = int(floor(float(gl_InstanceID) / totalAmountPerInstance));
+                        
+                        int fetchY = tSize.y - 1 - int(instID / int(instancePerRow));
+                        int fetchX = int(mod(float(instID), instancePerRow) * totalAmountPerInstance);
+                        
+            #ifdef USE_COLOR
+				vColor.xyz = vec3(texelFetch(data, ivec2(fetchX + int(totalAmountPerInstance) - 1, fetchY), 0));
+			#endif`
+					)
+						.replace(
+							`// camera space
+			vec4 start = modelViewMatrix * vec4( instanceStart, 1.0 );
+			vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );`,
+
+							`// camera space
+                    vec4 instStart = texelFetch(data, ivec2(fetchX + vertID, fetchY), 0);
+                    vec4 instEnd = texelFetch(data, ivec2(fetchX + vertID + 1, fetchY), 0);
+                
+                    vec4 start = modelViewMatrix * instStart;
+                    vec4 end = modelViewMatrix * instEnd;`
+						);
+					console.log(shader.fragmentShader);
+				}
+			});
+
+			let fl = new LineSegments2(flg, flm);
+
+			groupModel.add(fl);
+		}
+
+
+		function initMeshTrail() {
+			meshCheckMeshTrail = new THREE.Mesh(
+				new THREE.PlaneGeometry(.5, .5),
+				new THREE.MeshBasicMaterial({ map: null })
+			)
+
+			scene.add(meshCheckMeshTrail)
+			dataTextureFatline = new TexttureOfFatLine(verticesPerInstance, instCount);
+			initFatLine()
+
+		}
+
+
+		function updateMeshTrail(fbo) {
+			if (!fbo || fbo.length < 3) return; 
+			for (let i = 0; i < ListcurvesOfFatLine.length; i++) {
+				const index = i * 4;
+				const newVector = new THREE.Vector3(fbo[index], fbo[index + 1], fbo[index + 2]);
+				ListcurvesOfFatLine[i].unshift(newVector.clone().multiplyScalar(5.));
+				ListcurvesOfFatLine[i].pop()
+				dataTextureFatline.setDataAt(i, ListcurvesOfFatLine[i]); 
+			}
+			dataTextureFatline.needsUpdate = true;
+		}
+
+
+
+
+
+
+
+
+
+		function initFBOSwapPos() {
+			targetMonitor = new THREE.WebGLRenderTarget(widthTexture, widthTexture, {
+				minFilter: THREE.LinearFilter,
+				magFilter: THREE.LinearFilter,
+				format: THREE.RGBAFormat,
+				type: THREE.FloatType,
+			});
+			sceneMonitor = new THREE.Scene();
+			cameraMonitor = new THREE.OrthographicCamera(- 2, 2, 2, -2, 0, 1);
+
+			monitorPos = new THREE.Mesh(
+				new THREE.PlaneGeometry(4, 4),
+
+				new THREE.ShaderMaterial({
+					vertexShader: `
+									varying vec2 vUv;
+									void main() {
+										vUv = uv;
+										gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+									}
+								`,
+					fragmentShader: `
+									varying vec2 vUv;
+									uniform sampler2D tex;
+									void main() {
+										vec4 mapcolor = texture2D(tex, vUv);
+										vec3 rls = vec3(mapcolor.rgb) ;
+										gl_FragColor = vec4(rls,1.);
+									}
+								`,
+					uniforms: {
+						tex: { value: null }
+					},
+
+				})
+			)
+
+			sceneMonitor.add(monitorPos)
+		}
+
+		function initInstancedMesh(data3d) {
+
+			const geometry = new THREE.BoxGeometry(0.005, 0.02, 0.005);
+
+			// Tạo mảng lưu trữ vị trí các điểm
+			const positions = new Float32Array(countInstancedMesh * 3);
+			const uvs = new Float32Array(countInstancedMesh * 2); // Mảng UVs
+
+			const materialChunk = new THREE.MeshPhongMaterial({
+				color: 0xc5461b,
+				//emissive:0x3a2b82,
+				specular: 0x2c2a2a,
+				shininess: 100,
+			});
+			materialChunk.onBeforeCompile = (shader) => {
+				shader.uniforms.posGpu = { value: null };
+				shader.uniforms.velGpu = { value: null };
+				shader.uniforms.tSize = { value: new THREE.Vector2(widthTexture, widthTexture) };
+
+				// Sửa đổi vertex shader
+				shader.vertexShader = `
+					attribute vec3 offset;
+                   	varying vec2 vUv;
+					uniform vec2 tSize;
+					uniform sampler2D posGpu;
+					uniform sampler2D velGpu;
+					mat4 rotationMatrix(vec3 axis, float angle) {
+						axis = normalize(axis);
+						float s = sin(angle);
+						float c = cos(angle);
+						float oc = 1.0 - c;
+						
+						return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+									oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+									oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+									0.0,                                0.0,                                0.0,                                1.0);
+					}
+					vec3 rotate(vec3 v, vec3 axis, float angle) {
+						mat4 m = rotationMatrix(axis, angle);
+						return (m * vec4(v, 1.0)).xyz;
+					}
+                    #define axisX vec3(0.0, 1.0, 0.0)
+                    ${shader.vertexShader} 
+                `.replace(
+					`#include <fog_vertex>`,
+					`#include <fog_vertex>
+                  		float id = float(gl_InstanceID);
+						vec2 uvT = vec2(
+										mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
+										floor(id / tSize.x) / tSize.y  // Tính chỉ số hàng
+									);
+
+						vec3 posOfGpu = texture2D(posGpu, uvT).xyz; 
+						vec3 velOfGpu = texture2D(velGpu, uvT).xyz; 
+						vec3 pos = position * min(.8,abs(offset.x));;
+
+						vec3 dirC = normalize(velOfGpu);
+						vec3 axis = cross(dirC, vec3(0.0, 1.0, 0.0));
+						float angle = acos(dot(dirC, vec3(0.0, 1.0, 0.0)));
+						pos = rotate(pos, axis, angle);
+						pos += posOfGpu;
+					
+						gl_Position = projectionMatrix * modelViewMatrix * vec4(pos * 5., 1.0);
+						vUv = uv; // Truyền UV đến fragment shader
+
+                `);
+
+				matInstanced = shader;
+			};
+
+
+			const offsets = new Float32Array(countInstancedMesh * 3);
+
+			for (let i = 0; i < countInstancedMesh; i++) {
+
+				offsets[i * 3 + 0] = Math.random() + .8; // X
+				offsets[i * 3 + 1] = Math.random(); // Y
+				offsets[i * 3 + 2] = Math.random() + .3; // Z
+			}
+
+
+			geometry.setAttribute('offset', new THREE.InstancedBufferAttribute(offsets, 3));
+
+			const cInstancedMesh = new THREE.InstancedMesh(geometry, materialChunk, countInstancedMesh);
+			const colors = [];
+			for (let i = 0; i < countInstancedMesh; i++) {
+				// Tạo ma trận transform cho mỗi instance
+				const matrix = new THREE.Matrix4();
+
+				// Tạo vị trí ngẫu nhiên trong phạm vi từ -50 đến 50
+				const position = new THREE.Vector3(
+					(Math.random() - 0.5) * 2,
+					(Math.random() - 0.5) * 2,
+					(Math.random() - 0.5) * 2
+				);
+
+				// Tạo tỷ lệ ngẫu nhiên từ 0.5 đến 1.5
+				const scale = new THREE.Vector3(
+					Math.random() + 0.5,
+					Math.random() + 0.5,
+					Math.random() + 0.5
+				);
+
+				// Tạo rotation ngẫu nhiên
+				const rotation = new THREE.Euler(
+					Math.random() * 2 * Math.PI,
+					Math.random() * 2 * Math.PI,
+					Math.random() * 2 * Math.PI
+				);
+
+				// Áp dụng transform vào ma trận
+				matrix.makeRotationFromEuler(rotation);
+				matrix.setPosition(position);
+				matrix.scale(scale);
+
+				// Gán ma trận cho instance thứ i
+				cInstancedMesh.setMatrixAt(i, matrix);
+
+				// Tạo màu ngẫu nhiên cho mỗi instance
+				const color = new THREE.Color(Math.random(), Math.random(), Math.random());
+				colors.push(color.r, color.g, color.b);
+			}
+
+			scene.add(cInstancedMesh);
+
+		}
+
+
+		function initTexture() {
+
+			const img = new Image();
+			img.src = '/models/eisbar/sdf.png';
+			img.onload = () => {
+				const canvas = document.createElement('canvas');
+				const context = canvas.getContext('2d');
+
+				canvas.width = img.width;
+				canvas.height = img.height;
+				context.drawImage(img, 0, 0);
+
+
+				const imageData = context.getImageData(0, 0, img.width, img.height);
+				textureSDFData = imageData.data;
+
+				const width3D = 128;
+				const height3D = 128;
+				const depth3D = 128;  // Tổng số ô (16 * 8 = 128)
+
+				// Giả sử bạn đã có dữ liệu hình ảnh dạng RGBA (với 4 kênh màu)
+				const imageWidth = 16 * width3D;  // Chiều rộng của hình ảnh lớn
+				const imageHeight = 8 * height3D; // Chiều cao của hình ảnh lớn
+
+				const textureData3dOut = new Float32Array(4 * width3D * height3D * depth3D);
+				extractTexture3D(textureSDFData)
+				// imageData chứa dữ liệu RGBA của hình ảnh lớn (16*8 ô)
+				function extractTexture3D(imageData) {
+					for (let slice = 0; slice < depth3D; slice++) {
+						// Tính toán vị trí của ô thứ `slice` trong hình ảnh lớn
+						const tileX = slice % 16;            // Chỉ số ô trên trục X
+						const tileY = Math.floor(slice / 16); // Chỉ số ô trên trục Y
+
+						// Tọa độ pixel bắt đầu của ô trong hình ảnh lớn
+						const startX = tileX * width3D;
+						const startY = tileY * height3D;
+
+						// Duyệt qua từng pixel trong ô
+						for (let y = 0; y < height3D; y++) {
+							for (let x = 0; x < width3D; x++) {
+								// Chỉ số pixel trong hình ảnh lớn
+								const imageIndex = ((startY + y) * imageWidth + (startX + x)) * 4;
+
+								// Chỉ số pixel tương ứng trong texture 3D
+								const index3D = ((slice * height3D + y) * width3D + x) * 4;
+
+								// Sao chép dữ liệu từ hình ảnh lớn vào texture3D
+
+								// Case này origin
+
+								textureData3dOut[index3D] = (imageData[imageIndex] / 255)
+								textureData3dOut[index3D + 1] = (imageData[imageIndex + 1] / 255)
+								textureData3dOut[index3D + 2] = (imageData[imageIndex + 2] / 255)
+								textureData3dOut[index3D + 3] = (imageData[imageIndex + 3] / 255)
+
+								// Nên xử lý cho raymarching đỡ phức tạp
+								// textureData3dOut[index3D] = 1. - imageData[imageIndex] / 255;
+								// textureData3dOut[index3D + 1] = 1. - imageData[imageIndex + 1] / 255;
+								// textureData3dOut[index3D + 2] = 1. - imageData[imageIndex + 2] / 255;
+								// textureData3dOut[index3D + 3] = 1. - imageData[imageIndex + 3] / 255 < .5 ? 0.01 : 1.;
+
+							}
+						}
+					}
+				}
+
+
+
+				// Cấu hình, đối với trường hợp này sữ dụng RBGA , vì track bằng alpha
+				dataTexture3D = new THREE.Data3DTexture(textureData3dOut, width3D, height3D, depth3D);
+				dataTexture3D.format = THREE.RGBAFormat;
+				dataTexture3D.type = THREE.FloatType;
+				dataTexture3D.minFilter = THREE.LinearFilter;
+				dataTexture3D.magFilter = THREE.LinearFilter;
+				dataTexture3D.unpackAlignment = 1;
+				dataTexture3D.needsUpdate = true;
+
+
+
+
+				initComputeRenderer(Renderer.renderer, dataTexture3D)
+				//	initInstancedMesh(dataTexture3D)
+			};
+
+
+
+		}
+		function initVolume(dataTexture3D) {
+			const vertexShader = /* glsl */ `
+				in vec3 position;
+
+					uniform mat4 modelMatrix;
+					uniform mat4 modelViewMatrix;
+					uniform mat4 projectionMatrix;
+					uniform vec3 cameraPos;
+
+					out vec3 vOrigin;
+					out vec3 vDirection;
+
+					void main() {
+						vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+
+						vOrigin = vec3( inverse( modelMatrix ) * vec4( cameraPos, 1.0 ) ).xyz;
+						vDirection = position - vOrigin;
+
+						gl_Position = projectionMatrix * mvPosition;
+					}
+			`;
+
+			const fragmentShader = /* glsl */ `
+				precision highp float;
+				precision highp sampler3D;
+
+				in vec3 vOrigin;
+				in vec3 vDirection;
+
+				out vec4 color;
+
+				uniform sampler3D map; // Texture 3D
+				uniform float threshold; // Ngưỡng alpha
+				uniform float steps; // Số bước trong ray marching
+
+				vec2 hitBox(vec3 orig, vec3 dir) {
+					const vec3 box_min = vec3(-0.5);
+					const vec3 box_max = vec3(0.5);
+					vec3 inv_dir = 1.0 / dir;
+					vec3 tmin_tmp = (box_min - orig) * inv_dir;
+					vec3 tmax_tmp = (box_max - orig) * inv_dir;
+					vec3 tmin = min(tmin_tmp, tmax_tmp);
+					vec3 tmax = max(tmin_tmp, tmax_tmp);
+					float t0 = max(tmin.x, max(tmin.y, tmin.z));
+					float t1 = min(tmax.x, min(tmax.y, tmax.z));
+					return vec2(t0, t1);
+				}
+
+				float sample1(vec3 p) {
+					return texture(map, p).a; // Lấy alpha từ texture
+				}
+
+				void main() {
+					vec3 rayDir = normalize(vDirection);
+					vec2 bounds = hitBox(vOrigin, rayDir);
+
+					if (bounds.x > bounds.y) discard;
+
+					bounds.x = max(bounds.x, 0.0);
+
+					vec3 p = vOrigin + bounds.x * rayDir;
+					p += .5; // Điều chỉnh ray về đúng vị trí, chưa biết tại sao bị lệch?
+					vec3 inc = 1.0 / abs(rayDir);
+					float delta = min(inc.x, min(inc.y, inc.z)) / steps;
+
+
+					for (float t = bounds.x; t < bounds.y; t += delta) {
+						// Bắt đầu lấy mẫu theo p , trướng hợp này lấy mẫu alpha
+						// Nên xử lý alpha ở js, để track dễ hơn 
+						float d = sample1(p);
+
+							if ( d < threshold ) {
+
+								color.rgb = p;
+								color.a = 1.;
+								break;
+
+							}else{
+								// color.rgb = 1.-p;
+								// color.a = .3;
+							}
+
+							p += rayDir * delta;
+
+					}
+
+					// Nếu alpha vẫn là 0, không vẽ
+					//if (color.a == 0.0) discard;
+					}
+				`;
+
+			const geometry = new THREE.BoxGeometry(1, 1, 1);
+			materialCube = new THREE.RawShaderMaterial({
+				glslVersion: THREE.GLSL3,
+				uniforms: {
+					base: { value: new THREE.Color(0x798aa0) },
+					map: { value: dataTexture3D },
+					cameraPos: { value: new THREE.Vector3() },
+					threshold: { value: 0.5 },
+					opacity: { value: 0.25 },
+					range: { value: 0.1 },
+					steps: { value: 128 },
+					frame: { value: 0 }
+				},
+				vertexShader,
+				fragmentShader,
+				side: THREE.BackSide,
+				transparent: true,
+			});
+
+			mesh = new THREE.Mesh(geometry, materialCube);
+			let meshHelper = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ wireframe: true }));
+			scene.add(mesh, meshHelper);
+		}
+
+		function initModel() {
+			const loader = new OBJLoader();
+			loader.load(
+				'models/eisbar/eisbar.obj',
+
+				function (object) {
+					let m = object
+
+					m.scale.set(4.2, 4.4, 4.2)
+					m.position.y = -.01
+
+					materialChunkModel = new THREE.MeshPhongMaterial({
+						color: 0xc2c2c2,
+						shininess: 100,
+					});
+
+					m.children[0].material = materialChunkModel
+
+					groupModel.add(m);
+
+				},
+				function (xhr) {
+					console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+				},
+				function (error) {
+					console.log('An error happened');
+				}
+			);
+		}
+
+
+		Renderer.renderer.setAnimationLoop(animate);
+
+		let cc = 0
+		function animate() {
+
+			Mouse.update();
+			Renderer.update();
+			simulation.update()
+			currentTime = performance.now();
+			delta = (currentTime - lastTime) / 1000;
+			lastTime = currentTime;
+			time += delta;
+			if (gpuCompute) runGPGPU()
+			stats.update();
+			if (materialCube) {
+				materialCube.uniforms.cameraPos.value.copy(camera.position);
+				materialCube.uniforms.map.value = dataTexture3D
+			}
+
+			if (meshCheckMeshTrail) {
+				meshCheckMeshTrail.material.map = dataTextureFatline
+			}
+			if (shaderInstancedFish) shaderInstancedFish.uniforms.uTime.value = (performance.now() / 1000) * .7
+			Renderer.renderer.setRenderTarget(null);
+			Renderer.renderer.setRenderTarget(targetMonitor)
+			Renderer.renderer.render(sceneMonitor, cameraMonitor);
+			glContaxt.readPixels(
+				0, 0, widthTexture, widthTexture,
+				glContaxt.RGBA,
+				glContaxt.FLOAT,
+				pixelBuffer
+			);
+			cc += .5
+			if (dataTextureFatline) updateMeshTrail(pixelBuffer)
+			//if(textureDataOfFish/*  && cc%5 == 0 */) updateDatatextureFish(pixelBuffer)
+			sphereSample.position.set(pixelBuffer[0], pixelBuffer[1], pixelBuffer[2])
+			Renderer.renderer.setRenderTarget(null);
+			Renderer.renderer.render(scene, camera);
+			//	Renderer.renderer.render(sceneMonitor, cameraMonitor);
+
+		}
+
+		function runGPGPU() {
+			if (time > 0) {
+				positionUniforms['time'].value = time / 1000;
+				positionUniforms['delta'].value = delta;
+
+				velocityUniforms['time'].value = time / 1000;
+				velocityUniforms['delta'].value = delta;
+			}
+
+			velocityUniforms['uFuild'].value = simulation.fbos.vel_0.texture
+			positionUniforms['uFuild'].value = simulation.fbos.vel_0.texture
+
+			mouseFroceCurr.x = simulation.externalForce.speed
+			mousePos = simulation.externalForce.center
+			mouseFrocePrev.lerp(mouseFroceCurr, .1)
+			if (mouseFrocePrev.x < 0.001) mouseFrocePrev.x = 0
+			velocityUniforms['fuildForce'] = { value: mouseFrocePrev };
+			positionUniforms['fuildForce'] = { value: mouseFrocePrev };
+
+			velocityUniforms['mousePos'] = { value: mousePos };
+			positionUniforms['mousePos'] = { value: mousePos };
+
+			// console.log(mouseFrocePrev.x)
+			gpuCompute.compute();
+			const texturePosOut = gpuCompute.getCurrentRenderTarget(positionVariable).texture;
+			const textureVelOut = gpuCompute.getCurrentRenderTarget(velocityVariable).texture;
+			if (matPoint) {
+				matPoint.uniforms.dt.value = delta
+				matPoint.uniforms.posGpu.value = texturePosOut
+				matPoint.uniforms.uFuild.value = simulation.fbos.vel_0.texture
+
+			}
+			if (matModel) {
+
+				matModel.uniforms.uFuild.value = simulation.fbos.vel_0.texture
+			}
+			if (matInstanced) {
+				matInstanced.uniforms.posGpu.value = texturePosOut
+				matInstanced.uniforms.velGpu.value = textureVelOut
+			}
+
+			if (monitorPos && monitorPos.material) monitorPos.material.uniforms.tex.value = texturePosOut
+			if (monitorVel && monitorVel.material) monitorVel.material.uniforms.tex.value = textureVelOut
+
+		}
+
+		function onWindowResize() {
+
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+
+			Renderer.renderer.setSize(window.innerWidth, window.innerHeight);
+
+		}
+
+	</script>
+
+</body>
+
+</html>
+
+
+
+
+
+
+
+
+
+<!-- 
+
+function initDataOfFishAndFish() {
+
+		
+			// 3 row each fish , each row , we have (numPointsOfCruveFish + 1) pixel , +1 because this is curl
+			const dataPrepare = new Float32Array((numPointsOfCruveFish + 1) * 4 * heigthDataFistEachFish * countFish)
+			textureDataOfFish = new THREE.DataTexture(dataPrepare, numPointsOfCruveFish + 1, heigthDataFistEachFish * countFish, THREE.RGBAFormat, THREE.FloatType);
+			textureDataOfFish.magFilter = THREE.NearestFilter;
+			textureDataOfFish.needsUpdate = true
+			console.log(textureDataOfFish)
+			let countRowData = 0
+			for (let ii = 0; ii < countFish; ii++) {
+				let cPts = [];
+		
+				for (let i = 0; i < cSegmentsOfCruveFish; i++) {
+					cPts.push(
+						new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random())
+					);
+				}
+
+				const curve = new THREE.CatmullRomCurve3(cPts);
+				curve.verticesNeedUpdate = true;
+				curve.closed = false;
+
+				const cPoints = curve.getSpacedPoints(numPointsOfCruveFish);
+				const cObjects = curve.computeFrenetFrames(numPointsOfCruveFish, true);
+
+				const totalPixel1Row = (numPointsOfCruveFish + 1) * 4;
+				
+				const startRowForFish = ii * 3 * totalPixel1Row;
+
+				const totalPixelRowpoint = startRowForFish;
+				const totalPixelRowbinormals = startRowForFish + totalPixel1Row;
+				const totalPixelRownormals = startRowForFish + 2 * totalPixel1Row;
+
+				cPoints.forEach((v, id) => {
+					textureDataOfFish.source.data.data[(id * 4)		+ totalPixelRowpoint	] = v.x;
+					textureDataOfFish.source.data.data[(id * 4)+1	+ totalPixelRowpoint	] = v.y;
+					textureDataOfFish.source.data.data[(id * 4)+2	+ totalPixelRowpoint	] = v.z;
+					textureDataOfFish.source.data.data[(id * 4)+3	+ totalPixelRowpoint	] = 1.;
+					console.log((id * 4)+3)
+					setTimeout(() => {
+						initVisual(v, "blue")
+					}, 100 * id);
+				});
+				cObjects.binormals.forEach((v, id) => {
+					textureDataOfFish.source.data.data[((id * 4)) 	+ totalPixelRowbinormals		] = v.x;
+					textureDataOfFish.source.data.data[((id * 4)+1)	+ totalPixelRowbinormals		] = v.y;
+					textureDataOfFish.source.data.data[((id * 4)+2)	+ totalPixelRowbinormals		] = v.z;
+					textureDataOfFish.source.data.data[((id * 4)+3)	+ totalPixelRowbinormals		] = 1.;
+					setTimeout(() => {
+						initVisual(v, "pink")
+					}, 100 * id);
+				});
+				cObjects.normals.forEach((v, id) => {
+					textureDataOfFish.source.data.data[((id * 4)) 	+ totalPixelRownormals		] = v.x;
+					textureDataOfFish.source.data.data[((id * 4)+1)	+ totalPixelRownormals		] = v.y;
+					textureDataOfFish.source.data.data[((id * 4)+2)	+ totalPixelRownormals		] = v.z;
+					textureDataOfFish.source.data.data[((id * 4)+3)	+ totalPixelRownormals		] = 1.;
+					setTimeout(() => {
+						initVisual(v, "yellow")
+					}, 100 * id);
+				});
+				//=> 3 row each fish
+				textureDataOfFish.needsUpdate = true
+				countRowData+= heigthDataFistEachFish
+				console.log(textureDataOfFish)
+	
+
+				initVisualLine(cPoints)
+
+
+			}
+			
+-->
