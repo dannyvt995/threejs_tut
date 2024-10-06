@@ -81,17 +81,17 @@
         import { RenderSDFLayerMaterial } from './bvh_gensdf/RenderSDFLayerMaterial.js';
         import { RayMarchSDFMaterial } from './bvh_gensdf/RayMarchSDFMaterial.js';
 
-
+        import {calcSizeFitCamPerspective} from './utils/calcSizeFitCamPerspective.js'
         THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 
         const params = {
 
             gpuGeneration: false, // worker chưa hoạt động
-            resolution: 20,
+            resolution: 64,
             margin: 0.2,
             regenerate: () => updateSDF(),
 
-            mode: 'layer',
+            mode: 'grid layers',
             layer: 0,
             surface: 0.1,
 
@@ -108,7 +108,7 @@
 
 
         let countTriggle = 0
-        let renderTargetGenImg, meshCheckFbo
+        let renderTargetGenImg, meshCheckFbo ,sceneFbo,camFbo
 
         const RENDERSDF = false
         const isRenderSkinCheck = true
@@ -138,6 +138,7 @@
 
         initSDFtextureFBO()
         function initSDFtextureFBO() {
+           
             sdfTex = new THREE.Data3DTexture(new Float32Array(dim ** 3), dim, dim, dim);
             sdfTex.format = THREE.RedFormat;
             sdfTex.type = THREE.FloatType;
@@ -190,13 +191,13 @@
             // sdf pass to generate the 3d texture
             generateSdfPass = new FullScreenQuad(new GenerateSDFMaterial());
 
-            // screen pass to render a single layer of the 3d texture
-            layerPass = new FullScreenQuad(new RenderSDFLayerMaterial(
-
-            ));
+            const rayMatBvh =new RenderSDFLayerMaterial()
+            rayMatBvh.uniforms.uTexelSize.value.copy(new THREE.Vector2(pxWidth,pxWidth))
+            layerPass = new FullScreenQuad(rayMatBvh);
 
             // screen pass to render the sdf ray marching
-            raymarchPass = new FullScreenQuad(new RayMarchSDFMaterial());
+           
+            raymarchPass = new FullScreenQuad( new RayMarchSDFMaterial());
 
             // load model and generate bvh
             //  bvhGenerationWorker = new GenerateMeshBVHWorker();
@@ -210,107 +211,10 @@
             meshHelper = new THREE.Mesh(new THREE.BufferGeometry(), wireframeMaterial);
             meshHelper222 = new THREE.Mesh(new THREE.BufferGeometry(), wireframeMaterial);
 
-            meshCheckFbo = new THREE.Mesh(
-                new THREE.PlaneGeometry(2, 2),
-                new THREE.ShaderMaterial({
-                    uniforms: {
-                        tex: {
-                            value: null
-                        }
-                    },
-                    vertexShader: `
-                        varying vec2 vUv;
-
-                        void main() {
-                            vUv = uv;
-                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                        }
-                    `,
-                    fragmentShader: `
-                             varying vec2 vUv;
-                             uniform sampler2D tex;
-                         void main() {
-                            vec4 texxx = texture2D(tex,vUv);
-                            gl_FragColor = texxx;
-                        }
-                        `,
-                        transparent:true,
-                        side:2
-                }),
-             
-            )
-            scene.add(meshCheckFbo)
+           
             initFboToGenImg()
 
-            let meshBear
-            const loader = new OBJLoader();
-
-            // load a resource
-            loader.load(
-                // resource URL
-                'models/eisbar/bear.obj',
-                // called when resource is loaded
-                function (object) {
-                    console.log(object)
-                    meshBear = object
-                },
-                // called when loading is in progresses
-                function (xhr) {
-
-                    console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-
-                },
-                // called when loading has errors
-                function (error) {
-
-                    console.log('An error happened');
-
-                }
-            );
-
-
-            // new GLTFLoader()
-            //     .setMeshoptDecoder(MeshoptDecoder)
-            //     .loadAsync('https://raw.githubusercontent.com/gkjohnson/3d-demo-data/main/models/stanford-bunny/bunny.glb')
-            //     .then(gltf => {
-
-            //         gltf.scene.updateMatrixWorld(true);
-            //         console.log(gltf.scene)
-            //         const staticGen = new StaticGeometryGenerator(meshBear);
-            //         staticGen.attributes = ['position', 'normal'];
-            //         staticGen.useGroups = false;
-
-            //         geometry = staticGen.generate().center();
-
-
-            //         const geometryTorus = new THREE.TorusGeometry(.2, .1, 16, 100);
-            //         const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-            //         const torusKnot = new THREE.Mesh(geometryTorus, material);
-
-
-
-            //         return new MeshBVH(geometry);
-
-            //     })
-            //     .then(result => {
-                   
-            //         if (RENDERSDF) {
-            //             bvh = result;
-            //             console.log("bvh sampler SDF", bvh)
-            //             updateSDF();
-            //             meshSampleSdf = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
-            //             staticGeometryGenerator222 = new StaticGeometryGenerator(meshSampleSdf);
-            //             staticGeometryGenerator222.generate(meshHelper222.geometry);
-            //             console.log("staticGeometryGenerator222", staticGeometryGenerator222)
-            //             meshHelper222.geometry.computeBoundsTree();
-            //             bvhHelper222 = new MeshBVHHelper(meshHelper222, 5);
-            //             scene.add(bvhHelper222);
-
-            //             // scene.add(meshSampleSdf);
-            //         }
-            //     });
-
-
+ 
             new GLTFLoader()
                 .load('models/mei/scene.gltf', gltf => {
                     gltf.scene.updateMatrixWorld(true);
@@ -318,7 +222,7 @@
                     model = gltf.scene;
                     model.scale.set(.0042,.0042,.0042)
                  
-                    model.position.y = -.2
+                    model.position.y = -.3
                     model.position.z = -.1
                     let listM = []
                     model.updateMatrixWorld(true);
@@ -396,7 +300,7 @@
             //     scene.add(a)
             // }
             rebuildGUI();
-
+          //  initInstancedMesh(sdfTex)
             window.addEventListener('resize', function () {
 
                 camera.aspect = window.innerWidth / window.innerHeight;
@@ -411,15 +315,67 @@
 
         function initFboToGenImg() {
 
-            // Giả sử bạn đã có renderer, scene, camera và layerPass
+           
             renderTargetGenImg = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
                 minFilter: THREE.LinearFilter,
                 magFilter: THREE.LinearFilter,
                 format: THREE.RGBAFormat
-            }); // Kích thước canvas
+            }); 
+            sceneFbo = new THREE.Scene()
+            camFbo =  new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 50);
+            camFbo.position.z = 2
+            const [widthFit, heightFit] = calcSizeFitCamPerspective(camFbo)
+            meshCheckFbo = new THREE.Mesh(
+                new THREE.PlaneGeometry(heightFit, heightFit),
+             
+                new THREE.ShaderMaterial({
+                    uniforms: {
+                        tex: {
+                            value: null
+                        }
+                    },
+                    vertexShader: `
+                        varying vec2 vUv;
 
-
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                             varying vec2 vUv;
+                             uniform sampler2D tex;
+                         void main() {
+                            vec4 texColor  = texture2D(tex,vUv);
+                           float gridSize = 20.0; // Kích thước ô vuông grid
+                            vec2 grid = fract(vUv * gridSize);
+                            float lineThickness = 0.05; // Độ dày của đường grid
+                            
+                            // Tạo màu grid (trắng cho đường và xám cho nền)
+                            vec3 gridColor = vec3(0.8); // Màu xám cho ô vuông
+                            if (grid.x < lineThickness || grid.y < lineThickness) {
+                                gridColor = vec3(1.0); // Màu trắng cho đường grid
+                            }
+                            
+                            // Pha trộn grid và texture dựa trên alpha của texture
+                            vec3 finalColor = mix(gridColor, texColor.rgb, 1.);
+                            
+                            // Xuất màu cuối cùng ra màn hình
+                            gl_FragColor = texColor;
+                           //   gl_FragColor = vec4(vec3(1.-texColor.a,0.,0.), 1.0);
+                        }
+                        `,
+                        transparent:true,
+                        side:2
+                }),
+             
+            )
+            sceneFbo.add(meshCheckFbo)
         }
+
+
+
+
         function regenerateMesh() {
              const matrix = new THREE.Matrix4();
             // const center = new THREE.Vector3();
@@ -466,7 +422,7 @@
                     meshHelper.geometry.boundsTree.refit();
 
          
-                  if(countTriggle % 10 === 0)  {
+                  if(/* countTriggle % 100 === 0 */ countTriggle === 5)  {
 
                     if (!params.gpuGeneration) {
                         // create a new 3d data texture
@@ -499,19 +455,48 @@
                                     ray.direction.set(0, 0, 1);
                                     let hit = meshHelper.geometry.boundsTree.raycastFirst(ray, THREE.DoubleSide);
 
-                                    let isInside = hit && hit.face.normal.dot(ray.direction) > 0.0;
-
+                                    let isInside = hit && hit.face.normal.dot(ray.direction) > 0.1;
+                                  
                                     // set the distance in the texture data
                                     sdfTex.image.data[index] = isInside ? - dist : dist;
-                    
+                                  
                                     sdfTex.needsUpdate = true
                                 }
 
                             }
 
                         }
+                        // const gradientData = new Float32Array(dim ** 3 ); 
+                        // for (let x = 0; x < dim; x++) {
+                        //     for (let y = 0; y < dim; y++) {
+                        //         for (let z = 0; z < dim; z++) {
+                        //             const index = x + y * dim + z * dim * dim; // Tính chỉ số cho SDF
 
+                        //             // Tính toán gradient cho voxel tại (x, y, z)
+                        //             const sdfRight = sdfTex.image.data[(x + 1) + y * dim + z * dim * dim] || 0; // SDF bên phải
+                        //             const sdfLeft = sdfTex.image.data[(x - 1) + y * dim + z * dim * dim] || 0; // SDF bên trái
+                        //             const sdfUp = sdfTex.image.data[x + (y + 1) * dim + z * dim * dim] || 0; // SDF bên trên
+                        //             const sdfDown = sdfTex.image.data[x + (y - 1) * dim + z * dim * dim] || 0; // SDF bên dưới
+                        //             const sdfFront = sdfTex.image.data[x + y * dim + (z + 1) * dim * dim] || 0; // SDF phía trước
+                        //             const sdfBack = sdfTex.image.data[x + y * dim + (z - 1) * dim * dim] || 0; // SDF phía sau
 
+                        //             // Tính toán gradient
+                        //             const gradX = (sdfRight - sdfLeft) * 0.5;
+                        //             const gradY = (sdfUp - sdfDown) * 0.5;
+                        //             const gradZ = (sdfFront - sdfBack) * 0.5;
+
+                        //             // Lưu gradient vào mảng
+                        //             const gradIndex = index * 3; // Tính chỉ số cho gradient
+                        //             gradientData[gradIndex] = gradX;
+                        //             gradientData[gradIndex + 1] = gradY;
+                        //             gradientData[gradIndex + 2] = gradZ;
+                        //         }
+                        //     }
+                        // }
+
+                        // // Cập nhật dữ liệu gradient vào sdfTex
+                        // sdfTex.image.data = gradientData;
+                        // sdfTex.needsUpdate = true;
 
                         console.timeEnd()
                     }
@@ -685,7 +670,7 @@
             outputContainer.innerText = `${delta.toFixed(2)}ms`;
 
             rebuildGUI();
-            initInstancedMesh(sdfTex)
+           
         }
 
 
@@ -747,49 +732,15 @@
 										mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
 										floor(id / tSize.x) / tSize.y  // Tính chỉ số hàng
 									);
-                        vec3 posSelf = position + offset;
+                        vec3 posSelf = position + offset *.9;
 
-                        float sdfCenter = texture(texture3DSDF, vec3(uv, posSelf.z)).r;
-                            vec3 texelSize = vec3(uTexelSize, 1.0 / float(textureSize(texture3DSDF, 0).z)); 
-
-                            float sdfRight = texture(texture3DSDF, vec3(uv + vec2(texelSize.x, 0.0), posSelf.z)).r;
-                            float sdfLeft  = texture(texture3DSDF, vec3(uv - vec2(texelSize.x, 0.0), posSelf.z)).r;
-                            float sdfUp    = texture(texture3DSDF, vec3(uv + vec2(0.0, texelSize.y), posSelf.z)).r;
-                            float sdfDown  = texture(texture3DSDF, vec3(uv - vec2(0.0, texelSize.y), posSelf.z)).r;
-
-                            float gradX = (sdfRight - sdfLeft) * 0.5;
-                            float gradY = (sdfUp - sdfDown) * 0.5;
-
-                            float sdfFront = texture(texture3DSDF, vec3(uv, posSelf.z + texelSize.z)).r;
-                            float sdfBack  = texture(texture3DSDF, vec3(uv, posSelf.z - texelSize.z)).r;
-
-                            float gradZ = (sdfFront - sdfBack) * 0.5;
-
-                            vec3 gradient = vec3(gradX, gradY, gradZ);
-
-                            gradient = normalize(gradient);
-
-                        
-                            float gradientMagnitude = length(gradient);
-
-                        
-                            vec3 outGradient = vec3(0.0);
-                            if (gradientMagnitude > 0.0) {
-                                
-                                outGradient = gradient * 0.5 + 0.5; // Chuyển đổi [-1, 1] thành [0, 1]
-                                
-                                outGradient = pow(outGradient, vec3(2.0)); 
-                                outGradient = mix(vec3(0.0), outGradient, 0.8); 
-                            }
-                        
                     
-                            vec4 sdf3dFormat = vec4(outGradient,sdfCenter) * 2. - 1.;
-                            vec3 dis3d = normalize(sdf3dFormat.xyz + posSelf) * (sdf3dFormat.a * .51);
-                            posSelf -= dis3d * .22 ;
+                        vec3 dis =  texture(texture3DSDF,vec3(posSelf)).rgb;
+              
+                       posSelf += dis;
 
 
-
-						gl_Position = projectionMatrix * modelViewMatrix * vec4(dis3d, 1.0);
+						gl_Position = projectionMatrix * modelViewMatrix * vec4(posSelf, 1.0);
 						vUv = uv; // Truyền UV đến fragment shader
 
                 `);
@@ -802,9 +753,9 @@
 
             for (let i = 0; i < count; i++) {
 
-                offsets[i * 3 + 0] = Math.random() + .1; // X
-                offsets[i * 3 + 1] = Math.random(); // Y
-                offsets[i * 3 + 2] = Math.random() + .1; // Z
+                offsets[i * 3 + 0] = Math.random()*2-1; // X
+                offsets[i * 3 + 1] = Math.random()*2-1; // Y
+                offsets[i * 3 + 2] =Math.random()*2-1; // Z
             }
 
 
@@ -818,9 +769,9 @@
 
                 // Tạo vị trí ngẫu nhiên trong phạm vi từ -50 đến 50
                 const position = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2
+                   Math.random() * 2. - 1.,
+                   Math.random() * 2. - 1.,
+                   Math.random() * 2. - 1.,
                 );
 
                 // Tạo tỷ lệ ngẫu nhiên từ 0.5 đến 1.5
@@ -850,7 +801,7 @@
                 colors.push(color.r, color.g, color.b);
             }
 
-            // scene.add(cInstancedMesh);
+            scene.add(cInstancedMesh);
 
         }
 
@@ -911,16 +862,17 @@
 
                     }
 
+
+                 
                     renderer.setRenderTarget(renderTargetGenImg);
-                    renderTargetGenImg.texture.name = 'FboSnap'
+                    renderer.render(scene, camera);
                     layerPass.render(renderer);
+                 
                     meshCheckFbo.material.uniforms.tex.value = renderTargetGenImg.texture
 
-
                     renderer.setRenderTarget(null)
-
-                    renderer.render(scene, camera);
-
+                    // layerPass.render(renderer);
+                     renderer.render(sceneFbo, camFbo);
 
                 } else if (params.mode === 'raymarching' ) {
 
