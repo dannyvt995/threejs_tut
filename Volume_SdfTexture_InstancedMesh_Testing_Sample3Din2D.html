@@ -39,54 +39,60 @@
 		uniform float u_sdfInBoundForce;
 		uniform float u_sdfThreshold;
 
-		vec2 computeSliceOffset(float slice, vec4 sliceInfo) {
-			return sliceInfo.zw * vec2(mod(slice, sliceInfo.y), floor(slice * sliceInfo.z));
-		}
-		
-		vec4 sampleAs3DTexture(sampler2D tex, vec3 texCoord, vec4 sliceInfo) {
-		
-			float slice = texCoord.z * sliceInfo.x;
-			float sliceZ = floor(slice);
+		vec2 computeSliceOffsetOrigin(float slice, float slicesPerRow, vec2 sliceSize) {
+			return sliceSize * vec2(mod(slice, slicesPerRow), 
+									floor(slice / slicesPerRow));
+			}
 
-			vec2 slice0Offset = computeSliceOffset(sliceZ, sliceInfo);
-			vec2 slice1Offset = computeSliceOffset(sliceZ + 1.0, sliceInfo);
-		
-			vec2 slicePixelSize = sliceInfo.zw / sliceInfo.x;
-		
-			vec2 uv = slicePixelSize * 0.5 + texCoord.xy * (sliceInfo.zw - slicePixelSize);
-			vec4 slice0Color = texture2D(tex, slice0Offset + uv);
-			vec4 slice1Color = texture2D(tex, slice1Offset + uv);
-			return mix(slice0Color, slice1Color, fract(slice)) ;
-		}
+			vec4 sampleAs3DTextureOrigin(
+				sampler2D tex, vec3 texCoord, float size, float numRows, float slicesPerRow) {
+				float slice   = texCoord.z * size;
+				float sliceZ  = floor(slice);                         // slice we need
+				float zOffset = fract(slice);                         // dist between slices
 
+				vec2 sliceSize = vec2(1.0 / slicesPerRow,             // u space of 1 slice
+										1.0 / numRows);                 // v space of 1 slice
+
+				vec2 slice0Offset = computeSliceOffsetOrigin(sliceZ, slicesPerRow, sliceSize);
+				vec2 slice1Offset = computeSliceOffsetOrigin(sliceZ + 1.0, slicesPerRow, sliceSize);
+
+				vec2 slicePixelSize = sliceSize / size;               // space of 1 pixel
+				vec2 sliceInnerSize = slicePixelSize * (size - 1.0);  // space of size pixels
+
+				vec2 uv = slicePixelSize * 0.5 + texCoord.xy * sliceInnerSize;
+				//uv = vec2(uv.x,1.-uv.y);
+				vec4 slice0Color = texture2D(tex, slice0Offset + uv);
+				vec4 slice1Color = texture2D(tex, slice1Offset + uv);
+				return mix(slice0Color, slice1Color, zOffset);
+				//return slice0Color;
+			}
         void main()	{
 
             vec2 uv = gl_FragCoord.xy / resolution.xy;
             vec4 tmpPos = texture2D( texturePosition, uv );
             vec3 posSelf = tmpPos.xyz;
+			
             vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
 			
-			vec3 voxelTextureCoordOri = (posSelf ) / u_sdfScale + u_sdfOffset;
-			vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 / u_sdfVoxelSize), vec3(1.0 - 0.5 / u_sdfVoxelSize));
-			vec4 distanceInfo =( sampleAs3DTexture(u_sdfTexture, voxelTextureCoord , u_sdfSliceInfo)  )* 2.0 - 1.0;
-	
-			vec3 offSDF = step(vec3(0.001), abs(voxelTextureCoordOri - voxelTextureCoord));
-			//distanceInfo.xyz = normalize(distanceInfo.xyz + posSelf.xyz );
-			//distanceInfo.a -= u_holdGPGPU;
-			//distanceInfo.a = sign(distanceInfo.a) * max(abs(distanceInfo.a), length(posSelf.xyz) * step(0.5, offSDF.x + offSDF.y + offSDF.z));
-			//posSelf.xyz += distanceInfo.xyz * distanceInfo.a * -mix(u_sdfOutBoundForce, u_sdfInBoundForce, step(0.0, distanceInfo.a));
-			vec3 disAA = normalize(distanceInfo.xyz+posSelf) * distanceInfo.a * u_holdGPGPU;
-			posSelf.xyz -= disAA * .5;
+
+			vec4 distanceInfo = sampleAs3DTextureOrigin(u_sdfTexture, posSelf, 128.,8.,16.);
+			vec4 distanceInfoFormat = distanceInfo * 2. - 1.;
+		
+			vec3 disAA = normalize(distanceInfo.xyz  + posSelf);
+		
+
+
 			//use volume
 			vec4 sdf3d = texture(texture3DSDF, posSelf + .5);
 			vec4 sdf3dFormat = sdf3d * 2. - 1.;
 			vec3 dis3d = normalize(sdf3dFormat.xyz + posSelf) * (sdf3dFormat.a * u_holdGPGPU);
-			//posSelf -= dis3d ;
-			//posSelf += velSelf * .5;
-			
-
 		
-			gl_FragColor = vec4(  posSelf.xyz, 1.  );
+			//posSelf -= dis3d ;
+			posSelf += velSelf * .5;
+	
+			//posSelf -= disAA * (distanceInfoFormat.a * .005);
+			//posSelf += velSelf * .5;
+			gl_FragColor = vec4(  posSelf.xyz,distanceInfo.a  );
 
         }
 
@@ -113,25 +119,33 @@
 				43758.5453123);
 		}
 
-		vec2 computeSliceOffset(float slice, vec4 sliceInfo) {
-			return sliceInfo.zw * vec2(mod(slice, sliceInfo.y), floor(slice * sliceInfo.z));
-		}
-		
-		vec4 sampleAs3DTexture(sampler2D tex, vec3 texCoord, vec4 sliceInfo) {
-		
-			float slice = texCoord.z * sliceInfo.x;
-			float sliceZ = floor(slice);
+		vec2 computeSliceOffsetOrigin(float slice, float slicesPerRow, vec2 sliceSize) {
+			return sliceSize * vec2(mod(slice, slicesPerRow), 
+									floor(slice / slicesPerRow));
+			}
 
-			vec2 slice0Offset = computeSliceOffset(sliceZ, sliceInfo);
-			vec2 slice1Offset = computeSliceOffset(sliceZ + 1.0, sliceInfo);
-		
-			vec2 slicePixelSize = sliceInfo.zw / sliceInfo.x;
-		
-			vec2 uv = slicePixelSize * 0.5 + texCoord.xy * (sliceInfo.zw - slicePixelSize);
-			vec4 slice0Color = texture2D(tex, slice0Offset + uv);
-			vec4 slice1Color = texture2D(tex, slice1Offset + uv);
-			return mix(slice0Color, slice1Color, fract(slice));
-		}
+			vec4 sampleAs3DTextureOrigin(
+				sampler2D tex, vec3 texCoord, float size, float numRows, float slicesPerRow) {
+				float slice   = texCoord.z * size;
+				float sliceZ  = floor(slice);                         // slice we need
+				float zOffset = fract(slice);                         // dist between slices
+
+				vec2 sliceSize = vec2(1.0 / slicesPerRow,             // u space of 1 slice
+										1.0 / numRows);                 // v space of 1 slice
+
+				vec2 slice0Offset = computeSliceOffsetOrigin(sliceZ, slicesPerRow, sliceSize);
+				vec2 slice1Offset = computeSliceOffsetOrigin(sliceZ + 1.0, slicesPerRow, sliceSize);
+
+				vec2 slicePixelSize = sliceSize / size;               // space of 1 pixel
+				vec2 sliceInnerSize = slicePixelSize * (size - 1.0);  // space of size pixels
+
+				vec2 uv = slicePixelSize * 0.5 + texCoord.xy * sliceInnerSize;
+				//uv = vec2(uv.x,1.-uv.y);
+				vec4 slice0Color = texture2D(tex, slice0Offset + uv);
+				vec4 slice1Color = texture2D(tex, slice1Offset + uv);
+				return mix(slice0Color, slice1Color, zOffset);
+				//return slice0Color;
+			}
 
         void main() {
             
@@ -143,20 +157,26 @@
 			
 			posSelf += velSelf;
 
-	
+			vec4 sdf3d = texture(texture3DSDF, posSelf + .5);
+			vec4 sdf3dFormat = sdf3d * 2. - 1.;
 
-			vec3 voxelTextureCoordOri = posSelf.xyz / u_sdfScale + u_sdfOffset;
-			vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 / u_sdfVoxelSize), vec3(1.0 - 0.5 / u_sdfVoxelSize));
-			vec4 distanceInfo = sampleAs3DTexture(u_sdfTexture, voxelTextureCoord, u_sdfSliceInfo) * 2.0 - 1.0;
-			vec3 offSDF = step(vec3(0.001), abs(voxelTextureCoordOri - voxelTextureCoord));
-			distanceInfo.xyz = normalize(distanceInfo.xyz + posSelf.xyz * offSDF);
-			distanceInfo.a -= u_sdfThreshold;
-			distanceInfo.a = sign(distanceInfo.a) * max(abs(distanceInfo.a), length(posSelf.xyz) * step(0.5, offSDF.x + offSDF.y + offSDF.z));
-		  
-			// only apply the sdf force
-			//velSelf.xyz += distanceInfo.xyz * distanceInfo.a * -mix(u_sdfOutBoundForce, u_sdfInBoundForce, step(0.0, distanceInfo.a));
-		  
+		
+		
 
+
+			if(sdf3dFormat.w < 1.2) {
+				vec3 dis = normalize(sdf3dFormat.xyz + posSelf) * (-sdf3dFormat.w * u_holdGPGPU);
+				velSelf += dis * .5 ;
+
+
+				vec4 distanceInfo = sampleAs3DTextureOrigin(u_sdfTexture, posSelf, 128.,8.,16.);
+				vec4 distanceInfoFormat = distanceInfo * 2. - 1.;
+				vec3 disAA = normalize(distanceInfo.xyz  + posSelf) * (-sdf3dFormat.w * u_holdGPGPU);
+			//	velSelf += disAA * .5 ;
+
+			}else{
+						
+			}
 			gl_FragColor = vec4( velSelf,1.);
 
         }
@@ -187,7 +207,7 @@
 		let delta, time, lastTime
 
 		let gpuCompute
-		let widthTexture = 256
+		let widthTexture = 128
 		let velocityVariable, positionVariable, extraVariable
 		let positionUniforms, velocityUniforms, extraUniforms
 		let monitorPos, monitorVel
@@ -210,12 +230,13 @@
 					const y = Math.random() * 2 - 1;
 					const z = Math.random() * 2 - 1;
 					let vp = new THREE.Vector3(x, y, z)
-					vp.multiplyScalar(1)
+					vp.multiplyScalar(.5)
 					arrT[k + 0] = vp.x
 					arrT[k + 1] = vp.y
 					arrT[k + 2] = vp.z
 					arrT[k + 3] = 1
 				}
+				console.log(arrT)
 			}
 
 			function fillVelTexture(texture) {
@@ -266,9 +287,31 @@
 			positionUniforms['start'] = { value: false };
 			positionUniforms['u_holdGPGPU'] = { value: 0.5 };
 
+		
 			
+
+			function initDatasdfCOCO(dataOriFromImg) {
+				const width = 128*16;
+				const height = 128*8;
+
+				const size = width * height;
+				const data = new Float32Array(width * height * 4)
+				for ( let i = 0; i < size; i ++ ) {
+					const stride = i * 4;
+					data[ stride ] = dataOriFromImg[ stride ] / 255;
+					data[ stride + 1 ] = dataOriFromImg[ stride +1] / 255;
+					data[ stride + 2 ] = dataOriFromImg[ stride +2] / 255;
+					data[ stride + 3 ] = dataOriFromImg[ stride +3] / 255;
+				}
+
+				// used the buffer to create a DataTexture
+				const texture = new THREE.DataTexture( data, width, height,THREE.RGBAFormat,THREE.FloatType );
+				texture.needsUpdate = true;
+				return texture
+			}
+			const ddddd = initDatasdfCOCO(textureSDFData)
 			
-			positionUniforms['u_sdfTexture'] = { value: textureSDF };
+			positionUniforms['u_sdfTexture'] = { value: ddddd };
 			velocityUniforms['u_sdfTexture'] = { value: textureSDF };
 
 			velocityUniforms['u_sdfOffset'] = { value: new THREE.Vector3(0.5000, 0.5000, 0.5000) };
@@ -335,7 +378,7 @@
 
 			initTexture()
 			//	initVolume()
-			//initMonitor()
+			initMonitor()
 			initGui()
 
 			window.addEventListener('resize', onWindowResize);
@@ -344,33 +387,35 @@
 
 		function initMonitor() {
 			monitorPos = new THREE.Mesh(
-				new THREE.PlaneGeometry(1, 1),
-				new THREE.ShaderMaterial({
-					vertexShader: `
-									varying vec2 vUv;
-									void main() {
-										vUv = uv;
-										gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-									}
-								`,
-					fragmentShader: `
-									varying vec2 vUv;
-									uniform sampler2D tex;
-									void main() {
-										vec4 mapcolor = texture2D(tex, vUv);
-										gl_FragColor = mapcolor;
-										gl_FragColor = vec4(mapcolor.xy,0.,1.);
-									}
-								`,
-					uniforms: {
-						tex: { value: null }
-					},
-					transparent: true,
+				new THREE.PlaneGeometry(1	*5, 8/16	*5),
+				new THREE.MeshBasicMaterial({map:textureSDFCus})
+				// new THREE.ShaderMaterial({
+				// 	vertexShader: `
+				// 					varying vec2 vUv;
+				// 					void main() {
+				// 						vUv = uv;
+				// 						gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+				// 					}
+				// 				`,
+				// 	fragmentShader: `
+				// 					varying vec2 vUv;
+				// 					uniform sampler2D tex;
+				// 					void main() {
+				// 						vec4 mapcolor = texture2D(tex, vUv);
+				// 						gl_FragColor = mapcolor;
+				// 						gl_FragColor = vec4(mapcolor.xy,0.,1.);
+				// 					}
+				// 				`,
+				// 	uniforms: {
+				// 		tex: { value: null }
+				// 	},
+				// 	transparent: true,
 
-					side: 2
-				})
+				// 	side: 2
+				// })
 			)
-			monitorPos.position.x = -1
+			monitorPos.position.x = -2.5
+			monitorPos.position.y = -1.5
 			monitorVel = new THREE.Mesh(
 				new THREE.PlaneGeometry(1, 1),
 				new THREE.ShaderMaterial({
@@ -399,13 +444,14 @@
 				})
 			)
 			monitorPos.position.x = -1
-			monitorVel.position.x = 1
-			scene.add(monitorPos, monitorVel)
+			monitorVel.position.x = -1
+			monitorVel.position.y = .5
+			scene.add(monitorPos,monitorVel)
 		}
 		function initInstancedMesh(data3d) {
-			const count = 3000; // Số lượng instance
+			const count = 2000; // Số lượng instance
 			const scale = 3.;
-			const geometry = new THREE.BoxGeometry(0.005, 0.005, 0.005);
+			const geometry = new THREE.BoxGeometry(0.005 * scale, 0.005 * scale, 0.005 * scale);
 
 			// Tạo mảng lưu trữ vị trí các điểm
 			const positions = new Float32Array(count * 3);
@@ -416,6 +462,7 @@
 				//emissive:0x3a2b82,
                 specular : 0x2c2a2a,
                 shininess: 100,
+				transparent:true
             });
             materialChunk.onBeforeCompile = (shader) => {
 				shader.uniforms.texturesdf = { value: textureSDF };
@@ -436,6 +483,7 @@
                 shader.vertexShader = `
 					attribute vec3 offset;
                    	varying vec2 vUv;
+					varying vec4 vPos;
 					uniform vec2 tSize;
 					uniform sampler2D posGpu;
 					uniform sampler2D velGpu;
@@ -448,42 +496,14 @@
 					uniform float u_sdfOutBoundForce;
 					uniform float u_sdfInBoundForce;
 					uniform float u_sdfThreshold;
-uniform float u_slice;
-					vec2 computeSliceOffset(float slice, vec4 sliceInfo) {
-						return sliceInfo.zw * vec2(mod(slice, sliceInfo.y), floor(slice * sliceInfo.z));
-					}
-					
-					vec4 sampleAs3DTexture(sampler2D tex, vec3 texCoord, vec4 sliceInfo) {
-					
-						float slice = texCoord.z * sliceInfo.x;
-						float sliceZ = floor(slice);
-
-						vec2 slice0Offset = computeSliceOffset(sliceZ, sliceInfo);
-						vec2 slice1Offset = computeSliceOffset(sliceZ + 1.0, sliceInfo);
-					
-						vec2 slicePixelSize = sliceInfo.zw / sliceInfo.x;
-					
-						vec2 uv = slicePixelSize * 0.5 + texCoord.xy * (sliceInfo.zw - slicePixelSize);
-						vec4 slice0Color = texture2D(tex, slice0Offset + uv);
-						vec4 slice1Color = texture2D(tex, slice1Offset + uv);
-						return mix(slice0Color, slice1Color, fract(slice));
-					//	return slice0Color;
-					}
+					uniform float u_slice;
                     ${shader.vertexShader} 
                 `.replace(
                     `#include <fog_vertex>`,
                     `#include <fog_vertex>
                   		
 						
-						vec3 pos = position *3. + offset;
-					
-						vec3 posCheck =vec3(pos.xy,u_slice * 0. + pos.z * 1.) - .5;
-						vec3 voxelTextureCoordOri = posCheck / u_sdfScale + u_sdfOffset;
-						vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 / u_sdfVoxelSize), vec3(1.0 - 0.5 / u_sdfVoxelSize));
-						vec4 distanceInfo = sampleAs3DTexture(texturesdf, voxelTextureCoord, u_sdfSliceInfo) * 2.0 - 1.0;
-
-						vec3 disOut = normalize(distanceInfo.xyz +pos) * distanceInfo.a;
-					
+						vec3 pos =  position * min(.8,abs(offset.x));
 
 						float id = float(gl_InstanceID);
 						vec2 uvT = vec2(
@@ -491,14 +511,25 @@ uniform float u_slice;
 										floor(id / tSize.x) / tSize.y  // Tính chỉ số hàng
 									);
 
-						vec3 posOfGpu = texture2D(posGpu, uvT).xyz; 
-
-
-						gl_Position = projectionMatrix * modelViewMatrix * vec4(posOfGpu.xyz + position, 1.0);
+						vec4 posOfGpu = texture2D(posGpu, uvT); 
+						pos += posOfGpu.xyz;
+						vPos = posOfGpu;
+						gl_Position = projectionMatrix * modelViewMatrix * vec4(pos * 5., 1.0);
 						vUv = uv; 
-
-                `);
-        
+                `,
+				shader.fragmentShader = `
+						varying vec2 vUv;
+						varying vec4 vPos;
+						${shader.fragmentShader} 
+				`.replace(
+					`#include <dithering_fragment>`,
+					`#include <dithering_fragment>
+						gl_FragColor = vec4(vec3(vPos) + outgoingLight, 1.);
+					`
+				),
+				console.log(shader.fragmentShader )
+			);
+						
 				matInstanced = shader;
             };
 
@@ -507,9 +538,9 @@ uniform float u_slice;
 
 			for (let i = 0; i < count; i++) {
 
-				offsets[i * 3 + 0] = Math.random()*2. - 1.; // X
-				offsets[i * 3 + 1] = Math.random()*2. - 1.; // Y
-				offsets[i * 3 + 2] = Math.random(); // Z
+				offsets[i * 3 + 0] = Math.random()+.1; // X
+				offsets[i * 3 + 1] = Math.random(); // Y
+				offsets[i * 3 + 2] = Math.random()+.1; // Z
 			}
 
 
@@ -677,16 +708,18 @@ uniform float u_slice;
 		}
 
 		function checksample3das2d(data3d){
-			const scalePlane = 2
+			const scalePlane = 1
 			const ratio = 8/16
 			const sizeSlice = 128
 			const countLayerW = 16
 			const countLayerH = 8
 			const plane = new THREE.PlaneGeometry(scalePlane,scalePlane)
+			let textureFormat = textureSDFCus
+			textureFormat.flipY = false
 			matCheckSampleas3d = new THREE.ShaderMaterial({
 				transparent:true,
 				uniforms:{
-					texture2d: {value:textureSDFCus},
+					texture2d: {value:textureFormat},
 					u_sdfOffset:{value :new THREE.Vector3(0.5000, 0.5000, 0.5000) },
 					u_sdfScale:{value : 1},
 					u_sdfVoxelSize:{value : 128},
@@ -723,6 +756,7 @@ uniform float u_slice;
 						vec2 slicePixelSize = sliceInfo.zw / sliceInfo.x;
 					
 						vec2 uv = slicePixelSize * 0.5 + texCoord.xy * (sliceInfo.zw - slicePixelSize);
+					
 						vec4 slice0Color = texture2D(tex, slice0Offset + uv);
 						vec4 slice1Color = texture2D(tex, slice1Offset + uv);
 						//return mix(slice0Color, slice1Color, fract(slice));
@@ -761,9 +795,10 @@ uniform float u_slice;
 						vec2 sliceInnerSize = slicePixelSize * (size - 1.0);  // space of size pixels
 
 						vec2 uv = slicePixelSize * 0.5 + texCoord.xy * sliceInnerSize;
+						//uv = vec2(uv.x,1.-uv.y);
 						vec4 slice0Color = texture2D(tex, slice0Offset + uv);
 						vec4 slice1Color = texture2D(tex, slice1Offset + uv);
-						return mix(slice0Color, slice1Color, zOffset);
+						//return mix(slice0Color, slice1Color, zOffset);
 						return slice0Color;
 					}
 					void main() {
@@ -786,7 +821,8 @@ uniform float u_slice;
 						//gl_FragColor = vec4(vec3(slice0OffsetCHeck.x),1.);
 
 						// check orgigin sampler3d
-				//	gl_FragColor = sampleAs3DTextureOrigin(texture2d,vec3(vUv,u_slice) ,128.,8.,16.);
+						vec4 finalSlice = sampleAs3DTextureOrigin(texture2d,vec3(vec2(vUv.x,vUv.y),u_slice) ,128.,8.,16.);
+					gl_FragColor = vec4(finalSlice.xyz,step(.36,1.-finalSlice.w));
 						
 					}
 				`
@@ -797,7 +833,7 @@ uniform float u_slice;
 		function initTexture() {
 
 			const img = new Image();
-			img.src = '/models/eisbar/sdf.png';
+			img.src = '/models/eisbar/sdfcus.png';
 			img.onload = () => {
 				const canvas = document.createElement('canvas');
 				const context = canvas.getContext('2d');
@@ -810,7 +846,7 @@ uniform float u_slice;
 				// Get image data
 				const imageData = context.getImageData(0, 0, img.width, img.height);
 				textureSDFData = imageData.data;
-
+			
 				const width3D = 128;
 				const height3D = 128;
 				const depth3D = 128;  // Tổng số ô (16 * 8 = 128)
@@ -917,8 +953,8 @@ uniform float u_slice;
 		}
 		function checkTextureData(data3dOut) {
 			const listSlice2D = []
-			const countFrom = 30
-			const countTo = 70
+			const countFrom = 3
+			const countTo = 4
 			for (let i = countFrom; i < countTo; i++) {
 				const squareWidth = 128;
 				const squareHeight = 128;
@@ -937,16 +973,16 @@ uniform float u_slice;
 						const index3D = ((sliceIndex * squareHeight + y) * squareHeight + x) * 4;
 
 
-						// data2D[index2D] = textureData3dOut[index3D];
-						// data2D[index2D + 1] = textureData3dOut[index3D + 1];
-						// data2D[index2D + 2] = textureData3dOut[index3D + 2];
-						// data2D[index2D + 3] = textureData3dOut[index3D + 3];
+						data2D[index2D] = data3dOut[index3D];
+						data2D[index2D + 1] = data3dOut[index3D + 1];
+						data2D[index2D + 2] = data3dOut[index3D + 2];
+						data2D[index2D + 3] = 1.;
 						// TInh truc tiep
 						// gl_FragColor = vec4(1.-mapcolor.xyz,step(.5,1.-mapcolor.a));
-						data2D[index2D] = 1. - data3dOut[index3D] * 2.;
-						data2D[index2D + 1] = 1. - data3dOut[index3D + 1] * 2.;
-						data2D[index2D + 2] = 1. - data3dOut[index3D + 2] * 2.;
-						data2D[index2D + 3] = 1. - data3dOut[index3D + 3] < .5 ? 0.03 : 1.;
+						// data2D[index2D] = 1. - data3dOut[index3D] * 2.;
+						// data2D[index2D + 1] = 1. - data3dOut[index3D + 1] * 2.;
+						// data2D[index2D + 2] = 1. - data3dOut[index3D + 2] * 2.;
+						// data2D[index2D + 3] = 1. - data3dOut[index3D + 3] < .5 ? 0.03 : 1.;
 
 					}
 				}
@@ -966,6 +1002,7 @@ uniform float u_slice;
 				let uu = 0
 				for (let oo = 0; oo < listSlice2D.length; oo++) {
 					uu++
+					listSlice2D[oo].flipY = true
 					const m1 = new THREE.Mesh(
 						new THREE.PlaneGeometry(1, 1),
 						new THREE.MeshBasicMaterial({ map: listSlice2D[oo], transparent: true, blending: THREE.NormalBlending, side: 2 })
@@ -1134,7 +1171,7 @@ u_sdfInBoundForce:.01,
 			}
 			const gui = new GUI();
 	
-			gui.add(parameters, 'u_holdGPGPU', 0, 5, .001).onChange(updatePropsPGPU);
+			gui.add(parameters, 'u_holdGPGPU', 0, 0.05, .0001).onChange(updatePropsPGPU);
 			gui.add(parameters, 'u_sdfThreshold', 0, .05, .001).onChange(updatePropsPGPU);
 			gui.add(parameters, 'u_sdfOutBoundForce', 0, .1, .001).onChange(updatePropsPGPU);
 			gui.add(parameters, 'u_sdfInBoundForce', 0, .01, .001).onChange(updatePropsPGPU);
@@ -1148,7 +1185,7 @@ u_sdfInBoundForce:.01,
 				matCheckSampleas3d.uniforms.u_slice.value = parameters.u_slice
 				matInstanced.uniforms.u_slice.value = parameters.u_slice
 			}
-			gui.add(parameters, 'u_slice', -1, 1, .001).onChange(updateSample3das2d);
+			gui.add(parameters, 'u_slice', 0/128, 1, 0.001).onChange(updateSample3das2d);
 		}
 
 		function animate() {
@@ -1192,8 +1229,8 @@ u_sdfInBoundForce:.01,
 				matInstanced.uniforms.posGpu.value = texturePosOut
 				matInstanced.uniforms.velGpu.value = textureVelOut
 			}
-			if (monitorPos && monitorPos.material) monitorPos.material.uniforms.tex.value = texturePosOut
-			if (monitorVel && monitorVel.material) monitorVel.material.uniforms.tex.value = textureVelOut
+		//	if (monitorPos && monitorPos.material) monitorPos.material.uniforms.tex.value = texturePosOut
+			if (monitorVel && monitorVel.material) monitorVel.material.uniforms.tex.value = texturePosOut
 
 		}
 
