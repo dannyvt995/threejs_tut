@@ -87,7 +87,7 @@
         const params = {
 
             gpuGeneration: false, // worker chưa hoạt động
-            resolution: 64,
+            resolution: 9,
             margin: 0.2,
             regenerate: () => updateSDF(),
 
@@ -145,7 +145,7 @@
             sdfTex.minFilter = THREE.LinearFilter;
             sdfTex.magFilter = THREE.LinearFilter;
             sdfTex.needsUpdate = true;
-            console.log("sdfTex config", sdfTex, "Total", sdfTex.source.data, "sizeXYZ", sdfTex.source.data.width)
+            console.log("sdfTex type", " THREE.RedFormat , THREE.FloatType","sdfTex config", sdfTex, "Total", sdfTex.source.data, "sizeXYZ", sdfTex.source.data.width)
         }
 
         init();
@@ -237,7 +237,7 @@
                                 
                         
                                 let bfd = child.clone()
-                            
+                                console.log(bfd)
                                 listM.push(bfd)
                             }
                         }
@@ -269,6 +269,7 @@
                         mixer = new THREE.AnimationMixer(model);
 
                         animationAction = mixer.clipAction(animations[0]);
+                        animationAction.timeScale = 0.5;
                         animationAction.play();
                         animationAction.paused = params.pause;
 
@@ -300,7 +301,7 @@
             //     scene.add(a)
             // }
             rebuildGUI();
-          //  initInstancedMesh(sdfTex)
+           initInstancedMesh(sdfTex)
             window.addEventListener('resize', function () {
 
                 camera.aspect = window.innerWidth / window.innerHeight;
@@ -422,7 +423,7 @@
                     meshHelper.geometry.boundsTree.refit();
 
          
-                  if(/* countTriggle % 100 === 0 */ countTriggle === 5)  {
+                  if( countTriggle % 3 === 0 || 1===1 )  {
 
                     if (!params.gpuGeneration) {
                         // create a new 3d data texture
@@ -466,38 +467,7 @@
                             }
 
                         }
-                        // const gradientData = new Float32Array(dim ** 3 ); 
-                        // for (let x = 0; x < dim; x++) {
-                        //     for (let y = 0; y < dim; y++) {
-                        //         for (let z = 0; z < dim; z++) {
-                        //             const index = x + y * dim + z * dim * dim; // Tính chỉ số cho SDF
-
-                        //             // Tính toán gradient cho voxel tại (x, y, z)
-                        //             const sdfRight = sdfTex.image.data[(x + 1) + y * dim + z * dim * dim] || 0; // SDF bên phải
-                        //             const sdfLeft = sdfTex.image.data[(x - 1) + y * dim + z * dim * dim] || 0; // SDF bên trái
-                        //             const sdfUp = sdfTex.image.data[x + (y + 1) * dim + z * dim * dim] || 0; // SDF bên trên
-                        //             const sdfDown = sdfTex.image.data[x + (y - 1) * dim + z * dim * dim] || 0; // SDF bên dưới
-                        //             const sdfFront = sdfTex.image.data[x + y * dim + (z + 1) * dim * dim] || 0; // SDF phía trước
-                        //             const sdfBack = sdfTex.image.data[x + y * dim + (z - 1) * dim * dim] || 0; // SDF phía sau
-
-                        //             // Tính toán gradient
-                        //             const gradX = (sdfRight - sdfLeft) * 0.5;
-                        //             const gradY = (sdfUp - sdfDown) * 0.5;
-                        //             const gradZ = (sdfFront - sdfBack) * 0.5;
-
-                        //             // Lưu gradient vào mảng
-                        //             const gradIndex = index * 3; // Tính chỉ số cho gradient
-                        //             gradientData[gradIndex] = gradX;
-                        //             gradientData[gradIndex + 1] = gradY;
-                        //             gradientData[gradIndex + 2] = gradZ;
-                        //         }
-                        //     }
-                        // }
-
-                        // // Cập nhật dữ liệu gradient vào sdfTex
-                        // sdfTex.image.data = gradientData;
-                        // sdfTex.needsUpdate = true;
-
+                        
                         console.timeEnd()
                     }
                   }
@@ -570,12 +540,12 @@
             if (params.mode === 'layer') {
 
                 displayFolder.add(params, 'layer', 0, params.resolution, 1);
-
+                displayFolder.add(params, 'surface', - 0.2, 0.5);
             }
 
             if (params.mode === 'raymarching') {
 
-                displayFolder.add(params, 'surface', - 0.2, 0.5);
+        
 
             }
 
@@ -678,8 +648,8 @@
 
         function initInstancedMesh(data3d) {
             console.log(data3d)
-            const count = 3000; // Số lượng instance
-            const geometry = new THREE.BoxGeometry(0.005, 0.005, 0.005);
+            const count = 10000; // Số lượng instance
+            const geometry = new THREE.BoxGeometry(0.008, 0.008, 0.008);
 
             // Tạo mảng lưu trữ vị trí các điểm
             const positions = new Float32Array(count * 3);
@@ -702,6 +672,7 @@
                 shader.vertexShader = `
 					attribute vec3 offset;
                    	varying vec2 vUv;
+                             	varying float distance;
 					uniform vec2 tSize;
                     	uniform vec2 uTexelSize;
 					uniform sampler2D posGpu;
@@ -732,19 +703,35 @@
 										mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
 										floor(id / tSize.x) / tSize.y  // Tính chỉ số hàng
 									);
-                        vec3 posSelf = position + offset *.9;
+                        vec3 posSelf = position + offset * 1.;
 
                     
-                        vec3 dis =  texture(texture3DSDF,vec3(posSelf)).rgb;
-              
-                       posSelf += dis;
+                        float dis =  texture(texture3DSDF,vec3(posSelf)).r;
+              distance = dis;
+               
 
 
 						gl_Position = projectionMatrix * modelViewMatrix * vec4(posSelf, 1.0);
 						vUv = uv; // Truyền UV đến fragment shader
 
-                `);
-
+                `,
+                shader.fragmentShader = `
+                       varying float distance; 
+                        ${shader.fragmentShader} 
+                `.replace(`#include <envmap_fragment>`,
+                    `
+                    #include <envmap_fragment>
+               
+                        if(distance <.5) {
+                            outgoingLight = vec3(.2,.5,.7);
+                        }else{
+                        
+                        }
+                    `
+                )
+            );
+                
+                        console.log(shader.fragmentShader)
                 matInstanced = shader;
             };
 
@@ -872,33 +859,25 @@
 
                     renderer.setRenderTarget(null)
                     // layerPass.render(renderer);
-                     renderer.render(sceneFbo, camFbo);
-
-                } else if (params.mode === 'raymarching' ) {
-
-                    // render the ray marched texture
+                     //renderer.render(sceneFbo, camFbo);
+                   // render the ray marched texture
                     camera.updateMatrixWorld();
-                    meshSampleSdf.updateMatrixWorld();
-                 
-                    let tex;
-                    if (sdfTex.isData3DTexture) {
-                     
-                        tex = sdfTex;
-
-                    } else {
-                   
-                        tex = sdfTex.texture;
-
-                    }
-                
+                    if(meshSampleSdf) meshSampleSdf.updateMatrixWorld();
                     const { width, depth, height } = tex.image;
                     raymarchPass.material.uniforms.sdfTex.value = tex;
                     raymarchPass.material.uniforms.normalStep.value.set(1 / width, 1 / height, 1 / depth);
                     raymarchPass.material.uniforms.surface.value = params.surface;
                     raymarchPass.material.uniforms.projectionInverse.value.copy(camera.projectionMatrixInverse);
-                    raymarchPass.material.uniforms.sdfTransformInverse.value.copy(meshSampleSdf.matrixWorld).invert().premultiply(inverseBoundsMatrix).multiply(camera.matrixWorld);
-
+                    if(meshSampleSdf)  raymarchPass.material.uniforms.sdfTransformInverse.value.copy(meshSampleSdf.matrixWorld).invert().premultiply(inverseBoundsMatrix).multiply(camera.matrixWorld);
+              
                     raymarchPass.render(renderer);
+
+                    renderer.setRenderTarget(null)
+                    renderer.render(scene, camera);
+             
+                } else if (params.mode === 'raymarching' ) {
+
+                   
 
                 }
             } else {

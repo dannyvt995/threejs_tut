@@ -97,10 +97,10 @@ export class RenderSDFLayerMaterial extends ShaderMaterial {
 
 
 
-					vec3 infoOrigin = texture( sdfTex, vec3( frac, zLayer ) ).rgb;
-					gl_FragColor.rgb = step(.02,infoOrigin);
-					gl_FragColor.rgb = infoOrigin;
-					gl_FragColor.a = 1.0;
+					// vec3 infoOrigin = texture( sdfTex, vec3( frac, zLayer ) ).rgb;
+					// gl_FragColor.rgb = step(.02,infoOrigin);
+					// gl_FragColor.rgb = infoOrigin;
+					// gl_FragColor.a = 1.0;
 
 
 

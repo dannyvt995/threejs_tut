@@ -8,7 +8,7 @@ export class RayMarchSDFMaterial extends ShaderMaterial {
 
 			defines: {
 
-				MAX_STEPS: 500,
+				MAX_STEPS: 128,
 				SURFACE_EPSILON: 0.001,
 
 			},
