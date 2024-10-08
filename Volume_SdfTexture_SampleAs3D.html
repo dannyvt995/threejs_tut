@@ -175,7 +175,7 @@
             vec3 posSelf = tmpPos.xyz;
             vec3 velSelf = texture2D( textureVelocity, uv ).xyz;
 
-			posSelf += velSelf * .5 ;
+			posSelf += velSelf * .05 ;
 			
 			gl_FragColor = vec4(  posSelf, 1.  );
 
@@ -189,12 +189,24 @@
         uniform float delta;
 		uniform vec2 fuildForce;
 		uniform vec2 mousePos;
+		uniform vec3 u_random;
 		uniform vec3 positionForShootDecal;
 		
 		uniform sampler2D u_sdfTexture;
 		uniform sampler3D texture3DSDF;
 		uniform float u_holdGPGPU;
 		uniform sampler2D uFuild;
+
+
+		uniform float u_sdfScale;
+		uniform vec3 u_sdfOffset;
+		uniform float u_sdfVoxelSize;
+		uniform vec4 u_sdfSliceInfo;
+		uniform float u_sdfOutBoundForce;
+		uniform float u_sdfInBoundForce;
+		uniform float u_sdfThreshold;
+
+
 		vec4 mod289(vec4 x) {
 			return x - floor(x * (1.0 / 289.0)) * 289.0;
 		}
@@ -385,45 +397,37 @@
 		
 
 
-			//velSelf.xyz += curl((posSelf.xyz+ velSelf.xyz) * 2., time*.5, 0.02) * .0008;
+			velSelf.xyz += curl((posSelf.xyz + velSelf.xyz + u_random*.2) * 2., time*.5, 0.2) * .0008;
 			posSelf += velSelf;
 
 			vec3 posFuild = texture2D(uFuild,posSelf.xy + .5).xyz;
 			posFuild = SimpleSim(posFuild.xy);
 			
 
-			vec4 sdf3d = texture(texture3DSDF, posSelf + .5);
+	
+
+
+			vec3 voxelTextureCoordOri = posSelf.xyz / u_sdfScale + u_sdfOffset ;
+ 			vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 / u_sdfVoxelSize), vec3(1.0 - 0.5 / u_sdfVoxelSize));
+		
+			vec4 distanceInfo = sampleAs3DTextureOrigin(u_sdfTexture, vec3(voxelTextureCoord.xy,min(0.995,voxelTextureCoord.z)) , 128.,8.,16.);
+			vec4 distanceInfoFormat = distanceInfo * 2. - 1.;
+			vec3 offSDF = step(vec3(0.001), abs(voxelTextureCoordOri - voxelTextureCoord));
+			//distanceInfoFormat.a = sign(distanceInfoFormat.a) * max(abs(distanceInfoFormat.a), length(posSelf.xyz) * step(0.5, offSDF.x + offSDF.y + offSDF.z));
+
+		
+
+			vec4 sdf3d = texture(texture3DSDF, voxelTextureCoord);
 			vec4 sdf3dFormat = sdf3d * 2. - 1.;
 
-			vec4 distanceInfo = sampleAs3DTextureOrigin(u_sdfTexture, posSelf + .5, 128.,8.,16.);
-			vec4 distanceInfoFormat = distanceInfo * 2. - 1.;
-
-		
-			vec2 dirMouse = normalize(vec2(mousePos.x, mousePos.y));
-
-
-			float distanceShoot = distance(positionForShootDecal,posSelf);
-
-		
 			if(sdf3dFormat.w < 1.2) {
-				vec3 disSDF = normalize(sdf3dFormat.xyz + posSelf) * (-sdf3dFormat.w * u_holdGPGPU);
-
+				//vec3 disSDF = normalize(sdf3dFormat.xyz + posSelf) * (-sdf3dFormat.w * u_holdGPGPU);
+				vec3 disSDF = normalize(distanceInfoFormat.xyz + posSelf) * ( - distanceInfoFormat.w * u_holdGPGPU);
 				
-				vec3 targetSDF =  disSDF * .3;
-				vec3 targetShoot = vec3(0.);
-			
-				if(distanceShoot < .1) {
 
-					
-				}
-				velSelf +=  mix(disSDF * .5,posFuild * atan(mousePos.x,mousePos.y) * 2.7  ,min(.5,fuildForce.x) * 0.) ;  
+				velSelf +=  disSDF * .15;  
 
-
-			}else{
-						
 			}
-	
-		
 			gl_FragColor = vec4( velSelf,1.);
 
         }
@@ -465,7 +469,7 @@
 		let delta, time, lastTime
 		let materialChunkModel
 		let gpuCompute
-		let widthTexture = 128
+		let widthTexture = 256
 		let velocityVariable, positionVariable, extraVariable
 		let positionUniforms, velocityUniforms, extraUniforms
 		let targetMonitor, monitorPos, monitorVel, sceneMonitor, cameraMonitor
@@ -498,7 +502,7 @@
 			}
 		});
 
-		const countInstancedMesh = 200
+		const countInstancedMesh = Math.abs(widthTexture * widthTexture * .01)
 		let savePtsFatline
 		const instCount = countInstancedMesh;
 		const verticesPerInstance = 72;
@@ -623,7 +627,7 @@
 			positionUniforms['texture3DSDF'] = { value: data3d };
 			velocityUniforms['texture3DSDF'] = { value: data3d };
 			velocityUniforms['u_holdGPGPU'] = { value: 0.5 };
-
+			velocityUniforms['u_random'] = { value:  new THREE.Vector3(0, 0 , 0) };
 
 			velocityUniforms['uFuild'] = { value: simulation.fbos.vel_0.texture };
 			positionUniforms['uFuild'] = { value: simulation.fbos.vel_0.texture };
@@ -634,7 +638,47 @@
 			velocityUniforms['positionForShootDecal'] = { value: new THREE.Vector3(0, 0, 0) };
 			positionUniforms['positionForShootDecal'] = { value: new THREE.Vector3(0, 0, 0) };
 
-			velocityUniforms['u_sdfTexture']= { value: textureSDF };
+
+			velocityUniforms['u_sdfOffset'] = { value: new THREE.Vector3(0.5000, 0.5000, 0.5000) };
+			velocityUniforms['u_sdfScale'] = { value: 1 };
+			velocityUniforms['u_sdfVoxelSize'] = { value: 128 };
+			velocityUniforms['u_sdfSliceInfo'] = { value: new THREE.Vector4(128, 16, 0.0625, 0.1250) };
+			velocityUniforms['u_sdfThreshold'] = { value: .05 };
+			velocityUniforms['u_sdfOutBoundForce'] = { value: .1 };
+			velocityUniforms['u_sdfInBoundForce'] = { value: .01 };
+
+			positionUniforms['u_sdfOffset'] = { value: new THREE.Vector3(0.5000, 0.5000, 0.5000) };
+			positionUniforms['u_sdfScale'] = { value: 1 };
+			positionUniforms['u_sdfVoxelSize'] = { value: 128 };
+			positionUniforms['u_sdfSliceInfo'] = { value: new THREE.Vector4(128, 16, 0.0625, 0.1250) };
+			positionUniforms['u_sdfThreshold'] = { value: .05 };
+			positionUniforms['u_sdfOutBoundForce'] = { value: .1 };
+			positionUniforms['u_sdfInBoundForce'] = { value: .01 };
+	
+
+			function initDatasdfCOCO(dataOriFromImg) {
+				const width = 128*16;
+				const height = 128*8;
+
+				const size = width * height;
+				const data = new Float32Array(width * height * 4)
+				for ( let i = 0; i < size; i ++ ) {
+					const stride = i * 4;
+					data[ stride ] = dataOriFromImg[ stride ] / 255;
+					data[ stride + 1 ] = dataOriFromImg[ stride +1] / 255;
+					data[ stride + 2 ] = dataOriFromImg[ stride +2] / 255;
+					data[ stride + 3 ] = dataOriFromImg[ stride +3] / 255;
+				}
+
+				// used the buffer to create a DataTexture
+				const texture = new THREE.DataTexture( data, width, height,THREE.RGBAFormat,THREE.FloatType );
+				texture.needsUpdate = true;
+				return texture
+			}
+			const ddddd = initDatasdfCOCO(textureSDFData)
+			
+			positionUniforms['u_sdfTexture'] = { value: ddddd };
+			velocityUniforms['u_sdfTexture']= { value: ddddd };
 			
 			const error = gpuCompute.init();
 
@@ -672,7 +716,7 @@
 
 			initTexture()
 			initMonitor()
-		//	initModel()
+		initModel()
 
 			initMeshTrail()
 			window.addEventListener('resize', onWindowResize);
@@ -793,7 +837,7 @@
 
 			scene.add(meshCheckMeshTrail)
 			dataTextureFatline = new InstDataTexture(verticesPerInstance, instCount);
-			initFatLine()
+			 initFatLine()
 
 		}
 
@@ -989,7 +1033,7 @@
 				colors.push(color.r, color.g, color.b);
 			}
 
-			scene.add(cInstancedMesh);
+			//scene.add(cInstancedMesh);
 
 		}
 
@@ -1217,7 +1261,9 @@
 				pixelBuffer
 			);
 			cc += .5
-			 updateMeshTrail(pixelBuffer)
+			updateMeshTrail(pixelBuffer)
+
+			if(cc%30 === 0) velocityUniforms["u_random"].value = new THREE.Vector3(Math.random(),Math.random(),Math.random())
 			
 			sphereSample.position.set(pixelBuffer[0], pixelBuffer[1], pixelBuffer[2])
 			Renderer.renderer.setRenderTarget(null);
