@@ -139,7 +139,7 @@ export class RayMarchSDFMaterial extends ShaderMaterial {
 								saturate( dot( normal, lightDirection ) ) +
 								saturate( dot( normal, - lightDirection ) ) * 0.05 +
 								0.1;
-							gl_FragColor.rgb = vec3( lightIntensity );
+							gl_FragColor.rgb = vec3( normal );
 							gl_FragColor.a = 1.0;
 
 						}

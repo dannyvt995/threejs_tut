@@ -58,7 +58,7 @@ export class RenderSDFLayerMaterial extends ShaderMaterial {
 
 					 // Get gradient base sdf
 				
-					vec3 texelSize = vec3(uTexelSize, 1./64.); 
+					vec3 texelSize = vec3(uTexelSize,uTexelSize.x); 
 
 					float sdfRight = texture(sdfTex, vec3(frac + vec2(texelSize.x, 0.0), zLayer)).r;
 					float sdfLeft  = texture(sdfTex, vec3(frac - vec2(texelSize.x, 0.0), zLayer)).r;
@@ -82,18 +82,19 @@ export class RenderSDFLayerMaterial extends ShaderMaterial {
 			
 
 					vec3 outGradient2 = vec3(gradient * 0.5 + 0.5);
-					outGradient2.r = outGradient2.r * 0.7; // Giảm màu đỏ xuống 50%
-					outGradient2.g = outGradient2.g * 1.2; // Tăng màu xanh lá cây lên 150%
-					outGradient2.b = outGradient2.b * 1.2; // Tăng màu xanh dương lên 150%
+					outGradient2.r = outGradient2.r * 0.6; // Giảm màu đỏ xuống 50%
+					outGradient2.g = outGradient2.g * 1.1; // Tăng màu xanh lá cây lên 150%
+					outGradient2.b = outGradient2.b * 1.1; // Tăng màu xanh dương lên 150%
+
 
 					// Đảm bảo không vượt quá 1.0
 					outGradient2 = pow(outGradient2, vec3(1.5)); 
 					outGradient2 = clamp(outGradient2, 0.0, 1.0);
 
-					gl_FragColor = vec4(outGradient2, 1.);
-					// gl_FragColor = vec4(outGradient2,1.- dist);
-					// gl_FragColor = vec4(step(.2,vec3(dist)), dist + .5);
-
+					gl_FragColor = vec4(outGradient2, step(.95,1.-dist));
+					gl_FragColor = vec4(gradient *.5+.5,1. );
+gl_FragColor = vec4(dist);
+// gl_FragColor = vec4(vec3(dist),step(.4,1.-dist));
 
 
 
@@ -113,7 +114,7 @@ export class RenderSDFLayerMaterial extends ShaderMaterial {
 
 					 // Get gradient base sdf
 		
-					vec3 texelSize = vec3(uTexelSize, 1./64.); 
+					vec3 texelSize = vec3(uTexelSize,uTexelSize.x); 
 
 
 					vec2 clampedUV1 = clamp(vUv + vec2(texelSize.x, 0.0), 0.0, 1.);

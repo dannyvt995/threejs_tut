@@ -381,7 +381,7 @@
 				vec2 sliceInnerSize = slicePixelSize * (size - 1.0);  // space of size pixels
 
 				vec2 uv = slicePixelSize * 0.5 + texCoord.xy * sliceInnerSize;
-				//uv = vec2(uv.x,1.-uv.y);
+			
 				vec4 slice0Color = texture2D(tex, slice0Offset + uv);
 				vec4 slice1Color = texture2D(tex, slice1Offset + uv);
 				return mix(slice0Color, slice1Color, zOffset);
@@ -425,7 +425,7 @@
 				vec3 disSDF = normalize(distanceInfoFormat.xyz + posSelf) * ( - distanceInfoFormat.w * u_holdGPGPU);
 				
 
-				velSelf +=  disSDF * .15;  
+				velSelf +=  disSDF * .1;  
 
 			}
 			gl_FragColor = vec4( velSelf,1.);
@@ -460,16 +460,34 @@
 		import { LineSegments2 } from 'three/addonsmore/lines/LineSegments2.js';
 		import { LineSegmentsGeometry } from 'three/addonsmore/lines/LineSegmentsGeometry.js';
 
-
+		import {
+			EffectComposer
+		} from "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/postprocessing/EffectComposer.js";
+		import {
+			RenderPass
+		} from "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/postprocessing/RenderPass.js";
+		import {
+			ShaderPass
+		} from "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/postprocessing/ShaderPass.js";
+		import {
+			OutputPass
+		} from "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/postprocessing/OutputPass.js";
+		import {
+			UnrealBloomPass
+		} from "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+		import {
+			RGBELoader
+		} from "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/loaders/RGBELoader.js";
 
 		let renderer, scene, camera, stats, raycaster, mouseHelper, meshToRay, lineRaySample, currentTime;
+		let composer, bloomPass;
 
 		let mesh, texturedd, dataTexture3D, dataTexture3DSample, materialCube, textureData3dOut, matModel
 		let meshLayer, matPoint, matInstanced
 		let delta, time, lastTime
 		let materialChunkModel
 		let gpuCompute
-		let widthTexture = 256
+		let widthTexture = 128
 		let velocityVariable, positionVariable, extraVariable
 		let positionUniforms, velocityUniforms, extraUniforms
 		let targetMonitor, monitorPos, monitorVel, sceneMonitor, cameraMonitor
@@ -502,13 +520,61 @@
 			}
 		});
 
-		const countInstancedMesh = Math.abs(widthTexture * widthTexture * .01)
+		const countInstancedMesh = Math.abs(widthTexture * widthTexture * .04)
 		let savePtsFatline
 		const instCount = countInstancedMesh;
 		const verticesPerInstance = 72;
 		let dataTextureFatline, meshCheckMeshTrail
 		let ListcurvesOfFatLine = [];
 		const sizeTextureFatLine = 2000
+
+		const optionsMaterialReflec = {
+			enableSwoopingCamera: false,
+			enableRotation: true,
+			transmission: 1,
+			thickness: 0.08,
+			roughness: 0.23,
+			envMapIntensity: 0,
+			clearcoat: 1,
+			clearcoatRoughness: 0.1,
+			normalScale: 1,
+			clearcoatNormalScale: 0.3,
+			normalRepeat: 1,
+		};
+		const paramsComposer = {
+			threshold: 0,
+			strength: .36,
+			radius: 1,
+			exposure: 1
+		};
+
+		const hdrEquirect = new RGBELoader().load(
+			"./hdr/empty_warehouse_01_2k.hdr",
+			() => {
+				hdrEquirect.mapping = THREE.EquirectangularReflectionMapping;
+			}
+		);
+		const normalMapTexture = new THREE.TextureLoader().load("textures/normal.jpg");
+		normalMapTexture.wrapS = THREE.RepeatWrapping;
+		normalMapTexture.wrapT = THREE.RepeatWrapping;
+		normalMapTexture.repeat.set(optionsMaterialReflec.normalRepeat, optionsMaterialReflec.normalRepeat);
+
+		const materialReflect = new THREE.MeshPhysicalMaterial({
+		
+			transmission: optionsMaterialReflec.transmission,
+			thickness: optionsMaterialReflec.thickness,
+			roughness: optionsMaterialReflec.roughness,
+			envMap: hdrEquirect,
+			envMapIntensity: optionsMaterialReflec.envMapIntensity,
+			clearcoat: optionsMaterialReflec.clearcoat,
+			clearcoatRoughness: optionsMaterialReflec.clearcoatRoughness,
+			normalScale: new THREE.Vector2(optionsMaterialReflec.normalScale),
+			normalMap: normalMapTexture,
+			clearcoatNormalMap: normalMapTexture,
+			clearcoatNormalScale: new THREE.Vector2(optionsMaterialReflec.clearcoatNormalScale),
+		});
+
+
 
 		class InstDataTexture extends THREE.DataTexture {
 			constructor(verticesPerInstance, instanceCount) {
@@ -627,7 +693,7 @@
 			positionUniforms['texture3DSDF'] = { value: data3d };
 			velocityUniforms['texture3DSDF'] = { value: data3d };
 			velocityUniforms['u_holdGPGPU'] = { value: 0.5 };
-			velocityUniforms['u_random'] = { value:  new THREE.Vector3(0, 0 , 0) };
+			velocityUniforms['u_random'] = { value: new THREE.Vector3(0, 0, 0) };
 
 			velocityUniforms['uFuild'] = { value: simulation.fbos.vel_0.texture };
 			positionUniforms['uFuild'] = { value: simulation.fbos.vel_0.texture };
@@ -654,32 +720,32 @@
 			positionUniforms['u_sdfThreshold'] = { value: .05 };
 			positionUniforms['u_sdfOutBoundForce'] = { value: .1 };
 			positionUniforms['u_sdfInBoundForce'] = { value: .01 };
-	
+
 
 			function initDatasdfCOCO(dataOriFromImg) {
-				const width = 128*16;
-				const height = 128*8;
+				const width = 128 * 16;
+				const height = 128 * 8;
 
 				const size = width * height;
 				const data = new Float32Array(width * height * 4)
-				for ( let i = 0; i < size; i ++ ) {
+				for (let i = 0; i < size; i++) {
 					const stride = i * 4;
-					data[ stride ] = dataOriFromImg[ stride ] / 255;
-					data[ stride + 1 ] = dataOriFromImg[ stride +1] / 255;
-					data[ stride + 2 ] = dataOriFromImg[ stride +2] / 255;
-					data[ stride + 3 ] = dataOriFromImg[ stride +3] / 255;
+					data[stride] = dataOriFromImg[stride] / 255;
+					data[stride + 1] = dataOriFromImg[stride + 1] / 255;
+					data[stride + 2] = dataOriFromImg[stride + 2] / 255;
+					data[stride + 3] = dataOriFromImg[stride + 3] / 255;
 				}
 
 				// used the buffer to create a DataTexture
-				const texture = new THREE.DataTexture( data, width, height,THREE.RGBAFormat,THREE.FloatType );
+				const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
 				texture.needsUpdate = true;
 				return texture
 			}
 			const ddddd = initDatasdfCOCO(textureSDFData)
-			
+
 			positionUniforms['u_sdfTexture'] = { value: ddddd };
-			velocityUniforms['u_sdfTexture']= { value: ddddd };
-			
+			velocityUniforms['u_sdfTexture'] = { value: ddddd };
+
 			const error = gpuCompute.init();
 
 			if (error !== null) {
@@ -690,16 +756,71 @@
 
 		}
 
+		function initGui() {
+			const gui = new GUI();
 
+			const bloomFolder = gui.addFolder('bloom');
+
+			bloomFolder.add(paramsComposer, 'threshold', 0.0, 1.0).onChange(function (value) {
+
+				bloomPass.threshold = Number(value);
+
+			});
+
+			bloomFolder.add(paramsComposer, 'strength', 0.0, 3.0).onChange(function (value) {
+
+				bloomPass.strength = Number(value);
+
+			});
+
+			gui.add(paramsComposer, 'radius', 0.0, 1.0).step(0.01).onChange(function (value) {
+
+				bloomPass.radius = Number(value);
+
+			});
+
+
+			gui.add(optionsMaterialReflec, "transmission", 0, 1, 0.01).onChange((val) => {
+				materialReflect.transmission = val;
+			});
+
+			gui.add(optionsMaterialReflec, "thickness", 0, 5, 0.01).onChange((val) => {
+				materialReflect.thickness = val;
+			});
+
+			gui.add(optionsMaterialReflec, "roughness", 0, 1, 0.01).onChange((val) => {
+				materialReflect.roughness = val;
+			});
+
+			gui.add(optionsMaterialReflec, "envMapIntensity", 0, 3, 0.01).onChange((val) => {
+				materialReflect.envMapIntensity = val;
+			});
+
+			gui.add(optionsMaterialReflec, "clearcoat", 0, 1, 0.01).onChange((val) => {
+				materialReflect.clearcoat = val;
+			});
+
+			gui.add(optionsMaterialReflec, "clearcoatRoughness", 0, 1, 0.01).onChange((val) => {
+				materialReflect.clearcoatRoughness = val;
+			});
+
+			gui.add(optionsMaterialReflec, "normalScale", 0, 5, 0.01).onChange((val) => {
+				materialReflect.normalScale.set(val, val);
+			});
+
+			gui.add(optionsMaterialReflec, "clearcoatNormalScale", 0, 5, 0.01).onChange((val) => {
+				materialReflect.clearcoatNormalScale.set(val, val);
+			});
+		}
 		function initMain() {
 
 
 
 			scene = new THREE.Scene();
-			scene.background = new THREE.Color(0x525453)
+			scene.background = new THREE.Color(0x00000)
 			camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.001, 10000);
 
-			camera.position.set(0, 0, 3.5)
+			camera.position.set(0, 0, 6.5)
 
 
 			const controls = new OrbitControls(camera, Renderer.renderer.domElement);
@@ -707,25 +828,42 @@
 			const axesHelper = new THREE.AxesHelper(5);
 			//scene.add(axesHelper);
 			const light = new THREE.AmbientLight(0x404040); // soft white light
-			scene.add(light);
-			const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-			scene.add(directionalLight);
+		
+			const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+			scene.add(light,directionalLight);
 			stats = new Stats();
 			document.body.appendChild(stats.dom);
 
 
+			const renderScene = new RenderPass(scene, camera);
+
+			bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+			bloomPass.threshold = paramsComposer.threshold;
+			bloomPass.strength = paramsComposer.strength;
+			bloomPass.radius = paramsComposer.radius;
+
+			const outputPass = new OutputPass();
+
+			composer = new EffectComposer(Renderer.renderer);
+			composer.addPass(renderScene);
+			composer.addPass(bloomPass);
+			composer.addPass(outputPass);
+
+
+			initGui()
 			initTexture()
 			initMonitor()
-		initModel()
+			initModel()
 
 			initMeshTrail()
 			window.addEventListener('resize', onWindowResize);
 
 			sphereSample = new THREE.Mesh(
-				new THREE.SphereGeometry(.01, 16, 16),
+				new THREE.SphereGeometry(1.01, 16, 16),
 				new THREE.MeshBasicMaterial({ color: 'blue' })
 			)
-			scene.add(sphereSample)
+			sphereSample.position.z = -	10
+		//	scene.add(sphereSample)
 		}
 
 
@@ -772,12 +910,11 @@
 			let flg = new LineSegmentsGeometry();
 			flg.instanceCount = instCount * (verticesPerInstance + 1);
 			let flm = new LineMaterial({
-				linewidth: 0.015,
+				linewidth: 0.012,
 				worldUnits: true,
 				vertexColors: true,
 				// wireframe: true,
-				transparent:true,
-			  //alphaToCoverage: true,
+				//alphaToCoverage: true,
 				onBeforeCompile: shader => {
 					shader.uniforms.data = dt;
 					shader.uniforms.totalAmountPerInstance = dataTextureFatline.uniforms.totalAmountPerInstance;
@@ -819,12 +956,12 @@
                     vec4 start = modelViewMatrix * instStart;
                     vec4 end = modelViewMatrix * instEnd;`
 						);
-					 console.log(shader.fragmentShader);
+					console.log(shader.fragmentShader);
 				}
 			});
-		
+
 			let fl = new LineSegments2(flg, flm);
-		
+
 			scene.add(fl);
 		}
 
@@ -835,28 +972,28 @@
 				new THREE.MeshBasicMaterial({ map: null })
 			)
 
-			scene.add(meshCheckMeshTrail)
+			//scene.add(meshCheckMeshTrail)
 			dataTextureFatline = new InstDataTexture(verticesPerInstance, instCount);
-			 initFatLine()
+			initFatLine()
 
 		}
 
 
 		function updateMeshTrail(dataGpu) {
-			if (!dataGpu || dataGpu.length < 3) return; // Đảm bảo có dữ liệu
+			if (!dataGpu || dataGpu.length < 3) return; 
 
 
 			for (let i = 0; i < ListcurvesOfFatLine.length; i++) {
 
 
-				const index = i * 4; // Cập nhật chỉ số cho dataGpu
+				const index = i * 4; 
 
 				const newVector = new THREE.Vector3(dataGpu[index], dataGpu[index + 1], dataGpu[index + 2]);
-			
+
 				ListcurvesOfFatLine[i].unshift(newVector.clone().multiplyScalar(5.));
 				ListcurvesOfFatLine[i].pop()
 
-				dataTextureFatline.setDataAt(i, ListcurvesOfFatLine[i]); // Kiểm tra để đảm bảo setDataAt làm việc
+				dataTextureFatline.setDataAt(i, ListcurvesOfFatLine[i]);
 			}
 
 			dataTextureFatline.needsUpdate = true;
@@ -921,8 +1058,8 @@
 			const materialChunk = new THREE.MeshPhongMaterial({
 				color: 0xc5461b,
 				//emissive:0x3a2b82,
-				specular: 0x2c2a2a,
-				shininess: 100,
+				// specular: 0x2c2a2a,
+				// shininess: 100,
 			});
 			materialChunk.onBeforeCompile = (shader) => {
 				shader.uniforms.posGpu = { value: null };
@@ -1033,7 +1170,7 @@
 				colors.push(color.r, color.g, color.b);
 			}
 
-			//scene.add(cInstancedMesh);
+			scene.add(cInstancedMesh);
 
 		}
 
@@ -1118,15 +1255,16 @@
 
 
 
-				checkTextureData(textureData3dOut)
+				//	checkTextureData(textureData3dOut)
 
 				initComputeRenderer(Renderer.renderer, dataTexture3D)
-				initInstancedMesh(dataTexture3D)
+			//	initInstancedMesh(dataTexture3D)
 			};
 
 
 
 		}
+
 
 		function initModel() {
 			const loader = new OBJLoader();
@@ -1138,13 +1276,14 @@
 
 					m.scale.set(4.2, 4.4, 4.2)
 					m.position.y = -.01
-
+					m.position.x = .01
 					materialChunkModel = new THREE.MeshPhongMaterial({
-						color: 0xc2c2c2,
+						color: 0x00000,
 						shininess: 100,
+						flatShading: true,
 					});
 
-					m.children[0].material = materialChunkModel
+					m.children[0].material = materialReflect
 
 					scene.add(m);
 
@@ -1222,8 +1361,8 @@
 			}, 1000);
 
 			const mg = new THREE.Mesh(
-				new THREE.PlaneGeometry(2,2),
-				new THREE.MeshBasicMaterial({map:textureImg})
+				new THREE.PlaneGeometry(2, 2),
+				new THREE.MeshBasicMaterial({ map: textureImg })
 			)
 			mg.position.z = -1
 			groupSlice2D.add(mg)
@@ -1236,10 +1375,10 @@
 
 		let cc = 0
 		function animate() {
-		
-			Mouse.update();
+
+			//Mouse.update();
 			Renderer.update();
-			simulation.update()
+			//simulation.update()
 			currentTime = performance.now();
 			delta = (currentTime - lastTime) / 1000;
 			lastTime = currentTime;
@@ -1261,14 +1400,16 @@
 				pixelBuffer
 			);
 			cc += .5
-			updateMeshTrail(pixelBuffer)
+			if (dataTextureFatline) updateMeshTrail(pixelBuffer)
 
-			if(cc%30 === 0) velocityUniforms["u_random"].value = new THREE.Vector3(Math.random(),Math.random(),Math.random())
-			
-			sphereSample.position.set(pixelBuffer[0], pixelBuffer[1], pixelBuffer[2])
+			if (cc % 30 === 0) velocityUniforms["u_random"].value = new THREE.Vector3(Math.random(), Math.random(), Math.random())
+
+		//	sphereSample.position.set(pixelBuffer[0], pixelBuffer[1], pixelBuffer[2])
 			Renderer.renderer.setRenderTarget(null);
-			Renderer.renderer.render(scene, camera);
+		//	Renderer.renderer.render(scene, camera);
 			//	Renderer.renderer.render(sceneMonitor, cameraMonitor);
+
+				composer.render()
 
 		}
 
