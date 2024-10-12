@@ -1,6 +1,5 @@
 export const fragmentFbo = `
-layout(location = 0) out highp vec4 out1; // Đầu ra 1
-layout(location = 1) out highp vec4 out2; // Đầu ra 2
+
     uniform sampler2D tDiffuse;
     uniform sampler2D tPrev;
     uniform vec2 u_vel;
@@ -63,24 +62,23 @@ layout(location = 1) out highp vec4 out2; // Đầu ra 2
         velInv += noise*(lowData.z+lowData.w)*u_curlStrength;
 
 
-        vec4 data = texture2D(tPrev, vUv-u_scrollOffset+velInv*u_paintTexelSize);
+        vec4 data = texture2D(tDiffuse, vUv-u_scrollOffset+velInv*u_paintTexelSize);
 
-        data.xy -= 0.5;
+   //     data.xy -= 0.5;
    
         vec4 delta = (u_dissipations.xxyz-1.0)*data;
         vec2 newVel = u_vel*d;
-        delta += vec4(newVel, radiusWeight.yy*d);
-        delta.zw = sign(delta.zw)*max(vec2(0.004), abs(delta.zw));
-        data += delta;
-        data.xy += 0.5;
-        out1 = clamp(data , vec4(0.), vec4(1.0));
-        out2 = clamp(data , vec4(0.), vec4(1.0));
+    //    delta += vec4(newVel, radiusWeight.yy*d);
+     //   delta.zw = sign(delta.zw)*max(vec2(0.004), abs(delta.zw));
+     //   data += delta;
+     //   data.xy += 0.5;
+    
          vec4 view = data;
     
     //  gl_FragColor = color + (w2 + w1 + w3 + w4)*.1 ;
-    // gl_FragColor = vec4(vec3(1.,.3,.1) * data.xyz,1.);
+    gl_FragColor = data;
    // gl_FragColor = vec4(res.x,0.,0.,0.);
  
-//gl_FragColor = vec4(view.xyz,1.);
+//gl_FragColor = view;
     }
 `

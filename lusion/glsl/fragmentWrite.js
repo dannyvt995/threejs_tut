@@ -52,5 +52,6 @@ export const fragmentWrite = `
         float d = 1.0-smoothstep(-0.01, radiusWeight.x, res.x);
       
 gl_FragColor = vec4(vec3(d),1.);
+//gl_FragColor = vec4(1.,1.);
     }
 `

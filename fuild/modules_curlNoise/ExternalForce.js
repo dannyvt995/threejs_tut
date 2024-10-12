@@ -88,11 +88,11 @@ export default class ExternalForce extends ShaderPass{
         }else{
             sizeOut = props.cursor_size * speed
         }
-      uniforms.scale.value.set(sizeOut,sizeOut);
+      //uniforms.scale.value.set(sizeOut,sizeOut);
 
        
       uniforms.dir.value.set(deltaX, deltaY);
-      //uniforms.scale.value.set(props.cursor_size ,props.cursor_size );
+      uniforms.scale.value.set(props.cursor_size ,props.cursor_size );
         uniforms.time.value = Renderer.time
 
         this.lastMouseCoords = { x: Mouse.coords.x, y: Mouse.coords.y };
