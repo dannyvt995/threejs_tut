@@ -51,7 +51,8 @@
         uniform vec2 sizeView;
         uniform bool stopDelta;
         uniform bool start;
-
+        uniform mat4 projectionMatrix;
+        uniform mat4 viewMatrixOrbit;
 
         vec2 rotate(vec2 v, float a) {
             float s = sin(a);
@@ -80,43 +81,23 @@
 
             float life = tmpPos.w;
    
-            float maxYSet = 2.;
-            float activeOnYSet = 1.7;
-
-            if(posSelf.y > maxYSet) {
-                posSelf.y = -maxYSet;
-                
-            }
-         
-         
+          
         
-
-      
-            if (posSelf.y >= activeOnYSet && posSelf.y < maxYSet) {
-                life = 1.0 - ((posSelf.y - activeOnYSet) / 2.0);
-               
-
-            } else if (posSelf.y >= maxYSet) {
-                life = 0.0;
-                //posSelf.y = -maxYSet;
-            } else if (posSelf.y >= -maxYSet && posSelf.y < -activeOnYSet) {
-                life = (posSelf.y + maxYSet) / 2.0;
-            }
-        
-            float decreaseVel = 0.1;
+            float decreaseVel = 0.05;
             if(stopDelta) decreaseVel = 0.;
             posSelf   += velSelf * decreaseVel;
 
+            vec4 clipSpace = projectionMatrix * viewMatrixOrbit * vec4(posSelf, 1.0);
+ 
+            vec3 ndc = clipSpace.xyz / clipSpace.w;
+            vec2 uvPos = vec2(
+                ndc.x /.5 + 0.5,
+                ndc.y / .5 + 0.5
+            );
+            vec2 velFuild = texture2D(fuildMap,uvPos).xy;
 
-         
-         vec2 uvPos = vec2(
-            posSelf.x / sizeView.x + 0.5,
-            posSelf.y / sizeView.y + 0.5
-         );
-         vec2 velFuild = texture2D(fuildMap,uvPos).xy;
 
-
-       posSelf += vec3(velFuild.x,velFuild.y,0.)  * 7.;
+            posSelf += vec3(velFuild.x,velFuild.y,0.)  * 12.;
     
 
          
@@ -128,15 +109,15 @@
 
             if(posSelf.x > 1.) {
                 posSelf = vec3(random(posSelf.xy),-sizeView.y,0.);
-                }else if(posSelf.x < - 1.) {
+                }else if(posSelf.x < - sizeView.y) {
                     posSelf = vec3(-random(posSelf.zy),-sizeView.y,0.);
                 }
 
 
-                if(posSelf.z > 1.) {
-                    posSelf.z = 0.;
-                    }else if(posSelf.z < -1.) {
-                        posSelf.z = 0.;
+                if(posSelf.z > sizeView.y) {
+                    posSelf = vec3(-random(posSelf.zy),-sizeView.y,0.);
+                    }else if(posSelf.z < -sizeView.y) {
+                        posSelf = vec3(-random(posSelf.zy),-sizeView.y,0.);
                     }
 
                 
@@ -323,7 +304,7 @@
 
     import {curl4Noise} from './glsl/curl4Noise.js'
  
-    let controlsMain
+    let controlsMain,sceneFbo,camFbo
     //GPGPU
     let gpuCompute
     let widthTexture = 258
@@ -387,10 +368,10 @@
         positionUniforms['stopDelta'] = {value : false}
         velocityUniforms['stopDelta'] = { value: false };
 
-        
+
         positionUniforms['forceMouse'] = { value: 0.0 };
         positionUniforms['projectionMatrix'] = { value: new THREE.Matrix4() };
-        positionUniforms['viewMatrix'] = { value: new THREE.Matrix4()};
+        positionUniforms['viewMatrixOrbit'] = { value: new THREE.Matrix4()};
         const error = gpuCompute.init();
 
         if (error !== null) {
@@ -472,13 +453,13 @@
    const axesHelper = new THREE.AxesHelper( 5 );
    scene.add( axesHelper );
     const [widthFit, heightFit] = calcSizeFitCamPerspective(camera)
-    positionUniforms['sizeView'] = { value: new THREE.Vector2(widthFit, heightFit) };
-    scene.add(
-        new THREE.Mesh(
-            new THREE.BoxGeometry(2,2,2,16,16,16),
-            new THREE.MeshBasicMaterial({color:'blue',opacity:.1,transparent:true,wireframe:true})
-        )
-    )
+    positionUniforms['sizeView'] = { value: new THREE.Vector2(1, 1) };
+    // scene.add(
+    //     new THREE.Mesh(
+    //         new THREE.BoxGeometry(1,1,1,16,16,16),
+    //         new THREE.MeshPhongMaterial({color:'blue',opacity:.5,transparent:true,wireframe:false})
+    //     )
+    // )
     const simulation = new Simulation({
         options: {
             iterations_poisson: 1,
@@ -555,6 +536,7 @@
                 varying vec2 vUv;
                 varying vec3 vPos;
                 varying vec2 vFuild;
+                
                 ${curl4Noise}
                 void main() {
                     vec2 uvT = vec2(
@@ -575,6 +557,7 @@
                     vPos = pos;
                     vFuild = 1.-velfuild;
                     gl_PointSize  =  max(2.,200. * abs(velfuild.y - velfuild.x));
+                    gl_PointSize = 2.;
                 }
             `;
 
@@ -597,6 +580,7 @@
                     vec3  colVel = pal( length(vel) * 10.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
                   
                     gl_FragColor = vec4(colVel ,1.);
+                      gl_FragColor = vec4(vec3(.4) ,1.);
                 }
             `
 
@@ -624,7 +608,9 @@
             },
             tPos_gpu :{value:null},
             tVel_gpu :{value:null},
-            tSize:{value: new THREE.Vector2(widthTexture,widthTexture)}
+            tSize:{value: new THREE.Vector2(widthTexture,widthTexture)},
+            p : {value:new THREE.Matrix4()},
+            m : {value:new THREE.Matrix4()},
         }
     });
 
@@ -632,7 +618,19 @@
     let points = new THREE.Points(PointGeo, PointMat);
 
 
-    let planeMat = new THREE.ShaderMaterial({
+    let box = new THREE.Mesh(
+        new THREE.BoxGeometry(2,2,2),
+        new THREE.MeshBasicMaterial({color:'blue',transparent:true,opacity:1})
+    )
+  scene.add(points)
+ 
+    }
+    initFboSim()
+    function initFboSim(){
+        sceneFbo = new THREE.Scene()
+        camFbo= new THREE.OrthographicCamera( - 1, 1,1, - 1, 1, 1000 );
+        camFbo.position.z = 1
+        let planeMat = new THREE.ShaderMaterial({
         vertexShader : `
             varying vec2 vUv;
             void main() {
@@ -683,18 +681,13 @@
         blending:THREE.AdditiveBlending,
     })
     let planeCheck = new THREE.Mesh(
-        new THREE.PlaneGeometry(widthFit,heightFit),
-        planeMat,
-        
+        new THREE.PlaneGeometry(2,2),
+       planeMat,
+         
     )
-    let box = new THREE.Mesh(
-        new THREE.BoxGeometry(2,2,2),
-        new THREE.MeshBasicMaterial({color:'blue',transparent:true,opacity:1})
-    )
-  scene.add(points)
-  scene.add(planeCheck)
+
+    sceneFbo.add(planeCheck)
     }
-   
     function runGPGPU() {
 
         positionUniforms['time'].value = now / 1000;
@@ -729,12 +722,19 @@
         simulation.update()
         runGPGPU()
         Renderer.renderer.setRenderTarget(null);
-        Renderer.renderer.render(scene, camera);
+       Renderer.renderer.render(scene, camera);
+        Renderer.renderer.render(sceneFbo, camFbo);
         PointMat.uniforms.time.value = Renderer.time
       PointMat.uniforms.speedmouse.value = simulation.externalForce.speed
+
+     
+
+
+
       positionUniforms['forceMouse'] = { value: simulation.externalForce.speed };
-    //   positionUniforms['projectionMatrix'] = { value: controlsMain.object.projectionMatrix };
-    //   positionUniforms['viewMatrix'] = { value: controlsMain.object.matrixWorldInverse};
+      positionUniforms['projectionMatrix'] = { value: camera.projectionMatrix };
+      positionUniforms['viewMatrixOrbit'] = { value: controlsMain.object.matrixWorldInverse};
+      //  console.log(controlsMain.object.projectionMatrix.elements )
    //   PointMat.uniforms.externalForce.value = simulation.externalForce.props.output.texture
     }
 
