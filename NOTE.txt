@@ -1,3 +1,7 @@
        const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
         loader.setDRACOLoader(dracoLoader);
+
+
+
+        https://codepen.io/prisoner849/pen/LYXGzRb  // cái này là cách 1 dường ống di chuyển
