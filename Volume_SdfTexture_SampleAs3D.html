@@ -495,8 +495,8 @@
 		let mouseFroceCurr = new THREE.Vector2(0, 0), mouseFrocePrev = new THREE.Vector2(0, 0)
 		let mousePos = new THREE.Vector2()
 		let cubeSample, sphereSample
-		const textureImg = new THREE.TextureLoader().load('/textures/cat.jpg')
-		const textureSDF = new THREE.TextureLoader().load('/models/eisbar/sdf.png')
+		const textureImg = new THREE.TextureLoader().load('/threejs_tut/textures/cat.jpg')
+		const textureSDF = new THREE.TextureLoader().load('/threejs_tut/models/eisbar/sdf.png')
 		let textureSDFData, texture2DView, matmat
 		const width = window.innerWidth;
 		const height = window.innerHeight;
@@ -1178,7 +1178,7 @@
 		function initTexture() {
 
 			const img = new Image();
-			img.src = '/models/eisbar/sdf.png';
+			img.src = '/threejs_tut/models/eisbar/sdf.png';
 			img.onload = () => {
 				const canvas = document.createElement('canvas');
 				const context = canvas.getContext('2d');
