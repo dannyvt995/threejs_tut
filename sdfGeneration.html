@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>three-mesh-bvh - Fast SDF Generation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+    <style type="text/css">
+        html,
+        body {
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            font-family: monospace;
+            background-color: #440727;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        #output {
+            color: #ffffff;
+            position: absolute;
+            left: 10px;
+            bottom: 10px;
+            white-space: pre;
+        }
+
+        #info {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            color: white;
+            font-family: monospace;
+            text-align: center;
+            padding: 5px 0;
+        }
+
+        a {
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">
+        3D Texture <a href="https://en.wikipedia.org/wiki/Signed_distance_function">Signed Distance Field</a> generation
+        on the gpu and raymarching.
+        <br />
+        "Surface" sets the distance at which the surface is rendered.
+        <br />
+        "Layers" show the raw signed distance values.
+
+    </div>
+    <div id="output"></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./three.module.js",
+                "three/addons/": "./jsm/",
+                "three/addonsmore/": "https://unpkg.com/three@0.169.0/examples/jsm/",
+                "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.3/build/index.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+
+        import * as THREE from 'three';
+        import Stats from 'three/addons/stats.module.js';
+        import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+        import { OBJLoader } from 'three/addons/OBJLoader.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+
+        import { MeshoptDecoder } from 'three/addons/meshopt_decoder.module.js';
+        import { FullScreenQuad } from 'three/addonsmore/postprocessing/Pass.js';
+
+
+        import { GenerateMeshBVHWorker } from './bvh_core/src/workers/GenerateMeshBVHWorker.js';
+        import { StaticGeometryGenerator, MeshBVH, MeshBVHHelper, computeBoundsTree, getBVHExtremes } from './bvh_core/src/index.js';
+        import { GenerateSDFMaterial } from './bvh_gensdf/GenerateSDFMaterial.js';
+        import { RenderSDFLayerMaterial } from './bvh_gensdf/RenderSDFLayerMaterial.js';
+        import { RayMarchSDFMaterial } from './bvh_gensdf/RayMarchSDFMaterial.js';
+
+        const params = {
+
+            gpuGeneration: false,
+            resolution: 64,
+            margin: 0.2,
+            regenerate: () => updateSDF(),
+
+            mode: 'grid layers',
+            layer: 0,
+            surface: 0.1,
+
+            u_hold: .5
+
+        };
+
+        let renderer, camera, scene, gui, stats, boxHelper;
+        let outputContainer, bvh, geometry, sdfTex, mesh;
+        let generateSdfPass, layerPass, raymarchPass;
+        let bvhGenerationWorker;
+        const inverseBoundsMatrix = new THREE.Matrix4();
+
+        const dim = params.resolution;
+        const pxWidth = 1 / dim;
+        const halfWidth = 0.5 * pxWidth;
+
+        let FboOut,SceneFboCheck,CamFboCheck
+        let matInstanced
+        init();
+        initFboOut()
+        render();
+
+
+        function init() {
+
+            outputContainer = document.getElementById('output');
+
+            // renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0, 0);
+            document.body.appendChild(renderer.domElement);
+
+            // scene setup
+            scene = new THREE.Scene();
+
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(1, 1, 1);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+
+            // camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50);
+            camera.position.set(1, 1, 2);
+            camera.far = 100;
+            camera.updateProjectionMatrix();
+
+            boxHelper = new THREE.Box3Helper(new THREE.Box3());
+            scene.add(boxHelper);
+
+            new OrbitControls(camera, renderer.domElement);
+
+            // stats setup
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            // sdf pass to generate the 3d texture
+            generateSdfPass = new FullScreenQuad(new GenerateSDFMaterial());
+
+
+            const rayMatBvh =new RenderSDFLayerMaterial()
+            rayMatBvh.uniforms.uTexelSize.value.copy(new THREE.Vector2(pxWidth,pxWidth))
+            // screen pass to render a single layer of the 3d texture
+            layerPass = new FullScreenQuad(rayMatBvh);
+
+            // screen pass to render the sdf ray marching
+            raymarchPass = new FullScreenQuad(new RayMarchSDFMaterial());
+
+ 
+
+            new GLTFLoader()
+                .setMeshoptDecoder(MeshoptDecoder)
+                //.loadAsync('https://raw.githubusercontent.com/gkjohnson/3d-demo-data/main/models/stanford-bunny/bunny.glb')
+                .loadAsync('/models/eisbar/eisbar.glb')
+                .then(gltf => {
+
+                    gltf.scene.updateMatrixWorld(true);
+
+                    const staticGen = new StaticGeometryGenerator(gltf.scene);
+                    staticGen.attributes = ['position', 'normal'];
+                    staticGen.useGroups = false;
+
+                    geometry = staticGen.generate().center();
+
+                    return new MeshBVH(geometry)
+
+                })
+                .then(result => {
+               
+                    bvh = result;
+
+                    mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
+                    scene.add(mesh);
+
+                    updateSDF();
+
+                });
+
+            rebuildGUI();
+
+            window.addEventListener('resize', function () {
+
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+
+                renderer.setSize(window.innerWidth, window.innerHeight);
+
+            }, false);
+
+        }
+
+
+        function initFboOut() {
+            let size = params.resolution * Math.sqrt(params.resolution)
+            console.log(size)
+            FboOut = new THREE.WebGLRenderTarget(size,size, {
+                minFilter: THREE.LinearFilter,
+                magFilter: THREE.LinearFilter,
+                format: THREE.RGBAFormat,
+                type: THREE.FloatType
+            });
+            SceneFboCheck = new THREE.Scene()
+            CamFboCheck =  new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50);
+            CamFboCheck.position.z = 2.2
+            new OrbitControls(CamFboCheck, renderer.domElement);
+            const textureSdfSample = new THREE.TextureLoader().load('/models/eisbar/sdf.png')
+            let out = FboOut.texture
+          console.log(out)
+            let mesh =  new THREE.Mesh(
+                new THREE.PlaneGeometry(1,1),
+                new THREE.MeshBasicMaterial({map:out})
+            )
+            let mesh2 =  new THREE.Mesh(
+                new THREE.PlaneGeometry(1,8/16),
+                new THREE.MeshBasicMaterial({map:textureSdfSample})
+            )
+            mesh.position.y = .3
+            mesh2.position.y = -.5
+            let group1 = new THREE.Group()
+            group1.add(mesh,mesh2)
+            group1.position.x = -.5
+            SceneFboCheck.add(group1)
+            setTimeout(() => {
+                let ins = initInstancedMesh(out)
+                SceneFboCheck.add(ins)
+            },6000)
+        }
+
+        function initInstancedMesh(data2d) {
+           
+            const count = 5000; // Số lượng instance
+            let geometry = new THREE.BoxGeometry(0.008, 0.008, 0.008);
+            geometry = new THREE.PlaneGeometry(0.008, 0.008);
+            // Tạo mảng lưu trữ vị trí các điểm
+            const positions = new Float32Array(count * 3);
+            const uvs = new Float32Array(count * 2); // Mảng UVs
+
+            const materialChunk = new THREE.MeshPhongMaterial({
+                side: 2,
+                color: 0xc5461b,
+                //emissive:0x3a2b82,
+                specular: 0x2c2a2a,
+                shininess: 100,
+                transparent:true
+            });
+            materialChunk.onBeforeCompile = (shader) => {
+                shader.uniforms.posGpu = { value: null };
+                shader.uniforms.velGpu = { value: null };
+                shader.uniforms.time = { value: 0 };
+                shader.uniforms.u_hold = { value: 1 };
+                shader.uniforms.texture2DSDF = { value: data2d };
+            shader.uniforms.resTex2d = { value: new THREE.Vector2(params.resolution,Math.sqrt(params.resolution))};
+             //  shader.uniforms.resTex2d = { value: new THREE.Vector2(128,16)};
+
+                // Sửa đổi vertex shader
+                console.log(shader.uniforms.resTex2d)
+                shader.vertexShader = `
+					attribute vec3 offset;
+                   	varying vec2 vUv;
+                    varying float distance;
+                    	uniform float u_hold;
+                        uniform float time;
+					uniform vec2 tSize;
+                    	uniform vec2 resTex2d;
+                    uniform vec2 uTexelSize;
+					uniform sampler2D posGpu;
+                     varying vec4 vSam; 
+					uniform sampler2D velGpu;
+                    uniform sampler3D texture3DSDF;
+                                        uniform sampler2D texture2DSDF;
+					vec2 computeSliceOffsetOrigin(float slice, float slicesPerRow, vec2 sliceSize) {
+                    return sliceSize * vec2(mod(slice, slicesPerRow), 
+                                            floor(slice / slicesPerRow));
+                    }
+
+                    vec4 sampleAs3DTextureOrigin(
+                        sampler2D tex, vec3 texCoord, float size, float numRows, float slicesPerRow) {
+                        float slice   = texCoord.z * size;
+                        float sliceZ  = floor(slice);                         // slice we need
+                        float zOffset = fract(slice);                         // dist between slices
+
+                        vec2 sliceSize = vec2(1.0 / slicesPerRow,             // u space of 1 slice
+                                                1.0 / numRows);                 // v space of 1 slice
+
+                        vec2 slice0Offset = computeSliceOffsetOrigin(sliceZ, slicesPerRow, sliceSize);
+                        vec2 slice1Offset = computeSliceOffsetOrigin(sliceZ + 1.0, slicesPerRow, sliceSize);
+
+                        vec2 slicePixelSize = sliceSize / size;               // space of 1 pixel
+                        vec2 sliceInnerSize = slicePixelSize * (size - 1.0);  // space of size pixels
+
+                        vec2 uv = slicePixelSize * 0.5 + texCoord.xy * sliceInnerSize;
+                        //uv = vec2(uv.x,1.-uv.y);
+                        vec4 slice0Color = texture2D(tex, slice0Offset + uv);
+                        vec4 slice1Color = texture2D(tex, slice1Offset + uv);
+                        return mix(slice0Color, slice1Color, zOffset);
+                        //return slice0Color;
+                    }
+                        // Hàm tính gradient của SDF tại vị trí 'pos'
+                    vec3 calculateSDFGradient(vec3 pos,float step) {
+                        float sdfX1 = texture(texture3DSDF, pos + vec3(step, 0.0, 0.0)).r;
+                        float sdfX2 = texture(texture3DSDF, pos - vec3(step, 0.0, 0.0)).r;
+                        
+                        float sdfY1 = texture(texture3DSDF, pos + vec3(0.0, step, 0.0)).r;
+                        float sdfY2 = texture(texture3DSDF, pos - vec3(0.0, step, 0.0)).r;
+                        
+                        float sdfZ1 = texture(texture3DSDF, pos + vec3(0.0, 0.0, step)).r;
+                        float sdfZ2 = texture(texture3DSDF, pos - vec3(0.0, 0.0, step)).r;
+
+                        vec3 gradient = normalize(vec3(sdfX1 - sdfX2, sdfY1 - sdfY2, sdfZ1 - sdfZ2));
+                        return gradient;
+                    }
+
+                    ${shader.vertexShader} 
+                `.replace(
+                    `#include <fog_vertex>`,
+                    `#include <fog_vertex>
+                  		float id = float(gl_InstanceID);
+						vec2 uvT = vec2(
+										mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
+										floor(id / tSize.x) / tSize.y  // Tính chỉ số hàng
+									);
+                        vec3 posSelf = offset * 1.;
+                        vec3 u_sdfOffset = vec3(0.5000, 0.5000, 0.5000);
+                        vec3 voxelTextureCoordOri = posSelf.xyz / 1. + u_sdfOffset ;
+                        vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 /resTex2d.x), vec3(1.0 - 0.5 / resTex2d.x));
+                     
+                      	vec4 distanceInfo = sampleAs3DTextureOrigin(texture2DSDF, voxelTextureCoord  , resTex2d.x,resTex2d.x / resTex2d.y,resTex2d.y); //  128.,8.,16.
+                         vec4 distanceInfoFormat = distanceInfo * 2. - 1.;
+                        vec3 disSDF = normalize(distanceInfoFormat.xyz - voxelTextureCoordOri) * ((distanceInfoFormat.w)*u_hold);
+		            //   posSelf += disSDF;
+                    vSam = distanceInfoFormat;
+                        // Tính toán vị trí cuối cùng của điểm trong không gian clip
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(posSelf + position * 5., 1.0);
+						vUv = uv; // Truyền UV đến fragment shader
+
+                `,
+                shader.fragmentShader = `
+                  varying vec4 vSam; 
+                       varying float distance; 
+                        ${shader.fragmentShader} 
+                `.replace(`#include <dithering_fragment>`,
+                    `
+                    #include <dithering_fragment>
+                        gl_FragColor = vec4(vSam.xyz,1.);
+                        gl_FragColor = vec4(vSam.xyz,vSam.w + .5);
+                    `
+                )
+            );
+                
+                       
+                matInstanced = shader;
+            };
+
+
+            const margin = 0.1; // Khoảng cách giữa các đối tượng
+const depth = Math.ceil(Math.cbrt(count)); // Độ sâu (số layer theo trục Z)
+const totalLayers = depth * depth * depth; // Tổng số đối tượng tối đa trong cube
+
+const offsets = new Float32Array(count * 3); // Mảng offset
+
+for (let i = 0; i < count; i++) {
+    const z = Math.floor(i / (depth * depth)); // Tính chỉ số layer theo trục Z
+    const remaining = i % (depth * depth); // Số đối tượng còn lại trong một layer
+    const row = Math.floor(remaining / depth); // Tính chỉ số hàng theo trục Y
+    const col = remaining % depth; // Tính chỉ số cột theo trục X
+    let v = new THREE.Vector3(col * (1 + margin),row * (1 + margin), z * (1 + margin))
+    v.multiplyScalar(0.07).subScalar(.5);
+    offsets[i * 3 + 0] = v.x; // X
+    offsets[i * 3 + 1] = v.y; // Y
+    offsets[i * 3 + 2] = v.z; // Z
+}
+
+geometry.setAttribute('offset', new THREE.InstancedBufferAttribute(offsets, 3));
+
+            const cInstancedMesh = new THREE.InstancedMesh(geometry, materialChunk, count);
+            const colors = [];
+            for (let i = 0; i < count; i++) {
+                // Tạo ma trận transform cho mỗi instance
+                const matrix = new THREE.Matrix4();
+
+                // Tạo vị trí ngẫu nhiên trong phạm vi từ -50 đến 50
+                const position = new THREE.Vector3(
+                   Math.random() * 2. - 1.,
+                   Math.random() * 2. - 1.,
+                   Math.random() * 2. - 1.,
+                );
+
+                // Tạo tỷ lệ ngẫu nhiên từ 0.5 đến 1.5
+                const scale = new THREE.Vector3(
+                    Math.random() + 0.5,
+                    Math.random() + 0.5,
+                    Math.random() + 0.5
+                );
+
+                // Tạo rotation ngẫu nhiên
+                const rotation = new THREE.Euler(
+                    Math.random() * 2 * Math.PI,
+                    Math.random() * 2 * Math.PI,
+                    Math.random() * 2 * Math.PI
+                );
+
+                // Áp dụng transform vào ma trận
+                matrix.makeRotationFromEuler(rotation);
+                matrix.setPosition(position);
+                matrix.scale(scale);
+
+                // Gán ma trận cho instance thứ i
+                cInstancedMesh.setMatrixAt(i, matrix);
+
+                // Tạo màu ngẫu nhiên cho mỗi instance
+                const color = new THREE.Color(Math.random(), Math.random(), Math.random());
+                colors.push(color.r, color.g, color.b);
+            }
+
+            return cInstancedMesh
+
+        }
+
+      
+        // build the gui with parameters based on the selected display mode
+        function rebuildGUI() {
+
+            if (gui) {
+
+                gui.destroy();
+
+            }
+
+            params.layer = Math.min(params.resolution, params.layer);
+
+            gui = new GUI();
+            function updatePropsPGPU() {
+				matInstanced.uniforms.u_hold.value = params.u_hold
+
+			}
+            gui.add(params, 'u_hold', 0, 4, .0001).onChange(updatePropsPGPU);
+            const generationFolder = gui.addFolder('generation');
+            generationFolder.add(params, 'gpuGeneration');
+            generationFolder.add(params, 'resolution', 10, 200, 1);
+            generationFolder.add(params, 'margin', 0, 1);
+            generationFolder.add(params, 'regenerate');
+
+            const displayFolder = gui.addFolder('display');
+            displayFolder.add(params, 'mode', ['geometry', 'raymarching', 'layer', 'grid layers']).onChange(() => {
+
+                rebuildGUI();
+
+            });
+
+            if (params.mode === 'layer') {
+
+                displayFolder.add(params, 'layer', 0, params.resolution, 1);
+
+            }
+
+            if (params.mode === 'raymarching') {
+
+                displayFolder.add(params, 'surface', - 0.2, 0.5);
+
+            }
+
+
+            
+
+        }
+
+        // update the sdf texture based on the selected parameters
+        function updateSDF() {
+
+        
+            const matrix = new THREE.Matrix4();
+            const center = new THREE.Vector3();
+            const quat = new THREE.Quaternion();
+            const scale = new THREE.Vector3();
+
+            // compute the bounding box of the geometry including the margin which is used to
+            // define the range of the SDF
+            geometry.boundingBox.getCenter(center);
+            scale.subVectors(geometry.boundingBox.max, geometry.boundingBox.min);
+            scale.x += 2 * params.margin;
+            scale.y += 2 * params.margin;
+            scale.z += 2 * params.margin;
+            matrix.compose(center, quat, scale);
+            inverseBoundsMatrix.copy(matrix).invert();
+
+            // update the box helper
+            boxHelper.box.copy(geometry.boundingBox);
+            boxHelper.box.min.x -= params.margin;
+            boxHelper.box.min.y -= params.margin;
+            boxHelper.box.min.z -= params.margin;
+            boxHelper.box.max.x += params.margin;
+            boxHelper.box.max.y += params.margin;
+            boxHelper.box.max.z += params.margin;
+
+            // dispose of the existing sdf
+            if (sdfTex) {
+
+                sdfTex.dispose();
+
+            }
+
+     
+
+            const startTime = window.performance.now();
+            if (params.gpuGeneration) {
+
+                // create a new 3d render target texture
+                const floatLinearExtSupported = renderer.extensions.get('OES_texture_float_linear');
+                sdfTex = new THREE.WebGL3DRenderTarget(dim, dim, dim);
+                sdfTex.texture.format = THREE.RedFormat;
+                sdfTex.texture.type = floatLinearExtSupported ? THREE.FloatType : THREE.HalfFloatType;
+                sdfTex.texture.minFilter = THREE.LinearFilter;
+                sdfTex.texture.magFilter = THREE.LinearFilter;
+
+                // prep the sdf generation material pass
+                generateSdfPass.material.uniforms.bvh.value.updateFrom(bvh);
+                generateSdfPass.material.uniforms.matrix.value.copy(matrix);
+
+                // render into each layer
+                for (let i = 0; i < dim; i++) {
+
+                    generateSdfPass.material.uniforms.zValue.value = i * pxWidth + halfWidth;
+
+                    renderer.setRenderTarget(sdfTex, i);
+                    generateSdfPass.render(renderer);
+
+                }
+
+                // initiate read back to get a rough estimate of time taken to generate the sdf
+                renderer.readRenderTargetPixels(sdfTex, 0, 0, 1, 1, new Float32Array(4));
+                renderer.setRenderTarget(null);
+
+            } else {
+
+                // create a new 3d data texture
+                sdfTex = new THREE.Data3DTexture(new Float32Array(dim ** 3), dim, dim, dim);
+                sdfTex.format = THREE.RedFormat;
+                sdfTex.type = THREE.FloatType;
+                sdfTex.minFilter = THREE.LinearFilter;
+                sdfTex.magFilter = THREE.LinearFilter;
+                sdfTex.needsUpdate = true;
+
+                const point = new THREE.Vector3();
+                const ray = new THREE.Ray();
+                const target = {};
+
+                // iterate over all pixels and check distance
+                for (let x = 0; x < dim; x++) {
+
+                    for (let y = 0; y < dim; y++) {
+
+                        for (let z = 0; z < dim; z++) {
+
+                            // adjust by half width of the pixel so we sample the pixel center
+                            // and offset by half the box size.
+                            point.set(
+                                halfWidth + x * pxWidth - 0.5,
+                                halfWidth + y * pxWidth - 0.5,
+                                halfWidth + z * pxWidth - 0.5,
+                            ).applyMatrix4(matrix);
+
+                            const index = x + y * dim + z * dim * dim;
+                            const dist = bvh.closestPointToPoint(point, target).distance;
+
+                            // raycast inside the mesh to determine if the distance should be positive or negative
+                            ray.origin.copy(point);
+                            ray.direction.set(0, 0, 1);
+                            const hit = bvh.raycastFirst(ray, THREE.DoubleSide);
+                            const isInside = hit && hit.face.normal.dot(ray.direction) > 0.0;
+
+                            // set the distance in the texture data
+                            sdfTex.image.data[index] = isInside ? - dist : dist;
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+            // update the timing display
+            const delta = window.performance.now() - startTime;
+            outputContainer.innerText = `${delta.toFixed(2)}ms`;
+
+            rebuildGUI();
+
+        }
+
+        function render() {
+
+            stats.update();
+            requestAnimationFrame(render);
+
+            if (!sdfTex) {
+
+                // render nothing
+                return;
+
+            } else if (params.mode === 'geometry') {
+
+                // render the rasterized geometry
+                renderer.render(scene, camera);
+
+            } else if (params.mode === 'layer' || params.mode === 'grid layers') {
+
+                // render a layer of the 3d texture
+                let tex;
+                const material = layerPass.material;
+                if (sdfTex.isData3DTexture) {
+
+                    material.uniforms.layer.value = params.layer / sdfTex.image.width;
+                    material.uniforms.sdfTex.value = sdfTex;
+                    tex = sdfTex;
+
+                } else {
+
+                    material.uniforms.layer.value = params.layer / sdfTex.width;
+                    material.uniforms.sdfTex.value = sdfTex.texture;
+                    tex = sdfTex.texture;
+
+                }
+
+                material.uniforms.layers.value = tex.image.width;
+
+                const gridMode = params.mode === 'layer' ? 0 : 1;
+                if (gridMode !== material.defines.DISPLAY_GRID) {
+
+                    material.defines.DISPLAY_GRID = gridMode;
+                    material.needsUpdate = true;
+
+                }
+                renderer.setRenderTarget(FboOut)
+                layerPass.render(renderer);
+                renderer.setRenderTarget(null)
+                renderer.render(SceneFboCheck,CamFboCheck)
+    
+
+
+            } else if (params.mode === 'raymarching') {
+
+                // render the ray marched texture
+                camera.updateMatrixWorld();
+                mesh.updateMatrixWorld();
+
+                let tex;
+                if (sdfTex.isData3DTexture) {
+
+                    tex = sdfTex;
+
+                } else {
+
+                    tex = sdfTex.texture;
+
+                }
+
+                const { width, depth, height } = tex.image;
+                raymarchPass.material.uniforms.sdfTex.value = tex;
+                raymarchPass.material.uniforms.normalStep.value.set(1 / width, 1 / height, 1 / depth);
+                raymarchPass.material.uniforms.surface.value = params.surface;
+                raymarchPass.material.uniforms.projectionInverse.value.copy(camera.projectionMatrixInverse);
+                raymarchPass.material.uniforms.sdfTransformInverse.value.copy(mesh.matrixWorld).invert().premultiply(inverseBoundsMatrix).multiply(camera.matrixWorld);
+                raymarchPass.render(renderer);
+
+            }
+
+        }
+    </script>
+</body>
+
+</html>
