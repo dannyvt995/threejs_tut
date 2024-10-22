@@ -397,7 +397,7 @@
 		
 
 
-			velSelf.xyz += curl((posSelf.xyz + velSelf.xyz + u_random*.2) * 2., time*.5, 0.2) * .0008;
+			velSelf.xyz += curl((velSelf.xyz + u_random*.9) * 2., time*.5, 0.2) * .0008;
 			posSelf += velSelf;
 
 			vec3 posFuild = texture2D(uFuild,posSelf.xy + .5).xyz;
@@ -422,6 +422,8 @@
 
 			if(sdf3dFormat.w < 1.2) {
 				//vec3 disSDF = normalize(sdf3dFormat.xyz + posSelf) * (-sdf3dFormat.w * u_holdGPGPU);
+			
+				//vec3 curlIt = curl((posSelf.xyz + velSelf.xyz + u_random*.2) * 2., time*.5, 0.2) * .0008;
 				vec3 disSDF = normalize(distanceInfoFormat.xyz + posSelf) * ( - distanceInfoFormat.w * u_holdGPGPU);
 				
 
@@ -527,7 +529,7 @@
 		let dataTextureFatline, meshCheckMeshTrail
 		let ListcurvesOfFatLine = [];
 		const sizeTextureFatLine = 2000
-
+		let FINAL_SDF2D,mCheck
 		const optionsMaterialReflec = {
 			enableSwoopingCamera: false,
 			enableRotation: true,
@@ -547,7 +549,9 @@
 			radius: 1,
 			exposure: 1
 		};
-
+		const paramsPasses = {
+			u_holdGPGPU: .5
+		};
 		const hdrEquirect = new RGBELoader().load(
 			"./hdr/empty_warehouse_01_2k.hdr",
 			() => {
@@ -730,10 +734,12 @@
 				const data = new Float32Array(width * height * 4)
 				for (let i = 0; i < size; i++) {
 					const stride = i * 4;
+					
 					data[stride] = dataOriFromImg[stride] / 255;
 					data[stride + 1] = dataOriFromImg[stride + 1] / 255;
 					data[stride + 2] = dataOriFromImg[stride + 2] / 255;
 					data[stride + 3] = dataOriFromImg[stride + 3] / 255;
+				
 				}
 
 				// used the buffer to create a DataTexture
@@ -741,10 +747,14 @@
 				texture.needsUpdate = true;
 				return texture
 			}
-			const ddddd = initDatasdfCOCO(textureSDFData)
-
-			positionUniforms['u_sdfTexture'] = { value: ddddd };
-			velocityUniforms['u_sdfTexture'] = { value: ddddd };
+			FINAL_SDF2D = initDatasdfCOCO(textureSDFData)
+			mCheck = new THREE.Mesh(
+				new THREE.PlaneGeometry(1,1),
+				new THREE.MeshBasicMaterial({map:FINAL_SDF2D})
+			)
+			scene.add(mCheck)
+			positionUniforms['u_sdfTexture'] = { value: FINAL_SDF2D };
+			velocityUniforms['u_sdfTexture'] = { value: FINAL_SDF2D };
 
 			const error = gpuCompute.init();
 
@@ -811,6 +821,13 @@
   gui.add(optionsMaterialReflec, "clearcoatNormalScale", 0, 5, 0.01).onChange((val) => {
     materialReflect.clearcoatNormalScale.set(val, val);
   });
+
+  const Sketch = gui.addFolder('Sketch');
+  Sketch.add(paramsPasses, "u_holdGPGPU", 0, 1, 0.01).onChange((val) => {
+    velocityUniforms['u_holdGPGPU'] = { value: val };
+  });
+
+ 
 		}
 		function initMain() {
 
@@ -856,6 +873,7 @@
 			initModel()
 
 			initMeshTrail()
+			initParticel()
 			window.addEventListener('resize', onWindowResize);
 
 			sphereSample = new THREE.Mesh(
@@ -867,7 +885,9 @@
 		}
 
 
+		function initParticel() {
 
+		}
 		function getTension(phase) {
 			return (Math.sin(phase * Math.PI * 2) * 0.5 + 0.5) * 2;
 		}
@@ -910,11 +930,12 @@
 			let flg = new LineSegmentsGeometry();
 			flg.instanceCount = instCount * (verticesPerInstance + 1);
 			let flm = new LineMaterial({
-				linewidth: 0.012,
+				linewidth: 0.008,
 				worldUnits: true,
 				vertexColors: true,
 				// wireframe: true,
-				//alphaToCoverage: true,
+				transparent:true,
+				alphaToCoverage: true,
 				onBeforeCompile: shader => {
 					shader.uniforms.data = dt;
 					shader.uniforms.totalAmountPerInstance = dataTextureFatline.uniforms.totalAmountPerInstance;
@@ -923,6 +944,8 @@
                     uniform sampler2D data;
                     uniform float totalAmountPerInstance;
                     uniform float instancePerRow;
+       				varying vec4 vStart;
+					
                     ${shader.vertexShader}
                     `.replace(
 						`#ifdef USE_COLOR
@@ -954,9 +977,22 @@
                     vec4 instEnd = texelFetch(data, ivec2(fetchX + vertID + 1, fetchY), 0);
                 
                     vec4 start = modelViewMatrix * instStart;
+					vStart = vec4(position,0.);
                     vec4 end = modelViewMatrix * instEnd;`
 						);
 					console.log(shader.fragmentShader);
+
+					shader.fragmentShader = `
+						varying vec4 vStart;
+						${shader.fragmentShader}
+					`.replace(
+						`#include <premultiplied_alpha_fragment>`,
+							`	
+							#include <premultiplied_alpha_fragment>
+						
+							gl_FragColor.x = sin(vStart.x );
+							`
+					)
 				}
 			});
 
@@ -1224,11 +1260,11 @@
 								// Sao chép dữ liệu từ hình ảnh lớn vào texture3D
 
 								// Case này origin
-
 								textureData3dOut[index3D] = (imageData[imageIndex] / 255)
 								textureData3dOut[index3D + 1] = (imageData[imageIndex + 1] / 255)
 								textureData3dOut[index3D + 2] = (imageData[imageIndex + 2] / 255)
 								textureData3dOut[index3D + 3] = (imageData[imageIndex + 3] / 255)
+							
 
 								// Nên xử lý cho raymarching đỡ phức tạp
 								// textureData3dOut[index3D] = 1. - imageData[imageIndex] / 255;
@@ -1285,7 +1321,7 @@
 
 					m.children[0].material = materialReflect
 
-					scene.add(m);
+				//	scene.add(m);
 
 				},
 				function (xhr) {
@@ -1406,10 +1442,10 @@
 
 		//	sphereSample.position.set(pixelBuffer[0], pixelBuffer[1], pixelBuffer[2])
 			Renderer.renderer.setRenderTarget(null);
-		//	Renderer.renderer.render(scene, camera);
+			Renderer.renderer.render(scene, camera);
 			//	Renderer.renderer.render(sceneMonitor, cameraMonitor);
 
-				composer.render()
+			//	composer.render()
 
 		}
 
