@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Particle_SimInteract_GPGPU</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+
+</head>
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .note {
+        position: fixed;
+        top: 50px;
+        left: 50%;
+        width: 100%;
+        height: 100px;
+        color: rgb(255, 255, 255);
+        font-size: .5rem;
+        z-index: 99;
+    }
+</style>
+
+<body>
+    <div class="note">
+
+    </div>
+    <div id="canvas"></div>
+
+    <script type="x-shader/x-fragment" id="vertShader">
+        precision highp float;
+    
+        
+        attribute vec2 a_position;
+    
+        varying vec2 vL;
+        varying vec2 vR;
+        varying vec2 vT;
+        varying vec2 vB;
+        uniform vec2 u_texel;
+    
+        void main () {
+            uv = .5 * (a_position + 1.);
+            vL = uv - vec2(u_texel.x, 0.);
+            vR = uv + vec2(u_texel.x, 0.);
+            vT = uv + vec2(0., u_texel.y);
+            vB = uv - vec2(0., u_texel.y);
+            gl_Position = vec4(a_position, 0., 1.);
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragShaderAdvection">
+        precision highp float;
+        precision highp sampler2D;
+    
+        
+        uniform sampler2D u_velocity_texture;
+        uniform sampler2D u_input_texture;
+        uniform vec2 u_texel;
+        uniform float u_dt;
+        uniform float u_use_text;
+        uniform sampler2D u_text_texture;
+    
+        vec4 bilerp (sampler2D sam, vec2 uv, vec2 tsize) {
+            vec2 st = uv / tsize - 0.5;
+    
+            vec2 iuv = floor(st);
+            vec2 fuv = fract(st);
+    
+            vec4 a = texture2D(sam, (iuv + vec2(0.5, 0.5)) * tsize);
+            vec4 b = texture2D(sam, (iuv + vec2(1.5, 0.5)) * tsize);
+            vec4 c = texture2D(sam, (iuv + vec2(0.5, 1.5)) * tsize);
+            vec4 d = texture2D(sam, (iuv + vec2(1.5, 1.5)) * tsize);
+    
+            return mix(mix(a, b, fuv.x), mix(c, d, fuv.x), fuv.y);
+        }
+    
+        void main () {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec2 coord = uv - u_dt * bilerp(u_velocity_texture, uv, u_texel).xy * u_texel;
+            float text = texture2D(u_text_texture, vec2(uv.x, 1. - uv.y)).r;
+            float dissipation = (.96 + text * .04 * u_use_text);
+    
+            gl_FragColor = dissipation * bilerp(u_input_texture, coord, u_texel);
+            gl_FragColor.a = 1.;
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragShaderDivergence">
+        precision highp float;
+        precision highp sampler2D;
+    
+        uniform vec2 u_texel;
+
+        uniform sampler2D u_velocity_texture;
+    
+        void main () {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            float L = texture2D(pressureTexture, uv - vec2(u_texel.x, 0.0)).r;
+            float R = texture2D(pressureTexture, uv + vec2(u_texel.x, 0.0)).r;
+            float T = texture2D(pressureTexture, uv + vec2(0.0, u_texel.y)).g;
+            float B = texture2D(pressureTexture, uv - vec2(0.0, u_texel.y)).g;
+    
+            float div = .6 * (R - L + T - B);
+            gl_FragColor = vec4(div, 0., 0., 1.);
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragShaderPressure">
+        precision highp float;
+        precision highp sampler2D;
+    
+        uniform vec2 u_texel;
+        uniform sampler2D u_text_texture;
+    
+        void main () {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            float text = texture2D(u_text_texture, vec2(uv.x, 1. - uv.y)).r;
+    
+            float L = texture2D(pressureTexture, uv - vec2(u_texel.x, 0.0)).x;
+            float R = texture2D(pressureTexture, uv + vec2(u_texel.x, 0.0)).x;
+            float T = texture2D(pressureTexture, uv + vec2(0.0, u_texel.y)).x;
+            float B = texture2D(pressureTexture, uv - vec2(0.0, u_texel.y)).x;
+            float C = texture2D(pressureTexture, uv).x;
+            float divergence = texture2D(divergenceTexture, uv).x;
+    
+            float pressure = (L + R + B + T - divergence) * 0.25;
+            pressure += (.2 * text);
+    
+            gl_FragColor = vec4(pressure, 0., 0., 1.);
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragShaderGradientSubtract">
+        precision highp float;
+        precision highp sampler2D;
+    
+        uniform vec2 u_texel;
+       // varying highp vec2 vL;
+      //  varying highp vec2 vR;
+      //  varying highp vec2 vT;
+       // varying highp vec2 vB;
+      //  uniform sampler2D pressureTexture;
+        uniform sampler2D u_velocity_texture;
+    
+        uniform sampler2D u_text_texture;
+    
+        void main () {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+
+            float L = texture2D(pressureTexture, uv - vec2(u_texel.x, 0.0)).x;
+            float R = texture2D(pressureTexture, uv + vec2(u_texel.x, 0.0)).x;
+            float T = texture2D(pressureTexture, uv + vec2(0.0, u_texel.y)).x;
+            float B = texture2D(pressureTexture, uv - vec2(0.0, u_texel.y)).x;
+
+
+            vec2 velocity = texture2D(u_velocity_texture, uv).xy;
+            velocity.xy -= vec2(R - L, T - B);
+            gl_FragColor = vec4(velocity, 0., 1.);
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragShaderPoint">
+        precision highp float;
+        precision highp sampler2D;
+    
+        uniform vec2 u_texel;
+        uniform sampler2D u_input_texture;
+        uniform float u_ratio;
+        uniform vec3 u_point_value;
+        uniform vec2 u_point;
+        uniform float u_point_size;
+    
+        uniform sampler2D u_text_texture;
+    
+    
+        void main () {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec2 p = uv - u_point.xy;
+            p.x *= u_ratio;
+            vec3 splat = pow(2., -dot(p, p) / u_point_size) * u_point_value;
+    
+            float text = texture2D(u_text_texture, vec2(uv.x, 1. - uv.y)).r;
+            splat *= (.7 + .2 * text);
+    
+            vec3 base = texture2D(u_input_texture, uv).xyz;
+            gl_FragColor = vec4(base + splat, 1.);
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragShaderOutputShader">
+        precision highp float;
+        precision highp sampler2D;
+    
+        uniform vec2 u_texel;
+  
+        uniform sampler2D u_text_texture;
+    
+        void main () {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec3 C = texture2D(outputShaderTexture, uv).rgb;
+            float text = texture2D(u_text_texture, vec2(uv.x, 1. - uv.y)).r; 
+            gl_FragColor = vec4(vec3(1.) - C, 1.);
+            gl_FragColor = vec4(.4,.5,.1,1.);
+        }
+    </script>
+    <script type="importmap">
+		{
+			"imports": {
+				"three": "./three.module.js",
+				"three/addons/": "./jsm/"
+			}
+		}
+	</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import Stats from 'three/addons/stats.module.js';
+        import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
+
+        //MAIN SCENE
+        let renderer, controls, stats, cameraMain, sceneDisplay;
+        let meshView
+
+        let splatUniforms, divergenceUniforms, pressureUniforms, gradientSubtractUniforms, advectionUniforms, outputShaderUniforms
+        //UTILS
+        let now, last, delta
+        let wView = window.innerWidth
+        let hView = window.innerHeight
+
+        //GPGPU
+        let gpuCompute,fluidSim
+        let widthTexture = Math.floor(.5 * window.innerWidth)
+        let heightTexture = Math.floor(.5 * window.innerHeight)
+        let outputShaderVariable, advectionVariable, splatVariable, divergenceVariable, pressureVariable, gradientSubtractVariable
+
+        class FluidSimulation {
+            constructor(renderer, width = 256, height = 256) {
+                this.width = width;
+                this.height = height;
+
+                // Khởi tạo GPU computation renderer
+                this.gpuCompute = new GPUComputationRenderer(width, height, renderer);
+
+                // Khởi tạo các texture
+                this.velocityVariable = this.gpuCompute.addVariable('textureVelocity', this.getVelocityShader(), null);
+                this.pressureVariable = this.gpuCompute.addVariable('texturePressure', this.getPressureShader(), null);
+                this.divergenceVariable = this.gpuCompute.addVariable('textureDivergence', this.getDivergenceShader(), null);
+                this.colorVariable = this.gpuCompute.addVariable('textureColor', this.getColorShader(), null);
+
+                // Thiết lập dependencies
+                this.gpuCompute.setVariableDependencies(this.velocityVariable, [this.velocityVariable, this.pressureVariable]);
+                this.gpuCompute.setVariableDependencies(this.pressureVariable, [this.pressureVariable, this.divergenceVariable]);
+                this.gpuCompute.setVariableDependencies(this.divergenceVariable, [this.velocityVariable]);
+                this.gpuCompute.setVariableDependencies(this.colorVariable, [this.colorVariable, this.velocityVariable]);
+
+                // Khởi tạo uniforms
+                this.velocityVariable.material.uniforms.deltaTime = { value: 1.0 / 60.0 };
+                this.velocityVariable.material.uniforms.mouse = { value: new THREE.Vector3(0, 0, 0) };
+                this.velocityVariable.material.uniforms.mouseEnabled = { value: 0.0 };
+
+                // Kiểm tra lỗi
+                const error = this.gpuCompute.init();
+                if (error !== null) {
+                    console.error(error);
+                }
+            }
+
+            getVelocityShader() {
+                return `
+            uniform float deltaTime;
+            uniform vec3 mouse;
+            uniform float mouseEnabled;
+
+            void main() {
+                vec2 uv = gl_FragCoord.xy / resolution.xy;
+                vec2 velocity = texture2D(textureVelocity, uv).xy;
+                
+                // Advection
+                vec2 pos = gl_FragCoord.xy - velocity * deltaTime;
+                vec2 advected = texture2D(textureVelocity, pos / resolution.xy).xy;
+                
+                // Mouse interaction
+                if (mouseEnabled > 0.5) {
+                    vec2 mousePos = mouse.xy;
+                    vec2 diff = mousePos - gl_FragCoord.xy;
+                    float dist = length(diff);
+                    if (dist < 50.0) {
+                        velocity += normalize(diff) * (1.0 - dist / 50.0) * 0.5;
+                    }
+                }
+
+                // Pressure gradient
+                vec2 pressure = texture2D(texturePressure, uv).xy;
+                velocity -= pressure;
+
+                gl_FragColor = vec4(velocity * 0.998, 0.0, 1.0);
+            }
+        `;
+            }
+
+            getPressureShader() {
+                return `
+            void main() {
+                vec2 uv = gl_FragCoord.xy / resolution.xy;
+                float divergence = texture2D(textureDivergence, uv).x;
+                float pressure = texture2D(texturePressure, uv).x;
+                
+                vec2 texelSize = 1.0 / resolution.xy;
+                float p1 = texture2D(texturePressure, uv + vec2(texelSize.x, 0.0)).x;
+                float p2 = texture2D(texturePressure, uv - vec2(texelSize.x, 0.0)).x;
+                float p3 = texture2D(texturePressure, uv + vec2(0.0, texelSize.y)).x;
+                float p4 = texture2D(texturePressure, uv - vec2(0.0, texelSize.y)).x;
+                
+                float newPressure = (p1 + p2 + p3 + p4 - divergence) * 0.25;
+                gl_FragColor = vec4(newPressure, 0.0, 0.0, 1.0);
+            }
+        `;
+            }
+
+            getDivergenceShader() {
+                return `
+            void main() {
+                vec2 uv = gl_FragCoord.xy / resolution.xy;
+                vec2 texelSize = 1.0 / resolution.xy;
+                
+                vec2 v1 = texture2D(textureVelocity, uv + vec2(texelSize.x, 0.0)).xy;
+                vec2 v2 = texture2D(textureVelocity, uv - vec2(texelSize.x, 0.0)).xy;
+                vec2 v3 = texture2D(textureVelocity, uv + vec2(0.0, texelSize.y)).xy;
+                vec2 v4 = texture2D(textureVelocity, uv - vec2(0.0, texelSize.y)).xy;
+                
+                float divergence = ((v1.x - v2.x) + (v3.y - v4.y)) * 0.5;
+                gl_FragColor = vec4(divergence, 0.0, 0.0, 1.0);
+            }
+        `;
+            }
+
+            getColorShader() {
+                return `
+            void main() {
+                vec2 uv = gl_FragCoord.xy / resolution.xy;
+                vec2 velocity = texture2D(textureVelocity, uv).xy;
+                vec4 color = texture2D(textureColor, uv);
+                
+                // Advect color
+                vec2 pos = gl_FragCoord.xy - velocity;
+                vec4 advectedColor = texture2D(textureColor, pos / resolution.xy);
+                
+                gl_FragColor = advectedColor * 0.998;
+                gl_FragColor =  vec4(.2,1.,1.,1.);
+            }
+        `;
+            }
+
+            update(mouseX, mouseY, mouseEnabled) {
+                this.velocityVariable.material.uniforms.mouse.value.set(mouseX, mouseY, 0);
+                this.velocityVariable.material.uniforms.mouseEnabled.value = mouseEnabled ? 1.0 : 0.0;
+
+                // Chạy các bước tính toán
+                this.gpuCompute.compute();
+            }
+
+            getVelocityTexture() {
+                return this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture;
+            }
+
+            getColorTexture() {
+                return this.gpuCompute.getCurrentRenderTarget(this.colorVariable).texture;
+            }
+        }
+
+
+        init();
+        let mouseX = 0;
+        let mouseY = 0;
+
+        window.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX / wView) * 2 - 1;
+            mouseY = - (event.clientY / hView) * 2 + 1;
+        });
+
+
+        function init() {
+
+
+            renderer = new THREE.WebGLRenderer({ alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(wView, hView);
+            renderer.setAnimationLoop(animate);
+            const canvasDom = document.getElementById("canvas")
+            canvasDom.appendChild(renderer.domElement);
+
+            //
+
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            cameraMain = new THREE.PerspectiveCamera(70, wView / hView, 0.01, 400);
+            cameraMain.position.z = 10;
+
+
+            controls = new OrbitControls(cameraMain, renderer.domElement);
+            controls.enableDamping = true;
+
+
+            sceneDisplay = new THREE.Scene();
+            sceneDisplay.background = new THREE.Color(0x000000);
+            const ambienLight = new THREE.AmbientLight(0x404040, 5); // soft white light
+            sceneDisplay.add(ambienLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(-2, 0, 1)
+            sceneDisplay.add(directionalLight)
+
+            const axesHelper = new THREE.AxesHelper(5);
+            //  sceneDisplay.add(axesHelper);
+
+            initComputeRenderer()
+         // fluidSim = new FluidSimulation(renderer);
+
+            initViewMonitor()
+            onWindowResize();
+            window.addEventListener('resize', onWindowResize);
+
+
+
+        }
+
+        function initComputeRenderer() {
+            gpuCompute = new GPUComputationRenderer(widthTexture, heightTexture, renderer);
+
+
+
+            const velocityTexture = gpuCompute.createTexture();
+            const splatTexture = gpuCompute.createTexture();
+            const divergenceTexture = gpuCompute.createTexture();
+            const pressureTexture = gpuCompute.createTexture();
+            const gradientSubtractTexture = gpuCompute.createTexture();
+            const advectionTexture = gpuCompute.createTexture();
+            const outputShaderTexture = gpuCompute.createTexture();
+
+            // fillPosTexture(dtPosition);
+            // fillVelTexture(dtVelocity);
+            // fillExtraTexture(dtExtra)
+
+            splatVariable = gpuCompute.addVariable('splatTexture', document.getElementById('fragShaderPoint').textContent, splatTexture);
+            divergenceVariable = gpuCompute.addVariable('divergenceTexture', document.getElementById('fragShaderDivergence').textContent, divergenceTexture);
+            pressureVariable = gpuCompute.addVariable('pressureTexture', document.getElementById('fragShaderPressure').textContent, pressureTexture);
+            gradientSubtractVariable = gpuCompute.addVariable('gradientSubtractTexture', document.getElementById('fragShaderGradientSubtract').textContent, gradientSubtractTexture);
+            advectionVariable = gpuCompute.addVariable('advectionTexture', document.getElementById('fragShaderAdvection').textContent, advectionTexture);
+            outputShaderVariable = gpuCompute.addVariable('outputShaderTexture', document.getElementById('fragShaderOutputShader').textContent, outputShaderTexture);
+
+            splatVariable.wrapS = THREE.RepeatWrapping;
+            splatVariable.wrapT = THREE.RepeatWrapping;
+            divergenceVariable.wrapS = THREE.RepeatWrapping;
+            divergenceVariable.wrapT = THREE.RepeatWrapping;
+            pressureVariable.wrapS = THREE.RepeatWrapping;
+            pressureVariable.wrapT = THREE.RepeatWrapping;
+            gradientSubtractVariable.wrapS = THREE.RepeatWrapping;
+            gradientSubtractVariable.wrapT = THREE.RepeatWrapping;
+            advectionVariable.wrapS = THREE.RepeatWrapping;
+            advectionVariable.wrapT = THREE.RepeatWrapping;
+            outputShaderVariable.wrapS = THREE.RepeatWrapping;
+            outputShaderVariable.wrapT = THREE.RepeatWrapping;
+
+            // gpuCompute.setVariableDependencies(velocityVariable, [positionVariable, velocityVariable, extraVariable]);
+            // gpuCompute.setVariableDependencies(positionVariable, [positionVariable, velocityVariable, extraVariable]);
+            // gpuCompute.setVariableDependencies(extraVariable, [positionVariable, velocityVariable, extraVariable]);
+
+            splatUniforms = splatVariable.material.uniforms;
+            divergenceUniforms = divergenceVariable.material.uniforms;
+            pressureUniforms = pressureVariable.material.uniforms;
+            gradientSubtractUniforms = gradientSubtractVariable.material.uniforms;
+            advectionUniforms = advectionVariable.material.uniforms;
+            outputShaderUniforms = outputShaderVariable.material.uniforms;
+
+            splatUniforms['u_texel'] = { value: new THREE.Vector2(1 / widthTexture, 1 / heightTexture) };
+            divergenceUniforms['u_texel'] = { value: new THREE.Vector2(1 / widthTexture, 1 / heightTexture) };
+            pressureUniforms['u_texel'] = { value: new THREE.Vector2(1 / widthTexture, 1 / heightTexture) };
+            gradientSubtractUniforms['u_texel'] = { value: new THREE.Vector2(1 / widthTexture, 1 / heightTexture) };
+            advectionUniforms['u_texel'] = { value: new THREE.Vector2(1 / widthTexture, 1 / heightTexture) };
+            outputShaderUniforms['u_texel'] = { value: new THREE.Vector2(1 / widthTexture, 1 / heightTexture) };
+
+
+            console.log(splatVariable)
+            const error = gpuCompute.init();
+
+            if (error !== null) {
+
+                console.error(error);
+
+            }
+
+        }
+
+        function initViewMonitor() {
+            meshView = new THREE.Mesh(
+                new THREE.PlaneGeometry(10, 10),
+                new THREE.MeshPhongMaterial({
+                    map: null,
+                    // color:"blue"
+                })
+            )
+            sceneDisplay.add(meshView)
+        }
+        function onWindowResize() {
+
+            const aspect = wView / hView;
+            cameraMain.aspect = aspect;
+            cameraMain.updateProjectionMatrix();
+            const dpr = renderer.getPixelRatio();
+            renderer.setSize(wView, hView);
+
+        }
+        function animate() {
+            now = performance.now();
+
+            renderer.render(sceneDisplay, cameraMain);
+            gpuCompute.compute();
+            // meshView.material.map = fluidSim.getVelocityTexture();
+            // fluidSim.update(window.innerWidth, window.innerHeight, 1);
+            controls.update();
+            stats.update();
+        }
+
+    </script>
+
+</body>
+
+</html>
