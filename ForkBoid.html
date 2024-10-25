@@ -508,12 +508,15 @@
 						vec3 posOfGpu = texture2D(texturePosition, reference).xyz; 
 						vec3 velOfGpu = texture2D(textureVelocity, reference).xyz; 
 						vec3 pos = position;
-
+                        vec3 pos2 = position;
+                        //   pos.y += sin(pos.z *.2 + time *.01  + id) * .8 ;
 						vec3 dirC = normalize(velOfGpu);
 						vec3 axis = cross(dirC,axisX);
 						float angle = acos(dot(dirC, axisX));
 						pos = rotate(pos, axis, angle);
+
 						pos += posOfGpu;
+                         
                         transformed = pos ;
                         idT = reference;
                     `

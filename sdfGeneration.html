@@ -111,7 +111,7 @@
         const halfWidth = 0.5 * pxWidth;
 
         let FboOut,SceneFboCheck,CamFboCheck
-        let matInstanced
+        let matInstanced,textureSDFData,outD
         init();
         initFboOut()
         render();
@@ -206,7 +206,25 @@
 
         }
 
+        function initDatasdfCOCO(dataOriFromImg) {
+				const width = 128 * 16;
+				const height = 128 * 8;
 
+				const size = width * height;
+				const data = new Float32Array(width * height * 4)
+				for (let i = 0; i < size; i++) {
+					const stride = i * 4;
+					data[stride] = dataOriFromImg[stride] / 255;
+					data[stride + 1] = dataOriFromImg[stride + 1] / 255;
+					data[stride + 2] = dataOriFromImg[stride + 2] / 255;
+					data[stride + 3] = dataOriFromImg[stride + 3] / 255;
+				}
+                console.log(data[4] , dataOriFromImg[4])
+				// used the buffer to create a DataTexture
+				const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
+				texture.needsUpdate = true;
+				return texture
+			}
         function initFboOut() {
             let size = params.resolution * Math.sqrt(params.resolution)
             console.log(size)
@@ -216,16 +234,36 @@
                 format: THREE.RGBAFormat,
                 type: THREE.FloatType
             });
+            let out = FboOut.texture
             SceneFboCheck = new THREE.Scene()
             CamFboCheck =  new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50);
             CamFboCheck.position.z = 2.2
             new OrbitControls(CamFboCheck, renderer.domElement);
             const textureSdfSample = new THREE.TextureLoader().load('/models/eisbar/sdf.png')
-            let out = FboOut.texture
-          console.log(out)
+
+            const img = new Image();
+			img.src = '/models/eisbar/sdf.png';
+			img.onload = () => {
+				const canvas = document.createElement('canvas');
+				const context = canvas.getContext('2d');
+
+				canvas.width = img.width;
+				canvas.height = img.height;
+				context.drawImage(img, 0, 0);
+
+
+				const imageData = context.getImageData(0, 0, img.width, img.height);
+				textureSDFData = imageData.data;
+                outD = initDatasdfCOCO(textureSDFData)
+                
+            }
+        
+			
+       
+     
             let mesh =  new THREE.Mesh(
                 new THREE.PlaneGeometry(1,1),
-                new THREE.MeshBasicMaterial({map:out})
+                new THREE.MeshBasicMaterial({map:out,transparent:true,opacity:.4})
             )
             let mesh2 =  new THREE.Mesh(
                 new THREE.PlaneGeometry(1,8/16),
@@ -238,16 +276,16 @@
             group1.position.x = -.5
             SceneFboCheck.add(group1)
             setTimeout(() => {
-                let ins = initInstancedMesh(out)
+                let ins = initInstancedMesh(outD)
                 SceneFboCheck.add(ins)
-            },6000)
+            },5000)
         }
 
         function initInstancedMesh(data2d) {
            
             const count = 5000; // Số lượng instance
             let geometry = new THREE.BoxGeometry(0.008, 0.008, 0.008);
-            geometry = new THREE.PlaneGeometry(0.008, 0.008);
+           // geometry = new THREE.PlaneGeometry(0.008, 0.008);
             // Tạo mảng lưu trữ vị trí các điểm
             const positions = new Float32Array(count * 3);
             const uvs = new Float32Array(count * 2); // Mảng UVs
@@ -266,8 +304,8 @@
                 shader.uniforms.time = { value: 0 };
                 shader.uniforms.u_hold = { value: 1 };
                 shader.uniforms.texture2DSDF = { value: data2d };
-            shader.uniforms.resTex2d = { value: new THREE.Vector2(params.resolution,Math.sqrt(params.resolution))};
-             //  shader.uniforms.resTex2d = { value: new THREE.Vector2(128,16)};
+         //   shader.uniforms.resTex2d = { value: new THREE.Vector2(params.resolution,Math.sqrt(params.resolution))};
+             shader.uniforms.resTex2d = { value: new THREE.Vector2(128,16)};
 
                 // Sửa đổi vertex shader
                 console.log(shader.uniforms.resTex2d)
@@ -336,30 +374,39 @@
 										mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
 										floor(id / tSize.x) / tSize.y  // Tính chỉ số hàng
 									);
-                        vec3 posSelf = offset * 1.;
+                        vec3 posSelf = offset * 1. ;
                         vec3 u_sdfOffset = vec3(0.5000, 0.5000, 0.5000);
                         vec3 voxelTextureCoordOri = posSelf.xyz / 1. + u_sdfOffset ;
                         vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 /resTex2d.x), vec3(1.0 - 0.5 / resTex2d.x));
                      
                       	vec4 distanceInfo = sampleAs3DTextureOrigin(texture2DSDF, voxelTextureCoord  , resTex2d.x,resTex2d.x / resTex2d.y,resTex2d.y); //  128.,8.,16.
                          vec4 distanceInfoFormat = distanceInfo * 2. - 1.;
-                        vec3 disSDF = normalize(distanceInfoFormat.xyz - voxelTextureCoordOri) * ((distanceInfoFormat.w)*u_hold);
-		            //   posSelf += disSDF;
+                        vec3 disSDF = normalize(distanceInfoFormat.xyz + voxelTextureCoordOri) * ((1.-distanceInfoFormat.w)*u_hold);
+		             if(1.-distanceInfoFormat.w < .9) {
+                        posSelf -=   normalize(distanceInfoFormat.xyz) * ((distanceInfoFormat.w)); ;
+                     }
+                     //   posSelf -= disSDF;
                     vSam = distanceInfoFormat;
                         // Tính toán vị trí cuối cùng của điểm trong không gian clip
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(posSelf + position * 5., 1.0);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(posSelf + position * 5. , 1.0);
 						vUv = uv; // Truyền UV đến fragment shader
 
                 `,
                 shader.fragmentShader = `
                   varying vec4 vSam; 
-                       varying float distance; 
+                       varying float distance;
+                       uniform float u_hold; 
                         ${shader.fragmentShader} 
                 `.replace(`#include <dithering_fragment>`,
                     `
                     #include <dithering_fragment>
                         gl_FragColor = vec4(vSam.xyz,1.);
-                        gl_FragColor = vec4(vSam.xyz,vSam.w + .5);
+                        if(1.-vSam.w > u_hold) {
+                            gl_FragColor = vec4(vSam.xyz,1.-vSam.w);
+                        }else {
+                            //discard;
+                        }
+                       
                     `
                 )
             );
@@ -385,6 +432,10 @@ for (let i = 0; i < count; i++) {
     offsets[i * 3 + 0] = v.x; // X
     offsets[i * 3 + 1] = v.y; // Y
     offsets[i * 3 + 2] = v.z; // Z
+
+    offsets[i * 3 + 0] = Math.random() * 2. - 1.; // X
+    offsets[i * 3 + 1] =  Math.random() * 2. - 1.; // Y
+    offsets[i * 3 + 2] =  Math.random() * 2. - 1.; // Z
 }
 
 geometry.setAttribute('offset', new THREE.InstancedBufferAttribute(offsets, 3));

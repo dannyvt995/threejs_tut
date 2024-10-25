@@ -87,7 +87,7 @@
         const params = {
 
             gpuGeneration: false, // worker chưa hoạt động
-            resolution: 36,
+            resolution: 16,
             margin: 0.2,
             regenerate: () => updateSDF(),
 
@@ -133,6 +133,7 @@
         let initialExtremes = null;
         let model, skeletonHelper, mixer, animationAction, staticGeometryGenerator, wireframeMaterial, meshHelper, bvhHelper
 
+        const textureSdfSample = new THREE.TextureLoader().load('/models/eisbar/sdf.png')
 
         //config
         const dim = params.resolution;
@@ -527,7 +528,7 @@
                     meshHelper.geometry.boundsTree.refit();
 
                    
-                  if( /* countTriggle % 100 === 0 || */ /* 1 === 2 */  countTriggle === 4./*  countTriggle % 10 === 0 */)  {
+                  if( /* countTriggle % 100 === 0 || */ /* 1 === 2 */   countTriggle % 2 === 0 )  {
 
                     if (!params.gpuGeneration) {
                         // create a new 3d data texture
@@ -789,7 +790,7 @@
         function initInstancedMesh(data3d) {
             console.log(data3d)
             const count = 2000; // Số lượng instance
-            const geometry = new THREE.BoxGeometry(0.008, 0.008, 0.008);
+            const geometry = new THREE.BoxGeometry(0.08, 0.08, 0.08);
 
             // Tạo mảng lưu trữ vị trí các điểm
             const positions = new Float32Array(count * 3);
@@ -808,8 +809,9 @@
                 shader.uniforms.velGpu = { value: null };
                 shader.uniforms.time = { value: 0 };
                 shader.uniforms.u_hold = { value: 1 };
-                shader.uniforms.texture2DSDF = { value: null };
-                shader.uniforms.resTex2d = { value: new THREE.Vector2(params.resolution,Math.sqrt(params.resolution)) };
+                shader.uniforms.texture2DSDF = { value: textureSdfSample };
+             //   shader.uniforms.resTex2d = { value: new THREE.Vector2(params.resolution,Math.sqrt(params.resolution)) };
+                shader.uniforms.resTex2d = { value: new THREE.Vector2(128,16)};
                 shader.uniforms.texture3DSDF = { value: data3d };
                 shader.uniforms.tSize = { value: new THREE.Vector2(params.resolution, params.resolution) };
                 shader.uniforms.uTexelSize = { value: new THREE.Vector2(1 / 20, 1 / 20) }
@@ -818,6 +820,7 @@
 					attribute vec3 offset;
                    	varying vec2 vUv;
                     varying float distance;
+                     varying vec4 sdf;
                     	uniform float u_hold;
                         uniform float time;
 					uniform vec2 tSize;
@@ -873,6 +876,7 @@ vec3 calculateSDFGradient(vec3 pos,float step) {
                 `.replace(
                     `#include <fog_vertex>`,
                     `#include <fog_vertex>
+
                   		float id = float(gl_InstanceID);
 						vec2 uvT = vec2(
 										mod(id, tSize.x) / tSize.x, // Tính chỉ số cột
@@ -884,22 +888,18 @@ vec3 calculateSDFGradient(vec3 pos,float step) {
                         vec3 voxelTextureCoordOri = posSelf.xyz / 1. + u_sdfOffset ;
                         vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 /resTex2d.x), vec3(1.0 - 0.5 / resTex2d.x));
                      
-                      	vec4 distanceInfo = sampleAs3DTextureOrigin(texture2DSDF, voxelTextureCoord  , resTex2d.x,resTex2d.y,resTex2d.y);
+                      	vec4 distanceInfo = sampleAs3DTextureOrigin(texture2DSDF, voxelTextureCoord  , resTex2d.x,resTex2d.x/resTex2d.y,resTex2d.y);
                          vec4 distanceInfoFormat = distanceInfo * 2. - 1.;
                         vec3 disSDF = normalize(distanceInfoFormat.xyz + voxelTextureCoordOri) * ((1.-distanceInfoFormat.w)*u_hold);
-				
-
+                        sdf = distanceInfoFormat;
+                        vec4 cc = texture2D(texture2DSDF,uvT);
+                       /// sdf = cc;
                         distance = distanceInfoFormat.a+ .8;
                        float tt = texture(texture3DSDF, posSelf).r;
     
-    // Chuyển đổi từ không gian texture (0 -> 1) sang không gian chuẩn hóa (-1 -> 1)
-    posSelf = posSelf * 2.0 - 1.0;
-
-    // Tính gradient SDF để xác định hướng pháp tuyến (normal)
-    vec3 sdfGradient = calculateSDFGradient(posSelf,resTex2d.y);
 
     // Điều chỉnh vị trí điểm dựa trên khoảng cách tới bề mặt và gradient
-    posSelf = normalize(sdfGradient + posSelf)   * (- tt  * u_hold);
+  //  posSelf = disSDF;
 
   
 
@@ -910,13 +910,19 @@ vec3 calculateSDFGradient(vec3 pos,float step) {
                 `,
                 shader.fragmentShader = `
                        varying float distance; 
+                         varying vec4 sdf;
+                         uniform float u_hold;
                         ${shader.fragmentShader} 
                 `.replace(`#include <dithering_fragment>`,
                     `
                     #include <dithering_fragment>
                
                       gl_FragColor = vec4(vec3(1.,0.,0.),step(.95,1.-distance));
-                      gl_FragColor = vec4(vec3(1.,0.,0.),1.);
+                         if(1.-sdf.w > u_hold) {
+                        gl_FragColor = vec4(sdf.xyz,1.-sdf.w);
+                        }else {
+                            discard;
+                        }
                     `
                 )
             );
@@ -930,9 +936,9 @@ vec3 calculateSDFGradient(vec3 pos,float step) {
 
             for (let i = 0; i < count; i++) {
 
-                offsets[i * 3 + 0] = Math.random(); // X
-                offsets[i * 3 + 1] = Math.random(); // Y
-                offsets[i * 3 + 2] =Math.random(); // Z
+                offsets[i * 3 + 0] = Math.random() * 2 - 1; // X
+                offsets[i * 3 + 1] = Math.random() * 2 - 1; // Y
+                offsets[i * 3 + 2] =Math.random() * 2 - 1; // Z
             }
 
 
@@ -1049,8 +1055,8 @@ vec3 calculateSDFGradient(vec3 pos,float step) {
                     meshCheckFbo.material.uniforms.tex.value = renderTargetGenImg.texture
                     // monitorTrack1.material.uniforms.tex.value = renderTargetGenImg.texture
                     
-                    matInstanced.uniforms.texture2DSDF.value = renderTargetGenImg.texture
-    
+                    //matInstanced.uniforms.texture2DSDF.value = renderTargetGenImg.texture
+                    matInstanced.uniforms.texture2DSDF.value = textureSdfSample
                    renderer.setRenderTarget(null)
                  // layerPass.render(renderer);
                   renderer.render(sceneFbo, camFbo);

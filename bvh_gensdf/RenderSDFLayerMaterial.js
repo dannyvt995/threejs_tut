@@ -92,7 +92,7 @@ export class RenderSDFLayerMaterial extends ShaderMaterial {
 					outGradient2 = clamp(outGradient2, 0.0, 1.0);
 
 					gl_FragColor = vec4(outGradient2, step(.95,1.-dist));
-					gl_FragColor = vec4(gradient *.5+.5,dist );
+					gl_FragColor = vec4(gradient *.5+.5,dist + .5 );
 //gl_FragColor = vec4(dist);
 // gl_FragColor = vec4(vec3(dist),step(.4,1.-dist));
 

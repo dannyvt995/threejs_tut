@@ -124,8 +124,11 @@
                     // console.log(mesh.material.uuid)
                     }
                 });
-
-                scene.add(gltf.scene);
+                let a = gltf.scene
+                let b = gltf.scene
+                b.position.x  =10
+                scene.add(a);
+                scene.add(b);
             });
         }
 

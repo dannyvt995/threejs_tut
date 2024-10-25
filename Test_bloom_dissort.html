@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>three.js webgl - mesh - batch</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+
+</head>
+
+<style>
+    body {
+        background-color: #fff;
+        color: #444;
+        margin: 0;
+        padding: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    a {
+        color: #08f;
+    }
+</style>
+
+<body>
+
+    <div id="canvas"></div>
+    <script type="importmap">
+		{
+			"imports": {
+				"three": "./three.module.js",
+				"three/addons/": "./jsm/"
+			}
+		}
+	</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/DRACOLoader.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { radixSort } from 'three/addons/SortUtils.js';
+        import { MeshSurfaceSampler } from 'three/addons/MeshSurfaceSampler.js';
+
+
+
+        import Renderer from "./fuild/modules_rewrite/Renderer.js";
+        import Simulation from "./fuild/modules_rewrite/Simulation.js";
+        import Mouse from "./fuild/modules_rewrite/Mouse.js";
+
+
+        import { ShaderPass } from 'three/addons/ShaderPass.js';
+        import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/EffectComposer.js";
+        import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/RenderPass.js";
+        import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/UnrealBloomPass.js";
+        import { AfterimagePass } from 'https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/postprocessing/AfterimagePass.js';
+
+        import { Reflector } from 'three/addons/Reflector.js';
+
+        let meshShowTexture, renderTarget, model, stats, gui, guiStatsEl, mixer, mixer1, sampler, meshSamplerInstanced, pointsSkin;
+        let camera, controls, scene, scene2,scene3, renderer;
+        let geometries, mesh, material;
+        let saveMat, saveGeo, dataColection
+        let renderBufferA, renderBufferB, postFXScene, postFXMesh
+        let composer, finalComposer, renderTarget1, renderTarget2, nonBloomComposer
+        const clock = new THREE.Clock();
+        //for skined static
+        const bindMatrixSTATIC = new THREE.Matrix4();
+        bindMatrixSTATIC.set(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+        const bindMatrixInverseSTATIC = new THREE.Matrix4();
+        bindMatrixInverseSTATIC.set(0.1139, 0, 0, 0, 0, 0.1139, 0, 0, 0, 0, 0.1139, 0, 0, 34.1586, 0, 1);
+
+        let pmremGen, envMap, mCustom, meshCheck
+
+        let sceneComposer, bloomComposer, finalPass
+
+        Renderer.init();
+        Mouse.init();
+        const simulation = new Simulation({
+        options: {
+            iterations_poisson: 1,
+            iterations_viscous: 1,
+            mouse_force: 20,
+            resolution: 0.4,
+            cursor_size: 42,
+            viscous: 30,
+            isBounce: false,
+            dt: 0.09,
+            isViscous: false,
+            BFECC: false
+        }
+    });
+        init();
+
+
+        animate();
+
+        function initMesh() {
+            scene3 = new THREE.Scene() 
+            const geometry = new THREE.BoxGeometry(100, 100, 100);
+            const material = new THREE.MeshPhongMaterial({ color: 'blue' });
+            material.onBeforeCompile = (shader) => {
+
+                console.log(shader.vertexShader)
+                shader.vertexShader =  shader.vertexShader.replace(`varying vec3 vViewPosition;`,`
+         varying vec3 vViewPosition;
+                varying vec2 vUv;
+                `)
+                shader.vertexShader =  shader.vertexShader.replace(`#include <fog_vertex>`,`
+                    #include <fog_vertex>
+                    vUv = uv;
+                `)
+                shader.fragmentShader =  shader.fragmentShader.replace(`uniform vec3 diffuse;`,`
+                uniform vec3 diffuse;
+                varying vec2 vUv;
+                float random (vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+}
+
+                `)
+                shader.fragmentShader =  shader.fragmentShader.replace(
+                    `#include <dithering_fragment>`
+                    , 
+                `
+                #include <dithering_fragment>
+                    float size = 1.; // Điều chỉnh giá trị này để thay đổi kích thước ô vuông
+
+                    vec2 grid = fract(vUv * size);
+                    float checker = step(0.5, grid.x) + step(0.5, grid.y);
+                    vec3 color = mod(checker, 2.0) == 1.0 ? vec3(checker,grid.x,.4) : vec3(0.0);
+                    gl_FragColor = vec4(color,1.);
+                
+                `)
+            }
+            const material2 = new THREE.MeshBasicMaterial({ color: 'gray',wireframe:false });
+            const cube = new THREE.Mesh(geometry, material);
+            const cube2 = new THREE.Mesh(geometry, material2);
+            scene.add(cube);
+            scene3.add(cube2)
+
+        }
+
+        function init() {
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // camera
+
+            camera = new THREE.OrthographicCamera(
+                -width / 2,
+                width / 2,
+                height / 2,
+                -height / 2,
+                0.0001,
+                100000,
+            )
+            camera = new THREE.PerspectiveCamera(45, width / height, 1, 100000);
+
+            camera.position.set(400, 200, 700)
+            camera.lookAt(new THREE.Vector3(0, 0, 0))
+            // renderer
+
+            // renderer = new THREE.WebGLRenderer({ antialias: true });
+            // renderer.setClearColor(0x222222)
+            // renderer.setClearAlpha(0)
+            // renderer.setPixelRatio(window.devicePixelRatio);
+            // renderer.setSize(width, height);
+
+            Renderer.renderer.toneMapping = THREE.ACESFilmicToneMapping
+            Renderer.renderer.toneMappingExposure = .242
+           // document.body.appendChild(Renderer.renderer.domElement);
+
+
+            scene = new THREE.Scene();
+            scene2 = new THREE.Scene();
+            scene.background = new THREE.Color(0x010103);
+
+            initMesh();
+
+
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, .75);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(directionalLight);
+            directionalLight.position.z = -1200
+            directionalLight.position.x = -300
+            directionalLight.position.y = 100
+            const helper = new THREE.DirectionalLightHelper(directionalLight, 50);
+            scene.add(helper);
+            scene.add(ambientLight);
+
+            // controls
+
+            controls = new OrbitControls(camera, Renderer.renderer.domElement);
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 1.0;
+
+            // axes
+            const axesHelper = new THREE.AxesHelper(5000);
+            scene.add(axesHelper);
+
+            //composer
+
+            renderTarget1 = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+                format: THREE.RGBAFormat,
+                minFilter: THREE.LinearFilter,
+                magFilter: THREE.LinearFilter
+            });
+            renderTarget2 = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+                format: THREE.RGBAFormat,
+            });
+
+            // Set up the passes
+            const renderScene = new RenderPass(scene, camera);
+            const bloomPass = new UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight),
+                1.,  // bloom strength
+                0.,  // radius
+                0.  // threshold
+            );
+
+    
+            bloomComposer = new EffectComposer(Renderer.renderer, renderTarget2);
+            bloomComposer.addPass(renderScene);
+            bloomComposer.addPass(bloomPass);
+
+            // Final combination pass
+            finalPass = new ShaderPass(
+                new THREE.ShaderMaterial({
+                    uniforms: {
+                        fuildTexture:{value:simulation.fbos.vel_0.texture},
+                        baseTexture: { value: null },
+                        bloomTexture: { value: null },
+                        bloomStrength: { value: 1.0 } // Add controllable bloom strength
+                    },
+                    vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+                    fragmentShader: `
+            uniform sampler2D baseTexture;
+            uniform sampler2D bloomTexture;
+             uniform sampler2D fuildTexture;
+            uniform float bloomStrength;
+            varying vec2 vUv;
+
+            void main() {
+                vec4 fuild = texture2D(fuildTexture, vUv);
+                vec4 base = texture2D(baseTexture, vUv);
+                float len = length(fuild.xy);
+                 float alpha = smoothstep(0.0, 0.95, len );
+                vec3 outFuild = mix(vec3(0.),vec3(len) * 18.,alpha);
+                float luminance = dot(outFuild, vec3(0.299, 0.587, 0.114));
+                float threshold = 0.1;
+                if (luminance > threshold) {
+                    outFuild *= 0.0001;  
+                }
+                vec4 bloom = texture2D(bloomTexture, vUv-vec2( normalize(fuild.xy) * outFuild.x)*2.);
+          
+                vec4 fuildRls = vec4(vec3(outFuild.x),1.);
+                gl_FragColor = bloom ;
+              gl_FragColor = base + bloom * .5 + fuildRls * 0.;
+            }
+        `
+                }),
+            );
+            // finalPass.needsSwap = true;
+            // Main composer setup
+            composer = new EffectComposer(Renderer.renderer);
+            composer.addPass(finalPass);
+
+
+
+            stats = new Stats();
+            document.body.appendChild(stats.dom);
+
+            // listeners
+
+            window.addEventListener('resize', onWindowResize);
+
+        }
+
+
+
+
+
+
+        function render() {
+            const delta = clock.getDelta();
+
+            Renderer.renderer.setRenderTarget(renderTarget1)
+            Renderer.renderer.clear()
+            Renderer.renderer.render(scene3, camera)
+
+
+            bloomComposer.renderToScreen = false;
+            bloomComposer.render();
+            // console.log(bloomComposer)
+
+
+            finalPass.uniforms.baseTexture.value = renderTarget1.texture;
+            finalPass.uniforms.bloomTexture.value = bloomComposer.renderTarget2.texture;
+            Renderer.renderer.setRenderTarget(null)
+            composer.renderToScreen = true;
+            composer.render();
+            //
+        }
+        function onWindowResize() {
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            Renderer.renderer.setSize(width, height);
+
+        }
+        Renderer.renderer.setAnimationLoop(animate);
+        function animate() {
+
+            Mouse.update();
+            Renderer.update();
+            simulation.update()
+            stats.update();
+
+            render();
+
+        }
+
+    </script>
+
+</body>
+
+</html>
