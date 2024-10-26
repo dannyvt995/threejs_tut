@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "../three.module.js",
+                "three/addons/": "../jsm/"
+            }
+        }
+    </script>
+</body>
+<div id="title">
+    <h3>texDepth</h3>
+    <h3 id="textField"></h3>
+</div>
+<script src="https://threejs.org/build/three.js"></script>
+<script>
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Compute frag shader
+    // It should output an RGB gradient in the XYZ axes to the 3DRenderTarget
+    // But gl_FragCoord.z is always 0.5 and gl_FragDepth is always 0.0
+
+  
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Reader frag shader
+    // Samples the 3D texture along uv.x, uv.y, and uniform Z coordinate
+
+ 
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Simple vertex shader,
+    // renders a full-screen quad with UVs without any transformations
+   
+
+
+    /////////////////////////////////////////////////////////////////////////////////////
+
+</script>
+
+<script type="module">
+    import * as THREE from 'three'
+
+  const COMPUTE_FRAGMENT = `
+  
+
+
+uniform float uZCoord;
+void main() {
+    vec3 color = vec3(gl_FragCoord.x / 64.0, gl_FragCoord.y / 64.0, uZCoord);
+    pc_fragColor.rgb = color;
+    pc_fragColor.a = 1.0;
+}`;
+    const READ_FRAGMENT = `
+    
+
+layout(location = 0) out highp vec4 pc_fragColor;
+
+varying vec2 vUv;
+uniform sampler3D tDiffuse;
+uniform float uZCoord;
+
+void main() {
+    vec3 UV3 = vec3(vUv.x, vUv.y, uZCoord);
+    vec3 diffuse = texture(tDiffuse, UV3).rgb;
+    pc_fragColor.rgb = diffuse;
+    pc_fragColor.a = 1.0;
+}
+`;
+    const SIMPLE_VERTEX = `
+    
+
+
+varying vec2 vUv;
+
+void main() {
+    vUv = uv;
+    gl_Position = vec4(position, 1.0);
+}`;
+
+    var renderer, target3d, camera;
+    const SIDE = 64;
+    var computeMaterial, computeMesh;
+    var readDataMaterial, readDataMesh,
+        read3dTargetMaterial, read3dTargetMesh;
+    var textField = document.querySelector("#textField");
+
+    function init() {
+        // Three.js boilerplate
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(new THREE.Color(0x000000), 1.0);
+        document.body.appendChild(renderer.domElement);
+        camera = new THREE.Camera();
+
+        // Create volume material to render to 3dTexture
+        computeMaterial = new THREE.ShaderMaterial({
+            vertexShader: SIMPLE_VERTEX,
+            fragmentShader: COMPUTE_FRAGMENT,
+            uniforms: {
+                uZCoord: { value: 0.0 },
+            },
+            depthTest: false,
+        });
+        computeMaterial.type = "VolumeShader";
+        computeMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), computeMaterial);
+
+        // Left material, reads Data3DTexture
+        readDataMaterial = new THREE.ShaderMaterial({
+            vertexShader: SIMPLE_VERTEX,
+            fragmentShader: READ_FRAGMENT,
+            uniforms: {
+                uZCoord: { value: 0.0 },
+                tDiffuse: { value: create3dDataTexture() }
+            },
+            depthTest: false,
+            glslVersion: THREE.GLSL3,
+        });
+        readDataMaterial.type = "DebugShader";
+        readDataMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), readDataMaterial);
+
+        // Right material, reads 3DRenderTarget texture
+        target3d = new THREE.WebGL3DRenderTarget(SIDE, SIDE, SIDE);
+        target3d.depthBuffer = false;
+
+        read3dTargetMaterial = readDataMaterial.clone();
+        read3dTargetMaterial.uniforms.tDiffuse.value = target3d.texture;
+        read3dTargetMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), read3dTargetMaterial);
+    }
+
+    // Creates 3D texture with RGB gradient along the XYZ axes
+    function create3dDataTexture() {
+        const d = new Uint8Array(SIDE * SIDE * SIDE * 4);
+        window.dat = d;
+        let i4 = 0;
+
+        for (let z = 0; z < SIDE; z++) {
+            for (let y = 0; y < SIDE; y++) {
+                for (let x = 0; x < SIDE; x++) {
+                    d[i4 + 0] = (x / SIDE) * 255;
+                    d[i4 + 1] = (y / SIDE) * 255;
+                    d[i4 + 2] = (z / SIDE) * 255;
+                    d[i4 + 3] = 1.0;
+                    i4 += 4;
+                }
+            }
+        }
+
+        const texture = new THREE.Data3DTexture(d, SIDE, SIDE, SIDE);
+        texture.format = THREE.RGBAFormat;
+        texture.minFilter = THREE.NearestFilter;
+        texture.magFilter = THREE.NearestFilter;
+        texture.unpackAlignment = 1;
+        texture.needsUpdate = true;
+
+        return texture;
+    }
+
+    function onResize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate(t) {
+        for (let i = 0; i < SIDE; i++) {
+
+            // Render volume shader to target3d buffer
+            computeMesh.material.uniforms.uZCoord.value = i / (SIDE - 1);
+            renderer.setRenderTarget(target3d, i);
+            renderer.render(computeMesh, camera);
+
+        }
+
+        // Update z texture coordinate along sine wave
+        renderer.autoClear = false;
+        const sinZCoord = Math.sin(t / 1000);
+        readDataMaterial.uniforms.uZCoord.value = sinZCoord;
+        read3dTargetMaterial.uniforms.uZCoord.value = sinZCoord;
+        textField.innerText = sinZCoord.toFixed(4);
+
+        // Render data3D texture to screen
+        renderer.setViewport(0, window.innerHeight - SIDE * 4, SIDE * 4, SIDE * 4);
+        renderer.setRenderTarget(null);
+        renderer.render(readDataMesh, camera);
+
+        // Render 3dRenderTarget texture to screen
+        renderer.setViewport(SIDE * 4, window.innerHeight - SIDE * 4, SIDE * 4, SIDE * 4);
+        renderer.setRenderTarget(null);
+        renderer.render(read3dTargetMesh, camera);
+
+        renderer.autoClear = true;
+        requestAnimationFrame(animate);
+    }
+
+    init();
+    window.addEventListener("resize", onResize);
+    requestAnimationFrame(animate);
+</script>
+
+</html>
