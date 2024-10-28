@@ -15,7 +15,7 @@ void main(){
     float p3 = texture2D(pressure, uv-vec2(0, px.y * 2.0 )).r;
     float div = texture2D(divergence, uv).r;
     
-    float newP = (p0 + p1 + p2 + p3)  * .7 - div ;
+    float newP = (p0 + p1 + p2 + p3)  * .5 - div ;
 
 
     gl_FragColor = vec4(newP);

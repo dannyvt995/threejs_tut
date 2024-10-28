@@ -73,7 +73,7 @@ export default class ExternalForce extends ShaderPass{
         uniforms.force.value.set(forceX, forceY);
         uniforms.center.value.set(centerX, centerY);
        
-
+      
         // Tính toán tốc độ di chuyển chuột
         const deltaX = Mouse.coords.x - this.lastMouseCoords.x;
         const deltaY = Mouse.coords.y - this.lastMouseCoords.y;

@@ -486,11 +486,10 @@ function render(t) {
     blitOut()
 
     WEBGL_RENDERER.useProgram(outputShaderProgram.program);
-    WEBGL_RENDERER.uniform1i(outputShaderProgram.uniforms.u_output_texture, outputColor.read().attach(1));
+    WEBGL_RENDERER.uniform1i(outputShaderProgram.uniforms.u_output_texture, outputColor.read().attach(2));
 
-
-  //  WEBGL_RENDERER.useProgram(splatProgram.program);
-
+    
+ 
     WEBGL_RENDERER.viewport(0, 0, WEBGL_RENDERER.drawingBufferWidth, WEBGL_RENDERER.drawingBufferHeight);
     WEBGL_RENDERER.bindFramebuffer(WEBGL_RENDERER.FRAMEBUFFER, null);
     WEBGL_RENDERER.drawElements(WEBGL_RENDERER.TRIANGLES, 6, WEBGL_RENDERER.UNSIGNED_SHORT, 0);

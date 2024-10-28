@@ -195,8 +195,8 @@ export default class Simulation{
       
 
         this.advection.update(this.options);
+        this.advection.uniforms.force.value = new THREE.Vector2(this.externalForce.force.x,this.externalForce.force.y)
     
-        
         this.externalForce.update({
             cursor_size: this.options.cursor_size,
             mouse_force: this.options.mouse_force,

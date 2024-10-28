@@ -32,6 +32,9 @@ export default class Advection extends ShaderPass{
                     },
                     isBFECC: {
                         value: true
+                    },
+                    force: {
+                        value: new THREE.Vector2(0,0)
                     }
                 },
             },
@@ -60,8 +63,8 @@ export default class Advection extends ShaderPass{
         this.scene.add(this.plane);
     }
 
-    update({ dt, isBounce, BFECC }){
-
+    update({ dt, isBounce, BFECC  }){
+      
         this.uniforms.dt.value = dt;
         this.uniforms.isBFECC.value = BFECC;
 

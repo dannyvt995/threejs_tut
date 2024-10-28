@@ -6,6 +6,7 @@ uniform bool isBFECC;
 // uniform float uvScale;
 uniform vec2 fboSize;
 uniform vec2 px;
+uniform vec2 force;
 varying vec2 uv;
 float random (vec2 st) {
     return fract(sin(dot(st.xy,
@@ -16,12 +17,19 @@ float random (vec2 st) {
 void main(){
     vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;
 
-    vec2 vel = texture2D(velocity, uv).xy;
+    vec2 vel = texture2D(velocity, uv ).xy;
     float rand = random(uv) * 0.01;
-    float dtc = dt * 12.;
+
         vec2 uv2 = uv - vel * dt * ratio ;
         vec2 newVel = texture2D(velocity, uv2).xy;
-        gl_FragColor = vec4(newVel, 0.0, 0.0) ;
+           vec4 result = vec4(newVel, 0.0, 0.0);
+            float decay = 1.0;
+            if(abs(force.x) > 0.) {
+                decay += dt * .1;
+            }else{
+                 decay += dt * .7;
+            }
+        gl_FragColor = result / decay;
 }
 
 

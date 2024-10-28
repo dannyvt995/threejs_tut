@@ -96,7 +96,7 @@
          vec2 velFuild = texture2D(fuildMap,uvPos).xy;
 
 
-     //  posSelf += vec3(velFuild,posSelf.z)  * 1.5;
+   // posSelf += vec3(velFuild,posSelf.z)  * 1.5;
     
 
          
@@ -308,7 +308,7 @@
     let controlsMain
     //GPGPU
     let gpuCompute
-    let widthTexture = 50
+    let widthTexture = 10
     let velocityVariable, positionVariable, extraVariable
     let positionUniforms, velocityUniforms, extraUniforms
 
@@ -517,7 +517,7 @@
         let mat =
 
             meshCheck = new THREE.Mesh(
-                new THREE.PlaneGeometry(5, 5),
+                new THREE.PlaneGeometry(5, 5,widthTexture,widthTexture),
                 //new THREE.MeshBasicMaterial({color:"blue",map:null})
                 new THREE.ShaderMaterial({
                     uniforms: {
@@ -543,54 +543,45 @@
                     uniform sampler2D uPos;
                     uniform float uSizeTexture;
                     void main() {
-                        vec4 tex = texture2D(uPos, vUv);
-    
-                        vec2 particlePos = tex.xy ;
-                        vec2 texelCoord = vUv * 2.0 - 1.0;
-                        
-                        // Vẽ hình tròn với bán kính 0.01
-                        float radius = 0.1;
-                        float circle = length(particlePos - texelCoord) - radius;
-                        
-                        // Step function để tạo hình tròn rõ nét
-                        float circle_shape = step(0.001, circle);
-                        
-                        gl_FragColor = tex * .1 + vec4(vec3(1.0 - circle_shape), 1.0);
-                     
-
                        
-                        float size = uSizeTexture;
-                      
-                        vec2 uvv = texelCoord;
-                        uvv *= 1.;
-                        float checkX = mod(floor(uvv.x * size * 1.0), 1.0);
-                        float checkY = mod(floor(uvv.y * size * 1.0), 1.0);
+                      vec2 vUvFormat = vUv * 2.0 - 1.0;
+    float particleSize = 0.01;
+    vec4 color = vec4(0.0);
 
-                        float checkX2 = floor(particlePos.x);
-                        float checkY2 = floor(particlePos.y);
+    // Kiểm tra position của hạt tại vị trí gần nhất
+    vec2 nearestParticleCoord = floor(vUv * uSizeTexture);
+    
+    // Kiểm tra một vùng rộng hơn để bắt được hạt di chuyển
+    float searchRadius = uSizeTexture; // Có thể điều chỉnh để tăng/giảm vùng tìm kiếm
+    
+    for(float y = -searchRadius; y <= searchRadius; y++) {
+        for(float x = -searchRadius; x <= searchRadius; x++) {
+            vec2 offset = vec2(x, y);
+            vec2 sampleCoord = nearestParticleCoord + offset;
+            
+            // Normalize về khoảng [0,1]
+            vec2 particleUV = sampleCoord / uSizeTexture;
+            
+            // Chỉ đọc nếu UV nằm trong khoảng hợp lệ
+            if(particleUV.x >= 0.0 && particleUV.x <= 1.0 && 
+               particleUV.y >= 0.0 && particleUV.y <= 1.0) {
+                
+                vec4 particlePos = texture2D(uPos, particleUV);
+                float distance = length(vUvFormat - particlePos.xy);
+                
+                if(distance < particleSize) {
+                    float alpha = 1.0 - smoothstep(0.0, particleSize, distance);
+                    color = vec4(vec3(alpha), 1.0);
+                    break;
+                }
+            }
+        }
+        if(color.a > 0.0) break;
+    }
+    
+    gl_FragColor = color;
 
-                        vec2 target = vec2(checkX,checkY);
-                        vec2 target2 = vec2(checkX2,checkY2);
-                        float color =  0.0;
-                         if(checkX2 == checkY2 && distance(particlePos,target) < .3) { 
-                                    color = 0.; 
-                                }else{
-                                    color = 1.;
-                                }
-                         
-             
-                       gl_FragColor = vec4(color,0.,0.,1.);
-
-                        float sizee = 16. * 2.;
-                        vec2 gridUV = floor(vUv * sizee) / sizee + (0.5 / sizee); 
-                        float distXX = distance(gridUV, particlePos);
-
-                   
-                        float colorXX = 1.0;
-                        if (distXX < .1) { 
-                            colorXX = 0.0;  
-                        }
-                       // gl_FragColor = vec4(colorXX,1.,1.,1.);
+                
                     }
                 `
                 })
@@ -832,3 +823,32 @@
 </script>
 
 </html>
+
+
+<!-- 
+
+      float particleSize = 0.01;
+                    vec2 vUvFormat = vUv * 2. - 1.;
+                    vec4 color = vec4(0.0);
+
+                    for(float y = 0.0; y < uSizeTexture; y++) {
+                        for(float x = 0.0; x < uSizeTexture; x++) {
+                            vec2 particleUV = vec2(x, y) / uSizeTexture;
+
+                            vec4 particlePos = texture2D(uPos, particleUV);
+
+                            float distance = length(vUvFormat - particlePos.xy);
+
+                            if(distance < particleSize) {
+                                float alpha = 1.0 - smoothstep(0.0, particleSize, distance);
+
+                                color = vec4(vec3(alpha), 1.);
+                                break; 
+                            }
+                        }
+
+                    }
+
+                     gl_FragColor = color;
+
+-->
