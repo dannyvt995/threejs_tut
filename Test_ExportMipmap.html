@@ -301,14 +301,14 @@
     import { calcSizeFitCamPerspective } from './utils/calcSizeFitCamPerspective.js'
     import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
     import { OrbitControls } from 'three/addons/OrbitControls.js';
-
+    import Stats from 'three/addons/stats.module.js';
 
     import { curl4Noise } from './glsl/curl4Noise.js'
 
     let controlsMain
     //GPGPU
     let gpuCompute
-    let widthTexture = 10
+    let widthTexture = 20
     let velocityVariable, positionVariable, extraVariable
     let positionUniforms, velocityUniforms, extraUniforms
 
@@ -321,6 +321,9 @@
     let texture3dSample, dataArray
     let PointMat;
     let meshCheck
+    let stats
+
+
     function initComputeRenderer(renderer) {
 
         gpuCompute = new GPUComputationRenderer(widthTexture, widthTexture, renderer);
@@ -472,6 +475,9 @@
     });
 
     const textureImg = new THREE.TextureLoader().load('textures/cat.jpg');
+    stats = new Stats();
+	document.body.appendChild(stats.dom);
+
     initPoint()
     initMeshCheck()
     initData3d()
@@ -520,6 +526,8 @@
                 new THREE.PlaneGeometry(5, 5,widthTexture,widthTexture),
                 //new THREE.MeshBasicMaterial({color:"blue",map:null})
                 new THREE.ShaderMaterial({
+                    wireframe:false,
+                    
                     uniforms: {
                         uPos: { value: null },
                         uSizeTexture: { value: widthTexture }
@@ -532,7 +540,7 @@
                     void main() {
                   
                               vec4 tex = texture2D(uPos, uv);
-                              vPos =  tex.xy;
+                              vPos =  uv  * uSizeTexture ;
                                     vUv = uv;
                         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                     }
@@ -543,45 +551,32 @@
                     uniform sampler2D uPos;
                     uniform float uSizeTexture;
                     void main() {
-                       
-                      vec2 vUvFormat = vUv * 2.0 - 1.0;
-    float particleSize = 0.01;
-    vec4 color = vec4(0.0);
 
-    // Kiểm tra position của hạt tại vị trí gần nhất
-    vec2 nearestParticleCoord = floor(vUv * uSizeTexture);
-    
-    // Kiểm tra một vùng rộng hơn để bắt được hạt di chuyển
-    float searchRadius = uSizeTexture; // Có thể điều chỉnh để tăng/giảm vùng tìm kiếm
-    
-    for(float y = -searchRadius; y <= searchRadius; y++) {
-        for(float x = -searchRadius; x <= searchRadius; x++) {
-            vec2 offset = vec2(x, y);
-            vec2 sampleCoord = nearestParticleCoord + offset;
-            
-            // Normalize về khoảng [0,1]
-            vec2 particleUV = sampleCoord / uSizeTexture;
-            
-            // Chỉ đọc nếu UV nằm trong khoảng hợp lệ
-            if(particleUV.x >= 0.0 && particleUV.x <= 1.0 && 
-               particleUV.y >= 0.0 && particleUV.y <= 1.0) {
-                
-                vec4 particlePos = texture2D(uPos, particleUV);
-                float distance = length(vUvFormat - particlePos.xy);
-                
-                if(distance < particleSize) {
-                    float alpha = 1.0 - smoothstep(0.0, particleSize, distance);
-                    color = vec4(vec3(alpha), 1.0);
-                    break;
-                }
-            }
-        }
-        if(color.a > 0.0) break;
-    }
-    
-    gl_FragColor = color;
+                    float particleSize = 0.01;
+                    vec2 vUvFormat = vUv * 2. - 1.;
+                    vec4 color = vec4(0.0);
 
-                
+                        // Duyệt qua các hạt
+                        for(float y = 0.0; y < uSizeTexture; y++) {
+                            for(float x = 0.0; x < uSizeTexture; x++) {
+                    
+                                vec2 particleUV = vec2(x, y) / uSizeTexture;
+                                vec4 particlePos = texture2D(uPos, particleUV); // Đọc vị trí của hạt
+
+                                float distance = length(vUvFormat - particlePos.xy);
+
+                            
+                                if (distance < particleSize) {
+                                    float alpha = 1.0 - smoothstep(0.0, particleSize, distance);
+                                    color = vec4(vec3(alpha), 1.0); // Màu hình tròn với alpha gradient
+                                    break;
+
+                                }
+                            }
+                        }
+
+                     
+                gl_FragColor = color + vec4(.4,.2,1.,1.);
                     }
                 `
                 })
@@ -795,7 +790,7 @@
 
     Renderer.renderer.setAnimationLoop(animate);
     function animate() {
-
+        stats.update();
         Mouse.update();
         Renderer.update();
 
@@ -851,4 +846,47 @@
 
                      gl_FragColor = color;
 
+-->
+
+
+
+<!-- 
+
+       
+                      vec2 vUvFormat = vUv * 2.0 - 1.0;
+    float particleSize = 0.01;
+    vec4 color = vec4(0.0);
+
+    // Kiểm tra position của hạt tại vị trí gần nhất
+    vec2 nearestParticleCoord = floor(vUv * uSizeTexture);
+    
+    // Kiểm tra một vùng rộng hơn để bắt được hạt di chuyển
+    float searchRadius = uSizeTexture; // Có thể điều chỉnh để tăng/giảm vùng tìm kiếm
+    
+    for(float y = -searchRadius; y <= searchRadius; y++) {
+        for(float x = -searchRadius; x <= searchRadius; x++) {
+            vec2 offset = vec2(x, y);
+            vec2 sampleCoord = nearestParticleCoord + offset;
+            
+            // Normalize về khoảng [0,1]
+            vec2 particleUV = sampleCoord / uSizeTexture;
+            
+            // Chỉ đọc nếu UV nằm trong khoảng hợp lệ
+            if(particleUV.x >= 0.0 && particleUV.x <= 1.0 && 
+               particleUV.y >= 0.0 && particleUV.y <= 1.0) {
+                
+                vec4 particlePos = texture2D(uPos, particleUV);
+                float distance = length(vUvFormat - particlePos.xy);
+                
+                if(distance < particleSize) {
+                    float alpha = 1.0 - smoothstep(0.0, particleSize, distance);
+                    color = vec4(vec3(alpha), 1.0);
+                    break;
+                }
+            }
+        }
+        if(color.a > 0.0) break;
+    }
+    
+    gl_FragColor = color;
 -->
