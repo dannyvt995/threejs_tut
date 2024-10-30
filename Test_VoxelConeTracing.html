@@ -435,7 +435,7 @@
 
     Renderer.init();
     Mouse.init();
-
+    
     const buttonStop = document.getElementById("stop")
     const buttonStart = document.getElementById("start")
     buttonStop.onclick = () => {
@@ -495,7 +495,8 @@
     function initFbo() {
         const dpr = 1.
         let voxelSize = sizeVol2D
-        renderTarget2DOut = new THREE.WebGLRenderTarget(voxelSize**3,voxelSize**3, {
+       renderTarget2DOut = new THREE.WebGLRenderTarget(sizeVol2D*sizeVol2D,sizeVol2D*sizeVol2D, {
+        //    renderTarget2DOut = new THREE.WebGLRenderTarget(window.innerWidth,window.innerHeight, {
                 minFilter : THREE.NearestMipmapLinearFilter,
                 magFilter : THREE.NearestFilter,
                 format: THREE.RGBAFormat
@@ -559,7 +560,7 @@
                         varying vec2 vUv;
                         uniform sampler2D utex;
                         void main() {
-                            vec3 tex = textureLod(utex,vUv,0.).xyz;
+                            vec3 tex = textureLod(utex,vUv,.5).xyz;
                             
                             gl_FragColor = vec4(tex, 1.0);
                             //gl_FragColor =  vec4(vec3(.4), 1.0);
@@ -772,8 +773,8 @@
                 float diss =  offsetX - floor(offsetX);
                 float dir = sign(diss);
              //   diss = 0.;
-                posgpu.xy +=  vec2(floor(offsetX) + dir * diss, floor(offsetY) +  dir * diss)  * margin;
-
+             //   posgpu.xy +=  vec2(floor(offsetX) + dir * diss, floor(offsetY) +  dir * diss)  * margin;
+ posgpu.xy +=  vec2(offsetX,offsetY)* margin;
                 vPos = posgpu;
                // posgpu.z = 0.;
 
@@ -787,7 +788,7 @@
                     gl_Position = vec4(posgpu, 1.0);
                     vUv = uv;
                
-                    gl_PointSize  = 4.;
+                    gl_PointSize  = 1.;
                 }
             `;
 
