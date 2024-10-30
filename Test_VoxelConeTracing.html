@@ -306,7 +306,7 @@
     let controlsMain
     //GPGPU
     let gpuCompute
-    let widthTexture = 128
+    let widthTexture = 256
     let velocityVariable, positionVariable, extraVariable
     let positionUniforms, velocityUniforms, extraUniforms
 
@@ -322,7 +322,9 @@
     let stats
     let PointMat2
 
-
+    //fbo save
+    let sceneFbo,cameraFbo
+    let renderTarget2DOut
 
     const sizeVol2D = 16
     function initComputeRenderer(renderer) {
@@ -449,6 +451,8 @@
     const width = window.innerWidth
     const height = window.innerHeight
     const scene = new THREE.Scene();
+    const sceneGenTexture = new THREE.Scene();
+   
     scene.background = 0x000000
     const light = new THREE.AmbientLight(0x404040); // soft white light
     scene.add(light);
@@ -456,7 +460,8 @@
     scene.add(directionalLight);
     const axesHelper = new THREE.AxesHelper( 5 );
     scene.add( axesHelper );
-   // const camera = new THREE.OrthographicCamera( - 6,6,  6 * (height/width),  - 6  *  (height/width), .00001, 10000 );
+    sceneGenTexture.add( axesHelper );
+   const cameraGenTexture = new THREE.OrthographicCamera( - 2,2,  2 * (height/width),  - 2  *  (height/width), 0., 1000 );
        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.00001, 1000); // 
     
     camera.position.z = 5
@@ -483,11 +488,19 @@
     const textureImg = new THREE.TextureLoader().load('textures/cat.jpg');
     stats = new Stats();
 	document.body.appendChild(stats.dom);
-
+    initFbo()
     initPoint()
     initMeshCheck()
     initData3d()
-
+    function initFbo() {
+        const dpr = 1.
+        let voxelSize = sizeVol2D
+        renderTarget2DOut = new THREE.WebGLRenderTarget(voxelSize**3,voxelSize**3, {
+                minFilter : THREE.NearestMipmapLinearFilter,
+                magFilter : THREE.NearestFilter,
+                format: THREE.RGBAFormat
+            }); 
+    }
     function initData3d() {
 
 
@@ -511,30 +524,53 @@
     function updateData3dRandom() {
         let i = 0;
 
-        for (let z = 0; z < sizeVol; z++) {
-            for (let y = 0; y < sizeVol; y++) {
-                for (let x = 0; x < sizeVol; x++) {
+        for (let z = 0; z < sizeVol2D; z++) {
+            for (let y = 0; y < sizeVol2D; y++) {
+                for (let x = 0; x < sizeVol2D; x++) {
                     // Update data with random values between 0 and 255
                     dataArray[i] = Math.floor(Math.random() * 256);
                     i++;
                 }
             }
-        }
-
+        }   
+        console.log(dataArray[2])
         // Mark texture for update
         texture3dSample.needsUpdate = true;
     }
 
     function initMeshCheck() {
-        let mat =
 
             meshCheck = new THREE.Mesh(
-                new THREE.PlaneGeometry(5, 5,widthTexture,widthTexture),
-                new THREE.MeshBasicMaterial({color:"blue",map:null})
+                new THREE.PlaneGeometry(4, 4,sizeVol2D,sizeVol2D),
+                new THREE.ShaderMaterial({
+                    //wireframe:true,
+                    uniforms:{
+                        utex:{value:null}
+                    },
+                    vertexShader:`
+                        varying vec2 vUv;
+
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        varying vec2 vUv;
+                        uniform sampler2D utex;
+                        void main() {
+                            vec3 tex = textureLod(utex,vUv,0.).xyz;
+                            
+                            gl_FragColor = vec4(tex, 1.0);
+                            //gl_FragColor =  vec4(vec3(.4), 1.0);
+                        }
+                    `
+                })
              
             )
-        meshCheck.position.x = 4
-     //   scene.add(meshCheck)
+      //  meshCheck.position.x = 3
+      meshCheck.renderOrder = 0; 
+     scene.add(meshCheck)
       
     }
    
@@ -619,7 +655,7 @@
                     vUv = uvPos;
                     vPos = pos;
                     vFuild = 1.-velfuild;
-                    gl_PointSize  =  max(2.,200. * abs(velfuild.y - velfuild.x));
+                    gl_PointSize  =  5.;
                 }
             `;
 
@@ -677,9 +713,19 @@
         let points = new THREE.Points(PointGeo, PointMat);
 
        
-
+        points.position.x = -2
         scene.add(points)
 
+       
+
+
+       
+       create3DGrid({size:2,divisions : (sizeVol2D/2)   * sizeVol2D })
+   
+        initTexture2DBaseSetter(PointGeo)
+    }
+
+    function initTexture2DBaseSetter(geo) {
         const vertexShaderSetter = `
                 precision highp float;
                 uniform float time;
@@ -699,11 +745,15 @@
                     );
                      vec3 posgpuOri = texture2D(tPos_gpu,uv).xyz;
                      vec3 posgpu = texture2D(tPos_gpu,uv).xyz;
+
+                    float voxelSizeX = 1.0 / sizeVolume.x; // Kích thước voxel theo chiều X
+                    float voxelSizeY = 1.0 / sizeVolume.y; // Kích thước voxel theo chiều Y 
+
               //  posgpu.xy /= 2.;
              // posgpu.xy += 1.25;
-             posgpu.z -= .5;
+             posgpu.z += .5;
                 float normalizedZ = mod(posgpu.z  , 1.0);  
-                float slice = floor(normalizedZ * (sizeVolume.x * sizeVolume.y)); 
+                float slice = floor((normalizedZ) * (sizeVolume.x * sizeVolume.y)); 
 
                 float gridSizeX = sizeVolume.x; 
                 float gridSizeY = sizeVolume.y; 
@@ -711,16 +761,33 @@
              
                 float offsetX = mod(slice, gridSizeX);     
                 float offsetY = floor(slice / gridSizeX);    
-                float margin = 2.5;
-                posgpu.xy += vec2(offsetX, offsetY) * margin;
-                     vPos = posgpu;
-                posgpu.z = 0.;
+                float margin = 2.;
 
-                posgpu /= 5.;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(posgpu, 1.0);
+                vec2 voxelCenter = vec2(
+                    (offsetX ) * voxelSizeX, // Tâm theo trục X
+                    (offsetY ) * voxelSizeY  // Tâm theo trục Y
+                );
+
+
+                float diss =  offsetX - floor(offsetX);
+                float dir = sign(diss);
+             //   diss = 0.;
+                posgpu.xy +=  vec2(floor(offsetX) + dir * diss, floor(offsetY) +  dir * diss)  * margin;
+
+                vPos = posgpu;
+               // posgpu.z = 0.;
+
+
+
+                posgpu /= sizeVolume.x;
+                posgpu.xy -= 1.-(1./sizeVolume.x);
+
+                float unit = offsetX * 1./sizeVolume.x;
+        
+                    gl_Position = vec4(posgpu, 1.0);
                     vUv = uv;
                
-                    gl_PointSize  = 1.;
+                    gl_PointSize  = 4.;
                 }
             `;
 
@@ -729,55 +796,65 @@
                 varying vec2 vUv;
                 void main() {
        
-                    gl_FragColor = vec4( vec3(1.) ,1.);
+                    gl_FragColor = vec4( vec3(.5,4.,1.) ,1.);
                 }
             `
 
             PointMat2 = new THREE.ShaderMaterial({
-            vertexShader: vertexShaderSetter,
-            fragmentShader: fragmentShaderSetter,
-            transparent: true,
-            depthWrite: false,
-            blendSrcAlpha: 1,
-            uniforms: {
-                sizeVolume:{
-                    value: new THREE.Vector3(sizeVol2D, sizeVol2D, sizeVol2D)
-                },
-                sizeView: {
-                    value: new THREE.Vector2(widthFit, heightFit)
-                },
-                tPos_gpu: { value: null },
-                tVel_gpu: { value: null },
-                tSize: { value: new THREE.Vector2(widthTexture, widthTexture) }
-            }
-        });
-
-
-        let point2s = new THREE.Points(PointGeo, PointMat2);
-        create3DGrid({size:sizeVol2D/2,divisions : sizeVol2D })
-        scene.add(point2s)
-       
+                vertexShader: vertexShaderSetter,
+                fragmentShader: fragmentShaderSetter,
+                transparent:true,
+                blending: THREE.NormalBlending,
+                uniforms: {
+                    sizeVolume:{
+                        value: new THREE.Vector3(sizeVol2D, sizeVol2D, sizeVol2D)
+                    },
+                    sizeView: {
+                        value: new THREE.Vector2(widthFit, heightFit)
+                    },
+                    tPos_gpu: { value: null },
+                    tVel_gpu: { value: null },
+                    tSize: { value: new THREE.Vector2(widthTexture, widthTexture) }
+                }
+            });
+        let point2s = new THREE.Points(geo, PointMat2);
+        sceneGenTexture.add(point2s)
+    
     }
     function create3DGrid({size, divisions}) {
-        const gridMaterial = new THREE.LineBasicMaterial({ color: 0x888888 });
+        const gridMaterial = new THREE.LineBasicMaterial({ color: 0x888888 ,depthWrite: false, transparent: true, opacity: .1,side:1});
+        const gridMaterial2 = new THREE.LineBasicMaterial({ color: "red" ,depthWrite: false, transparent: true, opacity: .7,side:1});
         const gridGeometry = new THREE.BufferGeometry();
+        const gridGeometry2 = new THREE.BufferGeometry();
         const gridVertices = [];
-
+        const gridVertices2 = [];
         // Tạo lưới trên mặt XY
-        for (let i = -.25; i <= size; i += size / divisions) {
+        for (let i = -size; i <= size; i += size / divisions) {
             // Các đường song song trục X
-            gridVertices.push( -.25, i, 0, size, i, 0);
+            gridVertices.push( -size, i, 0, size, i, 0);
             // Các đường song song trục Y
-            gridVertices.push(i, -.25, 0, i, size, 0);
+            gridVertices.push(i, -size, 0, i, size, 0);
         }
         gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridVertices, 3));
 
+        for (let i = -size; i <= size; i += size / (sizeVol2D / 2)) {
+            // Các đường song song trục X
+            gridVertices2.push( -size, i, 0, size, i, 0);
+            // Các đường song song trục Y
+            gridVertices2.push(i, -size, 0, i, size, 0);
+        }
+        gridGeometry2.setAttribute('position', new THREE.Float32BufferAttribute(gridVertices2, 3));
+
         // Tạo LineSegments cho lưới 3D
         const grid = new THREE.LineSegments(gridGeometry, gridMaterial);
- 
-        scene.add(grid);
-        const meshHelper = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial({ color: "blue", transparent: true, opacity: .2,side:1 }));
-      scene.add(meshHelper);
+        grid.renderOrder = 1; 
+
+        const grid2 = new THREE.LineSegments(gridGeometry2, gridMaterial2);
+        grid.renderOrder = 2; 
+
+        scene.add(grid,grid2);
+        const meshHelper = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial({ depthWrite: false,color: "blue", transparent: true, opacity: .1,side:1 }));
+    //  scene.add(meshHelper);
     }
     function runGPGPU() {
 
@@ -814,11 +891,28 @@
 
         simulation.update()
         runGPGPU()
+
+
+        
+        Renderer.renderer.autoClear = true
+        Renderer.renderer.setRenderTarget(renderTarget2DOut);
+        Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
+        renderTarget2DOut.textures[0].generateMipmaps = true
+        if(meshCheck && meshCheck.material && meshCheck.material.uniforms.utex) {
+       
+            meshCheck.material.uniforms.utex.value = renderTarget2DOut.textures[0]
+        }
+      
         Renderer.renderer.setRenderTarget(null);
-        Renderer.renderer.render(scene, camera);
+       Renderer.renderer.render(scene, camera);
+    
+    //   Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
         PointMat.uniforms.time.value = Renderer.time
-        PointMat.uniforms.speedmouse.value = simulation.externalForce.speed
-        positionUniforms['forceMouse'] = { value: simulation.externalForce.speed };
+
+
+
+        // PointMat.uniforms.speedmouse.value = simulation.externalForce.speed
+        // positionUniforms['forceMouse'] = { value: simulation.externalForce.speed };
 
         if (dataArray && texture3dSample) {
             // console.time()
