@@ -770,6 +770,7 @@
             `;
 
         const fragmentShader = `
+
                 varying vec3 vPos;
                 varying vec2 vFuild;
                     varying vec2 vUv;
@@ -843,7 +844,7 @@
                 uniform sampler2D tVel_gpu;
                 uniform vec2 sizeView;
                 uniform vec3 sizeVolume;
- attribute vec3 extra;
+
                 
                 uniform vec2 tSize;
                 varying vec2 vUv;
@@ -902,17 +903,12 @@
             `;
 
         const fragmentShaderSetter = `
+
                 varying vec3 vPos;
                 varying vec2 vUv;
                 void main() {
-                    vec3 cl1 = vec3(.2,1.,1.);
-                    vec3 cl2 = vec3(1.,.2,.5);
-                    if(vPos.x < .05) {
-                        gl_FragColor = vec4( cl1 ,1.);
-                    }else{
-                        gl_FragColor = vec4( cl2,1.);
-                    }
-                    
+       
+                    gl_FragColor = vec4( vec3(.5,4.,1.) ,1.);
                 }
             `
 
