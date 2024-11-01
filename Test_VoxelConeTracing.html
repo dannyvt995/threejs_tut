@@ -300,7 +300,7 @@
     import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
     import { OrbitControls } from 'three/addons/OrbitControls.js';
     import Stats from 'three/addons/stats.module.js';
-
+    import { GUI } from 'three/addons/lil-gui.module.min.js';
     import { curl4Noise } from './glsl/curl4Noise.js'
 
     let controlsMain
@@ -319,14 +319,15 @@
     let texture3dSample, dataArray
     let PointMat;
     let meshCheck
+    let meshCheck2
     let stats
     let PointMat2
 
     //fbo save
     let sceneFbo,cameraFbo
     let renderTarget2DOut
-
-    const sizeVol2D = 16
+    let renderTarget2DOutOrigin
+    const sizeVol2D = 8
     function initComputeRenderer(renderer) {
 
         gpuCompute = new GPUComputationRenderer(widthTexture, widthTexture, renderer);
@@ -464,7 +465,7 @@
    const cameraGenTexture = new THREE.OrthographicCamera( - 2,2,  2 * (height/width),  - 2  *  (height/width), 0., 1000 );
        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.00001, 1000); // 
     
-    camera.position.z = 5
+    camera.position.z = .3
   
     controlsMain = new OrbitControls(camera, Renderer.renderer.domElement);
     //controlsMain.enableRotate = false
@@ -492,6 +493,37 @@
     initPoint()
     initMeshCheck()
     initData3d()
+    initGui()
+    //initCubeSample() 
+    function initCubeSample() {
+        const groupBox = new THREE.Group()
+
+        const geometry = new THREE.BoxGeometry(.05, .05, .05);
+        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+
+        // Tạo InstancedMesh
+        const instancedMesh = new THREE.InstancedMesh(geometry, material, sizeVol2D ** 3);
+
+        const cubesPerSide = Math.floor(sizeVol2D);
+
+            // Tạo vị trí cho các instance
+
+            let range = 1
+            let index = 0;
+            for (let x = -range; x <= range; x += 2 / cubesPerSide) { // Di chuyển từ -1 đến 1
+                for (let y = -range; y <= range; y += 2 / cubesPerSide) {
+                    for (let z = -range; z <= range; z += 2 / cubesPerSide) {
+                        // Tạo ma trận dịch chuyển
+                        const matrix = new THREE.Matrix4();
+                        matrix.setPosition(x, y, z);
+                        instancedMesh.setMatrixAt(index++, matrix);
+                    }
+                }
+            }
+        // Thêm InstancedMesh vào scene
+        groupBox.add(instancedMesh);
+        scene.add(groupBox)
+    }
     function initFbo() {
         const dpr = 1.
         let voxelSize = sizeVol2D
@@ -499,6 +531,13 @@
         //    renderTarget2DOut = new THREE.WebGLRenderTarget(window.innerWidth,window.innerHeight, {
                 minFilter : THREE.NearestMipmapLinearFilter,
                 magFilter : THREE.NearestFilter,
+                format: THREE.RGBAFormat
+            }); 
+
+       
+         renderTarget2DOutOrigin = new THREE.WebGLRenderTarget(window.innerWidth,window.innerHeight, {
+                minFilter : THREE.LinearFilter,
+                magFilter : THREE.LinearFilter,
                 format: THREE.RGBAFormat
             }); 
     }
@@ -539,6 +578,23 @@
         texture3dSample.needsUpdate = true;
     }
 
+		function initGui() {
+
+			const parameters = { lod: 0 , toggle: false};
+
+			function update() {
+				if(meshCheck) meshCheck.material.uniforms.uLod.value = parameters.lod
+			}
+
+            function update2() {
+				if(meshCheck2) meshCheck2.material.uniforms.toggle.value = !meshCheck2.material.uniforms.toggle.value
+			} 
+            		
+			const gui = new GUI();
+			gui.add(parameters, 'lod', 0, 6, 0.5).onChange(update);
+			gui.add(parameters, 'toggle', 0, 1, 1).onChange(update2);
+			}
+
     function initMeshCheck() {
 
             meshCheck = new THREE.Mesh(
@@ -546,7 +602,8 @@
                 new THREE.ShaderMaterial({
                     //wireframe:true,
                     uniforms:{
-                        utex:{value:null}
+                        utex:{value:null},
+                        uLod:{value:null}
                     },
                     vertexShader:`
                         varying vec2 vUv;
@@ -559,8 +616,11 @@
                     fragmentShader: `
                         varying vec2 vUv;
                         uniform sampler2D utex;
+                        uniform float uLod;
+                        
+
                         void main() {
-                            vec3 tex = textureLod(utex,vUv,.5).xyz;
+                            vec3 tex = textureLod(utex,vUv,uLod).xyz;
                             
                             gl_FragColor = vec4(tex, 1.0);
                             //gl_FragColor =  vec4(vec3(.4), 1.0);
@@ -569,10 +629,48 @@
                 })
              
             )
-      //  meshCheck.position.x = 3
+  
       meshCheck.renderOrder = 0; 
      scene.add(meshCheck)
       
+
+
+     meshCheck2 = new THREE.Mesh(
+                new THREE.PlaneGeometry(4, 4),
+                new THREE.ShaderMaterial({
+                    //wireframe:true,
+                    transparent:true,
+                  //  blending: THREE.AdditiveBlending,
+                    uniforms:{
+                        utex:{value:null},
+                        toggle:{value:false}
+                    },
+                    vertexShader:`
+                        varying vec2 vUv;
+
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        varying vec2 vUv;
+                        uniform sampler2D utex;
+                               uniform bool toggle;
+                        void main() {
+                         vec3  tex = texture2D(utex,vUv).xyz;
+                            float activeC = 0.;
+                            if(toggle) activeC = 1.;
+                            gl_FragColor = vec4(tex * vec3(.9,1.,.5),activeC);
+                        }
+                    `
+                })
+             
+            )
+            meshCheck2.position.z = 0.001
+            //meshCheck2.position.x = -5
+            scene.add(meshCheck2)
+       
     }
    
    
@@ -580,12 +678,16 @@
     function initPoint() {
         const gridSize = widthTexture; // Số điểm theo mỗi chiều
         const spacing = 1.0 / (gridSize - 1); // Khoảng cách giữa các điểm
-
+        let a = Math.random()
         // Tạo dữ liệu điểm cho lưới
         const vertices = [];
         const extra = [];
         const uvs = [];
         const radius = 1.0;
+        let ar = [
+                    new THREE.Vector3(1.,0.8,0.2),
+                    new THREE.Vector3(0.1,1.,0.6)
+                ]
         for (let x = 0; x < gridSize; x++) {
             for (let y = 0; y < gridSize; y++) {
                 // Tính toán tọa độ UV cho điểm
@@ -607,10 +709,17 @@
                 let posZ = radius * Math.cos(phi);
                 vertices.push(posX, posY, posZ);
 
-                let extraX = Math.random() * 2 - 1
-                let extraY = Math.random() * 2 - 1
-
-                extra.push(extraX, extraY, 0);
+                let extraX = Math.random() 
+                let extraY = Math.random() 
+        
+                // let rand = Math.floor(Math.random())
+                // let a = Math.random()
+                // let aa = .5
+                // if(aa < .5){a = 0}else{a = 1}
+         
+            
+            
+                extra.push(extraX,extraY,0);
                 uvs.push(u, v);
             }
         }
@@ -734,7 +843,7 @@
                 uniform sampler2D tVel_gpu;
                 uniform vec2 sizeView;
                 uniform vec3 sizeVolume;
-
+ attribute vec3 extra;
                 
                 uniform vec2 tSize;
                 varying vec2 vUv;
@@ -775,7 +884,7 @@
              //   diss = 0.;
              //   posgpu.xy +=  vec2(floor(offsetX) + dir * diss, floor(offsetY) +  dir * diss)  * margin;
  posgpu.xy +=  vec2(offsetX,offsetY)* margin;
-                vPos = posgpu;
+                vPos = extra;
                // posgpu.z = 0.;
 
 
@@ -796,8 +905,14 @@
                 varying vec3 vPos;
                 varying vec2 vUv;
                 void main() {
-       
-                    gl_FragColor = vec4( vec3(.5,4.,1.) ,1.);
+                    vec3 cl1 = vec3(.2,1.,1.);
+                    vec3 cl2 = vec3(1.,.2,.5);
+                    if(vPos.x < .05) {
+                        gl_FragColor = vec4( cl1 ,1.);
+                    }else{
+                        gl_FragColor = vec4( cl2,1.);
+                    }
+                    
                 }
             `
 
@@ -900,10 +1015,16 @@
         Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
         renderTarget2DOut.textures[0].generateMipmaps = true
         if(meshCheck && meshCheck.material && meshCheck.material.uniforms.utex) {
-       
             meshCheck.material.uniforms.utex.value = renderTarget2DOut.textures[0]
         }
-      
+     
+        Renderer.renderer.setRenderTarget(null);
+        Renderer.renderer.setRenderTarget(renderTarget2DOutOrigin);
+        Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
+        if(meshCheck2 && meshCheck2.material && meshCheck2.material.uniforms.utex) {
+            meshCheck2.material.uniforms.utex.value = renderTarget2DOutOrigin.textures[0]
+        }
+
         Renderer.renderer.setRenderTarget(null);
        Renderer.renderer.render(scene, camera);
     
