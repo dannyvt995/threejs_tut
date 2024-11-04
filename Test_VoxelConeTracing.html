@@ -308,7 +308,7 @@
     let controlsMain
     //GPGPU
     let gpuCompute
-    let widthTexture = 256
+    let widthTexture = 50
     let velocityVariable, positionVariable, extraVariable
     let positionUniforms, velocityUniforms, extraUniforms
 
@@ -325,7 +325,7 @@
     let stats
     let PointMat2
 
-    let shaderInstancedSample,chunk
+    let shaderInstancedSample,chunk,instancedMesh,points
     //fbo save
     let sceneFbo, cameraFbo
     let renderTarget2DOut
@@ -468,7 +468,7 @@
     scene.add(directionalLight);
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
-    sceneGenTexture.add(axesHelper);
+    //sceneGenTexture.add(axesHelper);
     const cameraGenTexture = new THREE.OrthographicCamera(- 2, 2, 2 * (height / width), - 2 * (height / width), 0., 1000);
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.00001, 1000); // 
 
@@ -509,7 +509,7 @@
         const spacing = 1 / sizeVol2D;
         const halfSize = (sizeVol2D - 1) / 2;
         const groupBox = new THREE.Group()
-        const mr = spacing - 0.01 * 1.
+        const mr = spacing - 0.01 * 0.5
         const geometry = new THREE.BoxGeometry(mr, mr, mr);
      
         shaderInstancedSample  = new THREE.MeshPhongMaterial({
@@ -598,7 +598,7 @@
                   
                     float ads = uSizeVol2D;
                   
-                	vec4 distanceInfo = sampleAs3DTextureOrigin(uTexture2D,vec3(dumOff.xy,dumOff.z * 2.), uSizeVol2D + uSizeVol2D,uSizeVol2D,uSizeVol2D,uLodSampleAll);
+                	vec4 distanceInfo = sampleAs3DTextureOrigin(uTexture2D,vec3(dumOff.xy,dumOff.z), uSizeVol2D * uSizeVol2D,uSizeVol2D,uSizeVol2D,uLodSampleAll);
                 if(distanceInfo.x > 0.) {
                   //  gl_FragColor += vec4(distanceInfo.xyz, 0.);
                  gl_FragColor +=  vec4(1.,.3,1., 0.) * .2;
@@ -610,7 +610,7 @@
             console.log(shader.fragmentShader)
             chunk = shader
         }
-        const instancedMesh = new THREE.InstancedMesh(geometry, shaderInstancedSample, countInstanced);
+       instancedMesh = new THREE.InstancedMesh(geometry, shaderInstancedSample, countInstanced);
 
 
         const randomValues = new Float32Array(countInstanced * 3);
@@ -635,12 +635,12 @@
                     const offsetY = (y2 - halfSize) * spacing
                     const offsetZ = (z2 - halfSize) * spacing
                     let newVal = new THREE.Vector3(offsetX, offsetY, offsetZ)
-                    newVal.add(new THREE.Vector3(.5, .5, .5))
+                    newVal.add(new THREE.Vector3(.5, .5, 1))
                     // Lưu giá trị vào array
                     dummyOffsetArray[index2 * 3] = newVal.x;
                     dummyOffsetArray[index2 * 3 + 1] = newVal.y;
-                    dummyOffsetArray[index2 * 3 + 2] = newVal.z;
-
+                    dummyOffsetArray[index2 * 3 + 2] = (z2+1)/sizeVol2D ;
+                  
                     index2++;
                 }
             }
@@ -677,7 +677,7 @@
         instancedMesh.instanceMatrix.needsUpdate = true;
         const mm = new THREE.Mesh(
             new THREE.BoxGeometry(1, 1, 1),
-            new THREE.MeshBasicMaterial({ color: "red", wireframe: true })
+            new THREE.MeshBasicMaterial({ color: "red",transparent:true,opacity:.1,wireframe: true })
         )
         groupBox.add(instancedMesh, mm);
 
@@ -743,8 +743,8 @@
     function initGui() {
 
         const parameters = {
-            sizeVol: 16, lod: 0, uLodSampleAll: 0, toggle: false,
-
+            sizeVol: 16, lod: 0, uLodSampleAll: 0, toggle: false,displaySample:true,displayParticel:true,
+        
             applyChanges: () => {
                 localStorage.setItem("sizeVol2D", `${parameters.sizeVol}`);
                 window.location.reload(); // Tải lại trang sau khi nhấn nút
@@ -770,6 +770,16 @@
         gui.add(parameters, 'applyChanges').name("Apply Changes");
         gui.add(parameters, 'lod', 0, 8, 0.5).onChange(update);
         gui.add(parameters, 'toggle', 0, 1, 1).onChange(update2);
+
+        function displaySample() {
+            if(instancedMesh) instancedMesh.visible =  !parameters.displaySample
+        }
+        function displayParticel() {
+            
+            if(points) points.visible =  !parameters.displayParticel
+        }
+        gui.add(parameters, 'displaySample').onChange(displaySample);
+        gui.add(parameters, 'displayParticel').onChange(displayParticel);
     }
 
     function initMeshCheck() {
@@ -854,8 +864,18 @@
 
         const groupGrid = create3DGrid({ size: 2, divisions: (Math.sqrt(sizeVol2D) / 2) * Math.sqrt(sizeVol2D) })
 
-        groupDisplay1.renderOrder = 3
-        groupDisplay2.renderOrder = 2
+        groupDisplay1.traverse((child) => {
+            if (child.isMesh) child.material.depthTest = false;
+        });
+        groupDisplay2.traverse((child) => {
+            if (child.isMesh) child.material.depthTest = false;
+        });
+        groupGrid.traverse((child) => {
+            if (child.isMesh) child.material.depthTest = false;
+        });
+
+        groupDisplay1.renderOrder = 5
+        groupDisplay2.renderOrder = 7
         groupGrid.renderOrder = 4
         const groupAll = new THREE.Group()
         groupAll.position.x = 4
@@ -948,12 +968,12 @@
                      );
                        vec2 velfuild = texture2D(fuildMap,uvPos).xy;
                             // posgpu.xy /= 2.;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(posgpu, 1.0);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(posgpu / 2., 1.0);
                   
                     vUv = uvPos;
                     vPos = pos;
                     vFuild = 1.-velfuild;
-                    gl_PointSize  =  1.;
+                    gl_PointSize  =  2.;
                 }
             `;
 
@@ -1009,17 +1029,17 @@
         });
 
 
-        let points = new THREE.Points(PointGeo, PointMat);
+        points = new THREE.Points(PointGeo, PointMat);
 
 
 
         const groupp = new THREE.Group()
         const mm = new THREE.Mesh(
             new THREE.BoxGeometry(1, 1, 1),
-            new THREE.MeshBasicMaterial({ color: "red", wireframe: true })
+            new THREE.MeshBasicMaterial({ color: "red",transparent:true,opacity:.1, wireframe: true })
         )
 
-        groupp.position.x = -2
+        groupp.position.x = 0
         groupp.add(points, mm)
         scene.add(groupp)
 
@@ -1137,8 +1157,8 @@
 
     function create3DGrid({ size, divisions }) {
         const gr = new THREE.Group()
-        const gridMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: .1, side: 1 });
-        const gridMaterial2 = new THREE.LineBasicMaterial({ color: "red", transparent: true, opacity: .5, side: 1 });
+        const gridMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0., side: 1 });
+        const gridMaterial2 = new THREE.LineBasicMaterial({ color: "red", transparent: true, opacity: .2, side: 1 });
         const gridGeometry = new THREE.BufferGeometry();
         const gridGeometry2 = new THREE.BufferGeometry();
         const gridVertices = [];
@@ -1201,6 +1221,8 @@
 
     Renderer.renderer.setAnimationLoop(animate);
     function animate() {
+      
+        directionalLight.position.copy(controlsMain.object.position)
         stats.update();
         Mouse.update();
         Renderer.update();
