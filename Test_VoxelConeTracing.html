@@ -540,7 +540,9 @@
         const geometry = new THREE.BoxGeometry(mr, mr, mr);
      
         shaderInstancedSample  = new THREE.MeshPhongMaterial({
-            color:0x22018f
+            color:0x22018f,
+            transparent:true,
+            
         })
         shaderInstancedSample.onBeforeCompile = (shader) => {
             shader.uniforms.uTexture2D = { value: null };
@@ -627,13 +629,15 @@
                   
                 	vec4 distanceInfo = sampleAs3DTextureOrigin(uTexture2D,vec3(dumOff.xy,dumOff.z), uSizeVol2D * uSizeVol2D,uSizeVol2D,uSizeVol2D,uLodSampleAll);
              
-                    gl_FragColor += vec4(distanceInfo.xyz * .5, 1.);
+                    gl_FragColor += vec4(distanceInfo.xyz * .1, 1.);
+                  
                     if(distanceInfo.x > 0.) {
                 //   gl_FragColor += vec4(distanceInfo.xyz, 0.);
                  //gl_FragColor +=  vec4(1.,.3,1., 0.) * .2;
                 }else{
-                    discard;
+                   discard;
                 }
+                     gl_FragColor.a = .8;
 
             `)
             console.log(shader.fragmentShader)
@@ -709,7 +713,7 @@
             new THREE.MeshBasicMaterial({ color: "red",transparent:true,opacity:.1,wireframe: true })
         )
         groupBox.add(instancedMesh, mm);
-
+        groupBox.renderOrder = 5
 
         scene.add(groupBox)
     }
@@ -913,7 +917,7 @@
         const vertices = [];
         const extra = [];
         const uvs = [];
-        const radius = 1.0;
+        const radius = .5;
         let ar = [
             new THREE.Vector3(1., 0.8, 0.2),
             new THREE.Vector3(0.1, 1., 0.6)
@@ -996,11 +1000,12 @@
 
                             
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(posgpu / 2., 1.0);
-                  
+                   
+               //     gl_Position = projectionMatrix * modelViewMatrix * vec4(position / 1.1, 1.0);
                     vUv = uvPos;
                     vPos = pos;
                     vFuild = 1.-velfuild;
-                    gl_PointSize  =  2.;
+                    gl_PointSize  =  10.;
                 }
             `;
 
@@ -1023,7 +1028,7 @@
                     vec2 velO = vel * 0.5 + 0.5;
                     vec3  colVel = pal( length(vel) * 10.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
                   
-                    gl_FragColor = vec4(colVel ,1.);
+                    gl_FragColor = vec4(colVel ,.2);
                 }
             `
 
@@ -1031,7 +1036,7 @@
             vertexShader: vertexShader,
             fragmentShader: fragmentShader,
             transparent: true,
-            depthWrite: false,
+            depthTest: false,
             blendSrcAlpha: 1,
             uniforms: {
                 speedmouse: {
@@ -1068,8 +1073,10 @@
 
         groupp.position.x = 0
         groupp.add(points, mm)
-        scene.add(groupp)
+        groupp.renderOrder = 8
 
+        scene.add(groupp)
+    
 
 
 
@@ -1103,15 +1110,20 @@
                     );
                      vec3 posgpuOri = texture2D(tPos_gpu,uv).xyz;
                      vec3 posgpu = texture2D(tPos_gpu,uv).xyz;
-
+                     //  posgpu = position;
+                      //  posgpu += position;
                     float voxelSizeX = 1.0 / sizeVolume.z; // Kích thước voxel theo chiều X
                     float voxelSizeY = 1.0 / sizeVolume.z; // Kích thước voxel theo chiều Y 
 
                 //  posgpu.xy /= 2.;
                 // posgpu.xy += 1.25;
-                posgpu.z += .5;
+          
+                // NOTE : FIX SOME MORE ON HERE !!!!!!!!!!
+                posgpu.z /= 2.;
+                posgpu.z += 0.5;
+                /////////////////
                 float normalizedZ = mod(posgpu.z  , 1.0);  
-                float slice = floor((normalizedZ) * (sizeVolume.x * sizeVolume.y)); 
+                float slice = floor((posgpu.z) * (sizeVolume.x * sizeVolume.y)); 
 
                 float gridSizeX = sizeVolume.x; 
                 float gridSizeY = sizeVolume.y; 
@@ -1133,7 +1145,7 @@
                  
                 vUv = uv;
                
-                gl_PointSize  = 7.;
+                gl_PointSize  = 1.;
                 vPos = extra;
 
                 }
@@ -1157,6 +1169,7 @@
             vertexShader: vertexShaderSetter,
             fragmentShader: fragmentShaderSetter,
             transparent: true,
+            
             blending: THREE.NormalBlending,
             uniforms: {
                 sizeVolume: {
@@ -1171,7 +1184,10 @@
             }
         });
         let point2s = new THREE.Points(geo, PointMat2);
-        sceneGenTexture.add(point2s)
+        const groupPoint = new THREE.Group()
+        groupPoint.add(point2s)
+      
+        sceneGenTexture.add(groupPoint)
 
     }
 
