@@ -96,28 +96,43 @@
          vec2 velFuild = texture2D(fuildMap,uvPos).xy;
 
 
-   // posSelf += vec3(velFuild,posSelf.z)  * 1.5;
+   //posSelf += vec3(velFuild,posSelf.z)  * 1.5;
     
 
-         
+        vec3 rr1 =  vec3(0.,sizeView.y,0.);
+        vec3 rr2 =  vec3(0.,-sizeView.y,0.);
          if(posSelf.y > sizeView.y) {
-            posSelf = vec3(0.,-sizeView.y,0.);
+
+            posSelf = rr2;
+    
+
             }else if(posSelf.y < -sizeView.y) {
-                posSelf = vec3(0.,sizeView.y,0.);
-              
+
+                posSelf = rr1;
+               
             }
 
             if(posSelf.x > sizeView.x) {
-                posSelf = vec3(0.,-sizeView.y,0.);
+
+                posSelf = rr2;
+               
                 }else if(posSelf.x < -sizeView.y) {
-                    posSelf = vec3(0.,sizeView.y,0.);
+
+                    posSelf = rr1;
+                    
                 }
 
 
                 if(posSelf.z > sizeView.y) {
-                    posSelf = vec3(0.,-sizeView.y,0.);
+
+                    posSelf = rr2;
+                  
+
                     }else if(posSelf.z < -sizeView.y) {
-                        posSelf = vec3(0.,sizeView.y,0.);
+
+                        posSelf = rr1;
+                     
+
                     }
 
                 
@@ -268,7 +283,7 @@
             //	rotation 
             vec2 dir = normalize(posSelf.xz);
             dir      = rotate(dir, PI * 0.75);
-            acc.xz   += dir * 0.7; // > 4 to have tornal
+            acc.xz   += dir * 0.4; // > 4 to have tornal
         
            
             velSelf                  += acc * .01 * speedOffset;
@@ -308,7 +323,7 @@
     let controlsMain
     //GPGPU
     let gpuCompute
-    let widthTexture = 50
+    let widthTexture = 152
     let velocityVariable, positionVariable, extraVariable
     let positionUniforms, velocityUniforms, extraUniforms
 
@@ -366,7 +381,7 @@
         extraUniforms = extraVariable.material.uniforms;
 
         positionUniforms['time'] = { value: 0.0 };
-        positionUniforms['sizeView'] = { value: new THREE.Vector2(.7, .7) };
+        positionUniforms['sizeView'] = { value: new THREE.Vector2(1, 1) };
 
 
 
@@ -405,7 +420,7 @@
             const y = Math.random() * 2 - 1;
             const z = Math.random() * 2 - 1;
             let vp = new THREE.Vector3(x, y, z)
-            vp.multiplyScalar(.2)
+            vp.multiplyScalar(.1)
             arrT[k + 0] = vp.x
             arrT[k + 1] = vp.y
             arrT[k + 2] = vp.z
@@ -468,7 +483,7 @@
     scene.add(directionalLight);
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
-    //sceneGenTexture.add(axesHelper);
+    sceneGenTexture.add(axesHelper);
     const cameraGenTexture = new THREE.OrthographicCamera(- 2, 2, 2 * (height / width), - 2 * (height / width), 0., 1000);
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.00001, 1000); // 
 
@@ -477,7 +492,19 @@
     controlsMain = new OrbitControls(camera, Renderer.renderer.domElement);
     //controlsMain.enableRotate = false
     const [widthFit, heightFit] = calcSizeFitCamPerspective(camera)
-   
+    const sizeDisplayView = 2
+    const parameters = {
+            sizeVol: 16, lod: 4, uLodSampleAll: 0, toggle: false,displaySample:true,displayParticel:true,
+        
+            applyChanges: () => {
+                localStorage.setItem("sizeVol2D", `${parameters.sizeVol}`);
+                window.location.reload(); // Tải lại trang sau khi nhấn nút
+            }
+
+        };
+
+
+
     const simulation = new Simulation({
         options: {
             iterations_poisson: 1,
@@ -518,7 +545,7 @@
         shaderInstancedSample.onBeforeCompile = (shader) => {
             shader.uniforms.uTexture2D = { value: null };
             shader.uniforms.uSizeVol2D = { value: Math.sqrt(sizeVol2D) };
-            shader.uniforms.uLodSampleAll = { value: 0. };
+            shader.uniforms.uLodSampleAll = { value: parameters.lod };
             shader.vertexShader = `
                 attribute vec3 randomOffset;
                 varying vec3 vRandomOffset;
@@ -599,9 +626,11 @@
                     float ads = uSizeVol2D;
                   
                 	vec4 distanceInfo = sampleAs3DTextureOrigin(uTexture2D,vec3(dumOff.xy,dumOff.z), uSizeVol2D * uSizeVol2D,uSizeVol2D,uSizeVol2D,uLodSampleAll);
-                if(distanceInfo.x > 0.) {
-                  //  gl_FragColor += vec4(distanceInfo.xyz, 0.);
-                 gl_FragColor +=  vec4(1.,.3,1., 0.) * .2;
+             
+                    gl_FragColor += vec4(distanceInfo.xyz * .5, 1.);
+                    if(distanceInfo.x > 0.) {
+                //   gl_FragColor += vec4(distanceInfo.xyz, 0.);
+                 //gl_FragColor +=  vec4(1.,.3,1., 0.) * .2;
                 }else{
                     discard;
                 }
@@ -626,10 +655,10 @@
 
         const dummyOffsetArray = new Float32Array(sizeVol2D ** 3 * 3); // vec3 cho mỗi instance
         let index2 = 0;
-
-        for (let x2 = 0; x2 < sizeVol2D; x2++) {
-            for (let y2 = 0; y2 < sizeVol2D; y2++) {
-                for (let z2 = 0; z2 < sizeVol2D; z2++) {
+        let totalLopp = sizeVol2D
+        for (let x2 = 0; x2 < totalLopp; x2++) {
+            for (let y2 = 0; y2 < totalLopp; y2++) {
+                for (let z2 = 0; z2 < totalLopp; z2++) {
                     // Tạo giá trị ngẫu nhiên cho offset (chỉ ví dụ, bạn có thể đặt giá trị khác)
                     const offsetX = (x2 - halfSize) * spacing;
                     const offsetY = (y2 - halfSize) * spacing
@@ -639,7 +668,7 @@
                     // Lưu giá trị vào array
                     dummyOffsetArray[index2 * 3] = newVal.x;
                     dummyOffsetArray[index2 * 3 + 1] = newVal.y;
-                    dummyOffsetArray[index2 * 3 + 2] = (z2+1)/sizeVol2D ;
+                    dummyOffsetArray[index2 * 3 + 2] = z2/sizeVol2D ;
                   
                     index2++;
                 }
@@ -687,7 +716,7 @@
     function initFbo() {
         const dpr = 1.
         let voxelSize = sizeVol2D
-        renderTarget2DOut = new THREE.WebGLRenderTarget(sizeVol2D * Math.sqrt(sizeVol2D), sizeVol2D * Math.sqrt(sizeVol2D), {
+        renderTarget2DOut = new THREE.WebGLRenderTarget(1024,1024,/* sizeVol2D * Math.sqrt(sizeVol2D), sizeVol2D * Math.sqrt(sizeVol2D) ,*/ {
             //    renderTarget2DOut = new THREE.WebGLRenderTarget(window.innerWidth,window.innerHeight, {
             minFilter: THREE.NearestMipmapLinearFilter,
             magFilter: THREE.NearestFilter,
@@ -742,15 +771,7 @@
 
     function initGui() {
 
-        const parameters = {
-            sizeVol: 16, lod: 0, uLodSampleAll: 0, toggle: false,displaySample:true,displayParticel:true,
-        
-            applyChanges: () => {
-                localStorage.setItem("sizeVol2D", `${parameters.sizeVol}`);
-                window.location.reload(); // Tải lại trang sau khi nhấn nút
-            }
-
-        };
+      
 
         function update() {
             if (meshCheck) meshCheck.material.uniforms.uLod.value = parameters.lod
@@ -781,8 +802,9 @@
         gui.add(parameters, 'displaySample').onChange(displaySample);
         gui.add(parameters, 'displayParticel').onChange(displayParticel);
     }
-
+  
     function initMeshCheck() {
+       
         const groupDisplay1 = new THREE.Group()
         const groupDisplay2 = new THREE.Group()
         meshCheck = new THREE.Mesh(
@@ -791,7 +813,7 @@
                 //wireframe:true,
                 uniforms: {
                     utex: { value: null },
-                    uLod: { value: null }
+                    uLod: { value: parameters.lod }
                 },
                 vertexShader: `
                         varying vec2 vUv;
@@ -809,8 +831,8 @@
 
                         void main() {
                             vec3 tex = textureLod(utex,vUv,uLod).xyz;
-                            
-                            gl_FragColor = vec4(tex, 1.0);
+                     
+                           gl_FragColor = vec4(tex , 1.0);
                             //gl_FragColor =  vec4(vec3(.4), 1.0);
                         }
                     `
@@ -862,7 +884,7 @@
         groupDisplay2.add(meshCheck2)
 
 
-        const groupGrid = create3DGrid({ size: 2, divisions: (Math.sqrt(sizeVol2D) / 2) * Math.sqrt(sizeVol2D) })
+        const groupGrid = create3DGrid({ size: sizeDisplayView, divisions: (Math.sqrt(sizeVol2D) / 2) * Math.sqrt(sizeVol2D) })
 
         groupDisplay1.traverse((child) => {
             if (child.isMesh) child.material.depthTest = false;
@@ -960,7 +982,7 @@
                         floor(float(gl_InstanceID) / tSize.x) / tSize.y  // Tính chỉ số hàng
                     );
                  
-                     vec3 posgpu = texture2D(tPos_gpu,uv).xyz;
+                     vec3 posgpu = texture2D(tPos_gpu,vec2(uv.x,1.-uv.y)).xyz;
                     vec3 pos = posgpu;
                      vec2 uvPos = vec2(
                         pos.x / sizeView.x + 0.5,
@@ -968,6 +990,11 @@
                      );
                        vec2 velfuild = texture2D(fuildMap,uvPos).xy;
                             // posgpu.xy /= 2.;
+
+
+
+
+                            
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(posgpu / 2., 1.0);
                   
                     vUv = uvPos;
@@ -1035,8 +1062,8 @@
 
         const groupp = new THREE.Group()
         const mm = new THREE.Mesh(
-            new THREE.BoxGeometry(1, 1, 1),
-            new THREE.MeshBasicMaterial({ color: "red",transparent:true,opacity:.1, wireframe: true })
+            new THREE.BoxGeometry(2, 2, 2),
+            new THREE.MeshBasicMaterial({ color: "blue",transparent:true,opacity:.1, wireframe: true })
         )
 
         groupp.position.x = 0
@@ -1101,9 +1128,12 @@
                 posgpu.xy -= 1.-(1./sizeVolume.x);
 
                 gl_Position = vec4(posgpu, 1.0);
+
+            
+                 
                 vUv = uv;
                
-                gl_PointSize  = 1.;
+                gl_PointSize  = 7.;
                 vPos = extra;
 
                 }
@@ -1117,7 +1147,7 @@
                     if(vPos.x < 0.01) {
                       gl_FragColor = vec4( vec3(1.,.2,.2) ,1.);
                     }else{
-                      gl_FragColor = vec4( vec3(.5,4.,1.) ,1.);
+                      gl_FragColor = vec4( vec3(1.) ,1.);
                     }
                   
                 }
@@ -1137,7 +1167,7 @@
                 },
                 tPos_gpu: { value: null },
                 tVel_gpu: { value: null },
-                tSize: { value: new THREE.Vector2(widthTexture, widthTexture) }
+                tSize: { value: new THREE.Vector2(Math.sqrt(sizeVol2D) * sizeVol2D, Math.sqrt(sizeVol2D) * sizeVol2D ) }
             }
         });
         let point2s = new THREE.Points(geo, PointMat2);
@@ -1147,14 +1177,14 @@
 
     function create3DGrid({ size, divisions }) {
         const gr = new THREE.Group()
-        const gridMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0., side: 1 });
+        const gridMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, side: 1 });
         const gridMaterial2 = new THREE.LineBasicMaterial({ color: "red", transparent: true, opacity: .2, side: 1 });
         const gridGeometry = new THREE.BufferGeometry();
         const gridGeometry2 = new THREE.BufferGeometry();
         const gridVertices = [];
         const gridVertices2 = [];
         // Tạo lưới trên mặt XY
-        for (let i = -size; i <= size; i += size / divisions) {
+        for (let i = -size; i <= size; i += size / Math.sqrt(sizeVol2D) * 2) {
             // Các đường song song trục X
             gridVertices.push(-size, i, 0, size, i, 0);
             // Các đường song song trục Y
@@ -1247,7 +1277,7 @@
         Renderer.renderer.setRenderTarget(null);
         Renderer.renderer.render(scene, camera);
 
-        //   Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
+     //   Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
         PointMat.uniforms.time.value = Renderer.time
 
 
