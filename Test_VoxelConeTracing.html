@@ -1052,6 +1052,10 @@
         initTexture2DBaseSetter(PointGeo)
     }
 
+
+
+    // problem here
+    // slice need fix to get exacly pos
     function initTexture2DBaseSetter(geo) {
         const vertexShaderSetter = `
                 precision highp float;
@@ -1073,12 +1077,12 @@
                      vec3 posgpuOri = texture2D(tPos_gpu,uv).xyz;
                      vec3 posgpu = texture2D(tPos_gpu,uv).xyz;
 
-                    float voxelSizeX = 1.0 / sizeVolume.x; // Kích thước voxel theo chiều X
-                    float voxelSizeY = 1.0 / sizeVolume.y; // Kích thước voxel theo chiều Y 
+                    float voxelSizeX = 1.0 / sizeVolume.z; // Kích thước voxel theo chiều X
+                    float voxelSizeY = 1.0 / sizeVolume.z; // Kích thước voxel theo chiều Y 
 
-              //  posgpu.xy /= 2.;
-             // posgpu.xy += 1.25;
-             posgpu.z += .5;
+                //  posgpu.xy /= 2.;
+                // posgpu.xy += 1.25;
+                posgpu.z += .5;
                 float normalizedZ = mod(posgpu.z  , 1.0);  
                 float slice = floor((normalizedZ) * (sizeVolume.x * sizeVolume.y)); 
 
@@ -1087,35 +1091,21 @@
 
              
                 float offsetX = mod(slice, gridSizeX);     
-                float offsetY = floor(slice / gridSizeX);    
+                float offsetY = floor(slice / gridSizeX );    
                 float margin = 2.;
 
-                vec2 voxelCenter = vec2(
-                    (offsetX ) * voxelSizeX, // Tâm theo trục X
-                    (offsetY ) * voxelSizeY  // Tâm theo trục Y
-                );
+                posgpu.xy +=  vec2(offsetX,offsetY)* margin;
 
+                // posgpu.z = 0.;
+                posgpu.xy /= sizeVolume.x;
+                posgpu.xy -= 1.-(1./sizeVolume.x);
 
-                float diss =  offsetX - floor(offsetX);
-                float dir = sign(diss);
-             //   diss = 0.;
-             //   posgpu.xy +=  vec2(floor(offsetX) + dir * diss, floor(offsetY) +  dir * diss)  * margin;
- posgpu.xy +=  vec2(offsetX,offsetY)* margin;
-                vPos = extra;
-               // posgpu.z = 0.;
-
-
-
-                 posgpu /= sizeVolume.x;
-         
-               posgpu.xy -= 1.-(1./sizeVolume.x);
-
-                float unit = offsetX * 1./sizeVolume.x;
-      
-                    gl_Position = vec4(posgpu, 1.0);
-                    vUv = uv;
+                gl_Position = vec4(posgpu, 1.0);
+                vUv = uv;
                
-                    gl_PointSize  = 1.;
+                gl_PointSize  = 1.;
+                vPos = extra;
+
                 }
             `;
 
