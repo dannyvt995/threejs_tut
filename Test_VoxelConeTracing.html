@@ -64,12 +64,12 @@
         
 
 
-        float random (vec2 st) {
-            return fract(sin(dot(st.xy,
-                                 vec2(12.9898,78.233)))*
-                43758.5453123);
+        float rand(float seed) {
+            return fract(sin(seed) * 43758.5453123);
         }
-
+        float randomInRange(float seed) {
+            return rand(seed) * 0.6 - 0.3;
+        }
         #define PI 3.141592653
         void main()	{
 
@@ -99,8 +99,8 @@
    //posSelf += vec3(velFuild,posSelf.z)  * 1.5;
     
 
-        vec3 rr1 =  vec3(0.,sizeView.y,0.);
-        vec3 rr2 =  vec3(0.,-sizeView.y,0.);
+        vec3 rr1 =  vec3(randomInRange(sizeView.x),randomInRange(sizeView.y),0.);
+        vec3 rr2 =  vec3(randomInRange(sizeView.x),-randomInRange(sizeView.y),0.);
          if(posSelf.y > sizeView.y) {
 
             posSelf = rr2;
@@ -260,7 +260,14 @@
             mat2 m = mat2(c, -s, s, c);
             return m * v;
         }
-        
+
+        float random (vec2 st) {
+            return fract(sin(dot(st.xy,
+                                 vec2(12.9898,78.233)))*
+                43758.5453123);
+        }
+
+
         #define PI 3.141592653
         void main() {
             
@@ -274,7 +281,7 @@
               
             float posOffset    = mix(posSelf.b, 1.0, .1);
             vec3 acc             = curlNoise(posSelf * posOffset + delta * 0.5);
-            acc.y 				 += .5;
+            acc.y 				 += .5 ;
             acc.y 				 *= 0.5;
             
             float speedOffset    = mix(extraSelf.g, 1.0, .9);
@@ -282,11 +289,12 @@
         
             //	rotation 
             vec2 dir = normalize(posSelf.xz);
-            dir      = rotate(dir, PI * 0.75);
-            acc.xz   += dir * 0.4; // > 4 to have tornal
+            dir      = rotate(dir, PI * 0.42 );
+            float rr = 0.4;
+            acc.xz   += dir * rr; // > 4 to have tornal
         
            
-            velSelf                  += acc * .01 * speedOffset;
+            velSelf                  += acc * .005 * speedOffset;
 
             float decrease = .96;
             if(stopDelta) decrease = 0.;
@@ -379,7 +387,7 @@
 
         // Lấy mẫu từ sample2DSetter
         vec3 textureSample = textureLod(sample2DSetter, sampleUV,uLod).xyz;
-        textureSample = texture2D(sample2DSetter, sampleUV).xyz;
+        //textureSample = texture2D(sample2DSetter, sampleUV).xyz;
         gl_FragColor = vec4(textureSample,1.);
     }`;
 
@@ -534,7 +542,7 @@
     const [widthFit, heightFit] = calcSizeFitCamPerspective(camera)
     const sizeDisplayView = 2
     const parameters = {
-            sizeVol: 16, lod: 4,lodOn3D: 0 , uLodSampleAll: 0, toggle: false,displaySample:true,displayParticel:false,
+            sizeVol: 16, lod: 3,lodOn3D: 0 , uLodSampleAll: 0, toggle: false,displaySample:false,displayParticel:true,
         
             applyChanges: () => {
                 localStorage.setItem("sizeVol2D", `${parameters.sizeVol}`);
@@ -607,7 +615,8 @@
         const halfSize = (sizeVol2D - 1) / 2;
         const groupBox = new THREE.Group()
         const mr = spacing - 0.01 * 0.5
-        const geometry = new THREE.BoxGeometry(mr, mr, mr);
+        let geometry = new THREE.BoxGeometry(mr, mr, mr);
+       // geometry = new THREE.SphereGeometry(mr * 0.5, 16, 16);
         console.log(texture3dSample.source.data.data)
       //  shaderInstancedSample.uniforms.uTexture3DSample.value = texture3dSample
         shaderInstancedSample  = new THREE.MeshPhongMaterial({
@@ -711,11 +720,11 @@
                       gl_FragColor += vec4(getValFrom3d,0.);
 
                         if(getValFrom3d.x < 1.) {
-                            gl_FragColor.a = 1.;
+                            gl_FragColor.a = .8;
                   
                         }else{
-                            gl_FragColor.a = 0.;
-                            discard;
+                           // gl_FragColor.a = 0.05;
+                      discard;
                         }
                     
 
@@ -811,7 +820,7 @@
         let vv = sizeVol2D * Math.sqrt(sizeVol2D)
         console.log(vv)
         vv *= 16
-        vv = 1024,1024
+        vv = 512,512
        //vv = window.innerHeight,window.innerHeight
         renderTarget2DOut = new THREE.WebGLRenderTarget(/* 1024,1024, */vv, vv , {
             //    renderTarget2DOut = new THREE.WebGLRenderTarget(window.innerWidth,window.innerHeight, {
@@ -822,8 +831,8 @@
 
 
         renderTarget2DOutOrigin = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
-            minFilter: THREE.LinearFilter,
-            magFilter: THREE.LinearFilter,
+            minFilter: THREE.NearestFilter,
+            magFilter: THREE.NearestFilter,
             format: THREE.RGBAFormat
         });
     }
@@ -941,9 +950,13 @@
 
                         void main() {
                             vec3 tex = textureLod(utex,vUv,uLod).xyz;
-                     
-                           gl_FragColor = vec4(tex , 1.0);
-                            //gl_FragColor =  vec4(vec3(.4), 1.0);
+                            if(tex.x < 0.95) {
+                                
+                            }else{
+                                gl_FragColor = vec4(vec3(1.) , 1.0);
+                            }
+                       gl_FragColor = vec4(tex, 1.0);
+                            //gl_FragColor =  vec4(vec3(1.), 1.0);
                         }
                     `
             })
@@ -982,7 +995,7 @@
                          vec3  tex = texture2D(utex,vUv).xyz;
                             float activeC = 0.;
                             if(toggle) activeC = 1.;
-                            gl_FragColor = vec4(tex * vec3(.9,1.,.5),activeC);
+                            gl_FragColor = vec4(tex * vec3(.9,1.,.5),.5);
                         }
                     `
             })
@@ -1105,13 +1118,16 @@
 
 
                             
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(posgpu / 2., 1.0);
-                   
-               //     gl_Position = projectionMatrix * modelViewMatrix * vec4(position / 1.1, 1.0);
+                 
                     vUv = uvPos;
-                    vPos = pos;
+                    vPos = posgpu / 2.;
                     vFuild = 1.-velfuild;
-                    gl_PointSize  =  10.;
+
+                      vec4 mvPosition = modelViewMatrix * vec4(posgpu / 2., 1.0);
+                      // gl_PointSize = 1.5 * (10.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                        gl_PointSize = 15. * (1.-distance(posgpu / 2.,vec3(0.)));
+
                 }
             `;
 
@@ -1120,21 +1136,12 @@
                 varying vec3 vPos;
                 varying vec2 vFuild;
                     varying vec2 vUv;
-                 uniform sampler2D fuildMap;
-                    uniform sampler2D fuildPress;
-                    vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
-                {
-                    return a + b*cos( 6.28318*(c*t+d) );
-                }
 
                 void main() {
-                    vec2 vel = texture2D(fuildMap,vUv).xy;
-                           vec2 press = texture2D(fuildPress,vUv).xy;
-                  float len = length(vel);
-                    vec2 velO = vel * 0.5 + 0.5;
-                    vec3  colVel = pal( length(vel) * 10.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
-                  
-                    gl_FragColor = vec4(colVel ,.8);
+                   float dist = length(gl_PointCoord - vec2(0.5));
+                    if (dist > 0.5) discard;
+                    gl_FragColor = vec4(vec3(1.-dist) * vec3(vUv,1.) * (1.-distance(vPos,vec3(0.))), 1.);
+                  //  gl_FragColor = vec4(vec3(vUv,1.) ,.8);
                 }
             `
 
@@ -1142,8 +1149,9 @@
             vertexShader: vertexShader,
             fragmentShader: fragmentShader,
             transparent: true,
-            depthTest: false,
-            blendSrcAlpha: 1,
+            blending: THREE.NormalBlending,
+          //  depthWrite: false, 
+
             uniforms: {
                 speedmouse: {
                     value: 0
@@ -1168,6 +1176,7 @@
 
 
         points = new THREE.Points(PointGeo, PointMat);
+        
         points.visible = parameters.displayParticel
         
 
@@ -1179,7 +1188,7 @@
 
         groupp.position.x = 0
         groupp.add(points, mm)
-        groupp.renderOrder = 8
+       /// groupp.renderOrder = 10
 
         scene.add(groupp)
     
@@ -1189,14 +1198,14 @@
 
 
 
-        initTexture2DBaseSetter(PointGeo)
+        initTexture2DBaseSetter(PointGeo,fragmentShader)
     }
 
 
 
     // problem here
     // slice need fix to get exacly pos
-    function initTexture2DBaseSetter(geo) {
+    function initTexture2DBaseSetter(geo,fragmentCommon) {
       //  sceneGenTexture.background = new THREE.Color(0x757575); 
         const vertexShaderSetter = `
                 precision highp float;
@@ -1252,7 +1261,7 @@
                  
                 vUv = uv;
                
-                gl_PointSize  = 1.;
+                gl_PointSize  = 2.;
                 vPos = extra;
 
                 }
@@ -1263,18 +1272,23 @@
                 varying vec3 vPos;
                 varying vec2 vUv;
                 void main() {
-                    if(vPos.x < 0.01) {
-                      gl_FragColor = vec4( vec3(0.,.2,.2) ,1.);
-                    }else{
-                      gl_FragColor = vec4( vec3(0.) ,1.);
-                    }
+
+                float dist = length(gl_PointCoord - vec2(0.5));
+                    if (dist > 0.5) discard;
+                    gl_FragColor = vec4(vec3(1.-dist) * vec3(vUv,1.) * (1.-distance(vPos,vec3(0.))), 1.0);
+
+                    // if(vPos.x < 0.01) {
+                    //   gl_FragColor = vec4( vec3(0.,.2,.2) ,1.);
+                    // }else{
+                    //   gl_FragColor = vec4( vec3(0.) ,1.);
+                    // }
                   
                 }
             `
 
         PointMat2 = new THREE.ShaderMaterial({
             vertexShader: vertexShaderSetter,
-            fragmentShader: fragmentShaderSetter,
+            fragmentShader: fragmentCommon,
             transparent: true,
             
             blending: THREE.NormalBlending,
