@@ -520,7 +520,7 @@
     scene.add(light);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
     directionalLight.position.set(0,0,1)
-    scene.add(directionalLight);
+   // scene.add(directionalLight);
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
    //sceneGenTexture.add(axesHelper);
@@ -706,9 +706,9 @@
                     //   gl_FragColor = vec4(0.);
                         vec3 getValFrom3d = texture(uTexture3DSample,dumOff).rgb;
                         
-                       getValFrom3d = textureLod(uTexture3DSample,dumOff + vPos,uLodSampleAll).rgb;
+                       getValFrom3d = textureLod(uTexture3DSample,dumOff ,uLodSampleAll).rgb;
 
-                      gl_FragColor = vec4(getValFrom3d,0.);
+                      gl_FragColor += vec4(getValFrom3d,0.);
 
                         if(getValFrom3d.x < 1.) {
                             gl_FragColor.a = 1.;
@@ -1378,7 +1378,7 @@
     Renderer.renderer.setAnimationLoop(animate);
     function animate() {
       
-        directionalLight.position.copy(controlsMain.object.position)
+        if(directionalLight) directionalLight.position.copy(controlsMain.object.position)
         stats.update();
         Mouse.update();
         Renderer.update();
