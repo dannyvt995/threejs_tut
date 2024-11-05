@@ -346,8 +346,48 @@
     let renderTarget2DOut
     let renderTarget2DOutOrigin
 
+
+    // write 3d
+    let computeMaterial, computeMesh, rendertarget3D
+    const SIMPLE_VERTEX = `
+
+    varying vec2 vUv;
+
+    void main() {
+        vUv = uv;
+        gl_Position = vec4(position, 1.0);
+    }`;
+    const COMPUTE_FRAGMENT = `
+    varying vec2 vUv;
+    uniform sampler2D sample2DSetter;
+    uniform float sizeVol;
+    uniform float uZCoord;
+    uniform float uLod;
+    void main() {
+    
+     float sliceSize = 1.0 / sqrt(sizeVol); // Tỉ lệ của một lớp trên texture2D
+        
+        // Tọa độ lớp 2D dựa vào uZCoord
+        float zLayer = floor(uZCoord * sizeVol); 
+        float col = mod(zLayer, sqrt(sizeVol)); // Cột trong grid 2D
+        float row = floor(zLayer / sqrt(sizeVol)); // Hàng trong grid 2D
+
+        // Tọa độ lấy mẫu trong sample2DSetter
+        vec2 layerOffset = vec2(col, row) * sliceSize;
+        vec2 uvInLayer = vUv * sliceSize;
+        vec2 sampleUV = layerOffset + uvInLayer;
+
+        // Lấy mẫu từ sample2DSetter
+        vec3 textureSample = textureLod(sample2DSetter, sampleUV,uLod).xyz;
+        textureSample = texture2D(sample2DSetter, sampleUV).xyz;
+        gl_FragColor = vec4(textureSample,1.);
+    }`;
+
+
+    localStorage.setItem("sizeVol2D","16")
+
     const getLocalPara1 = localStorage.getItem("sizeVol2D")
-    console.log(getLocalPara1)
+   
     const sizeVol2D = getLocalPara1 ? Number(getLocalPara1) : 16
     function initComputeRenderer(renderer) {
 
@@ -483,7 +523,7 @@
     scene.add(directionalLight);
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
-    sceneGenTexture.add(axesHelper);
+   //sceneGenTexture.add(axesHelper);
     const cameraGenTexture = new THREE.OrthographicCamera(- 2, 2, 2 * (height / width), - 2 * (height / width), 0., 1000);
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.00001, 1000); // 
 
@@ -494,7 +534,7 @@
     const [widthFit, heightFit] = calcSizeFitCamPerspective(camera)
     const sizeDisplayView = 2
     const parameters = {
-            sizeVol: 16, lod: 4, uLodSampleAll: 0, toggle: false,displaySample:true,displayParticel:true,
+            sizeVol: 16, lod: 4,lodOn3D: 0 , uLodSampleAll: 0, toggle: false,displaySample:true,displayParticel:false,
         
             applyChanges: () => {
                 localStorage.setItem("sizeVol2D", `${parameters.sizeVol}`);
@@ -523,12 +563,42 @@
     const textureImg = new THREE.TextureLoader().load('textures/cat.jpg');
     stats = new Stats();
     document.body.appendChild(stats.dom);
+    initData3d()
     initFbo()
     initPoint()
     initMeshCheck()
-    initData3d()
+
     initGui()
     initCubeSample()
+
+    initUpdate3D()
+
+    function initUpdate3D() {
+        
+        rendertarget3D = new THREE.WebGL3DRenderTarget(sizeVol2D, sizeVol2D, sizeVol2D);
+        rendertarget3D.depthBuffer = false;
+        console.log(rendertarget3D.texture)
+        rendertarget3D.texture.generateMipmaps = true
+        rendertarget3D.texture.minFilter =  THREE.NearestMipmapLinearFilter,
+        rendertarget3D.texture.magFilter =  THREE.NearestFilter,
+
+        computeMaterial = new THREE.ShaderMaterial({
+      
+            vertexShader: SIMPLE_VERTEX,
+            fragmentShader: COMPUTE_FRAGMENT,
+            uniforms: {
+                uZCoord: { value: 0.0 },
+                sizeVol: { value: sizeVol2D },
+                sample2DSetter: {value:null},
+                uLod: {value:parameters.lod},
+            },
+            depthTest: false,
+        });
+        computeMaterial.type = "VolumeShaderWrite";
+        computeMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), computeMaterial);
+
+    }
+
     function initCubeSample() {
         const dummy = new THREE.Object3D();
 
@@ -538,7 +608,8 @@
         const groupBox = new THREE.Group()
         const mr = spacing - 0.01 * 0.5
         const geometry = new THREE.BoxGeometry(mr, mr, mr);
-     
+        console.log(texture3dSample.source.data.data)
+      //  shaderInstancedSample.uniforms.uTexture3DSample.value = texture3dSample
         shaderInstancedSample  = new THREE.MeshPhongMaterial({
             color:0x22018f,
             transparent:true,
@@ -547,7 +618,8 @@
         shaderInstancedSample.onBeforeCompile = (shader) => {
             shader.uniforms.uTexture2D = { value: null };
             shader.uniforms.uSizeVol2D = { value: Math.sqrt(sizeVol2D) };
-            shader.uniforms.uLodSampleAll = { value: parameters.lod };
+            shader.uniforms.uLodSampleAll = { value: parameters.lodOn3D };
+            shader.uniforms.uTexture3DSample = {value:null}
             shader.vertexShader = `
                 attribute vec3 randomOffset;
                 varying vec3 vRandomOffset;
@@ -583,7 +655,7 @@
                 varying float idd;
                 uniform float uSizeVol2D;
                 uniform float uLodSampleAll;
-                
+                uniform sampler3D uTexture3DSample;
                 uniform sampler2D uTexture2D;
                 vec2 computeSliceOffsetOrigin(float slice, float slicesPerRow, vec2 sliceSize) {
                         return sliceSize * vec2(mod(slice, slicesPerRow), 
@@ -622,25 +694,38 @@
                     #include <dithering_fragment>
 
                         float u_sdfVoxelSize = uSizeVol2D*uSizeVol2D;
-                	vec3 voxelTextureCoordOri = vPos  + vec3(.5,.5,.5) * 0. ;
- 			        vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 / u_sdfVoxelSize), vec3(1.0 - 0.5 / u_sdfVoxelSize));
+                        vec3 voxelTextureCoordOri = vPos  + vec3(.5,.5,.5) * 0. ;
+                        vec3 voxelTextureCoord = clamp(voxelTextureCoordOri, vec3(0.5 / u_sdfVoxelSize), vec3(1.0 - 0.5 / u_sdfVoxelSize));
+                    
+                        float ads = uSizeVol2D;
+                    
+                        vec4 distanceInfo = sampleAs3DTextureOrigin(uTexture2D,vec3(dumOff.xy,dumOff.z), uSizeVol2D * uSizeVol2D,uSizeVol2D,uSizeVol2D,uLodSampleAll);
+                
+                     //  gl_FragColor += vec4(distanceInfo.xyz * .8, 1.);
+                    
+                    //   gl_FragColor = vec4(0.);
+                        vec3 getValFrom3d = texture(uTexture3DSample,dumOff).rgb;
+                        
+                       getValFrom3d = textureLod(uTexture3DSample,dumOff + vPos,uLodSampleAll).rgb;
+
+                      gl_FragColor = vec4(getValFrom3d,0.);
+
+                        if(getValFrom3d.x < 1.) {
+                            gl_FragColor.a = 1.;
                   
-                    float ads = uSizeVol2D;
-                  
-                	vec4 distanceInfo = sampleAs3DTextureOrigin(uTexture2D,vec3(dumOff.xy,dumOff.z), uSizeVol2D * uSizeVol2D,uSizeVol2D,uSizeVol2D,uLodSampleAll);
-             
-                    gl_FragColor += vec4(distanceInfo.xyz * .1, 1.);
-                  
-                    if(distanceInfo.x > 0.) {
-                //   gl_FragColor += vec4(distanceInfo.xyz, 0.);
-                 //gl_FragColor +=  vec4(1.,.3,1., 0.) * .2;
-                }else{
-                   discard;
-                }
-                     gl_FragColor.a = .8;
+                        }else{
+                            gl_FragColor.a = 0.;
+                            discard;
+                        }
+                    
+
+
+
+                 
+                    
 
             `)
-            console.log(shader.fragmentShader)
+          //  console.log(shader.fragmentShader)
             chunk = shader
         }
        instancedMesh = new THREE.InstancedMesh(geometry, shaderInstancedSample, countInstanced);
@@ -712,15 +797,23 @@
             new THREE.BoxGeometry(1, 1, 1),
             new THREE.MeshBasicMaterial({ color: "red",transparent:true,opacity:.1,wireframe: true })
         )
+
+        instancedMesh.visible = parameters.displaySample
         groupBox.add(instancedMesh, mm);
         groupBox.renderOrder = 5
 
         scene.add(groupBox)
     }
+    
     function initFbo() {
         const dpr = 1.
         let voxelSize = sizeVol2D
-        renderTarget2DOut = new THREE.WebGLRenderTarget(1024,1024,/* sizeVol2D * Math.sqrt(sizeVol2D), sizeVol2D * Math.sqrt(sizeVol2D) ,*/ {
+        let vv = sizeVol2D * Math.sqrt(sizeVol2D)
+        console.log(vv)
+        vv *= 16
+        vv = 1024,1024
+       //vv = window.innerHeight,window.innerHeight
+        renderTarget2DOut = new THREE.WebGLRenderTarget(/* 1024,1024, */vv, vv , {
             //    renderTarget2DOut = new THREE.WebGLRenderTarget(window.innerWidth,window.innerHeight, {
             minFilter: THREE.NearestMipmapLinearFilter,
             magFilter: THREE.NearestFilter,
@@ -738,22 +831,29 @@
     function initData3d() {
 
 
-        dataArray = new Uint8Array(sizeVol * sizeVol * sizeVol);
+        dataArray = new Float32Array(sizeVol2D ** 3 * 4);
         let i = 0;
 
-        for (let z = 0; z < sizeVol; z++) {
-            for (let y = 0; y < sizeVol; y++) {
-                for (let x = 0; x < sizeVol; x++) {
-                    dataArray[i] = i % 256;
-                    i++;
+        for (let z = 0; z < sizeVol2D; z++) {
+            for (let y = 0; y < sizeVol2D; y++) {
+                for (let x = 0; x < sizeVol2D; x++) {
+                    dataArray[i] = Math.random();     // Red
+                    dataArray[i + 1] = Math.random(); // Green
+                    dataArray[i + 2] = Math.random(); // Blue
+                    dataArray[i + 3] = 1.0;           // Alpha (để không trong suốt)
+                    i += 4; // Tăng lên 4 vì mỗi voxel cần 4 giá trị RGBA
                 }
             }
         }
 
 
-        texture3dSample = new THREE.Data3DTexture(dataArray, sizeVol, sizeVol, sizeVol);
+        texture3dSample = new THREE.Data3DTexture(dataArray, sizeVol2D, sizeVol2D, sizeVol2D);
+        texture3dSample.format = THREE.RGBAFormat;
+        texture3dSample.type = THREE.FloatType;
+        texture3dSample.minFilter = THREE.LinearFilter;
+        texture3dSample.magFilter = THREE.LinearFilter;
         texture3dSample.needsUpdate = true;
-
+       
     }
 
     function updateData3dRandom() {
@@ -779,11 +879,16 @@
 
         function update() {
             if (meshCheck) meshCheck.material.uniforms.uLod.value = parameters.lod
-         //   if (shaderInstancedSample) shaderInstancedSample.uniforms.uLodSampleAll.value = parameters.lod
-            if(chunk) {chunk.uniforms.uLodSampleAll.value = parameters.lod}
+            if(computeMaterial) computeMaterial.uniforms.uLod.value = parameters.lod
 
         }
+        function update33() {
+            if(chunk) {
+                chunk.uniforms.uLodSampleAll.value = parameters.lodOn3D
+                
+            }
 
+        }
         function update2() {
             if (meshCheck2) meshCheck2.material.uniforms.toggle.value = !meshCheck2.material.uniforms.toggle.value
         }
@@ -794,14 +899,15 @@
         // Thêm nút `applyChanges` để thực hiện hành động
         gui.add(parameters, 'applyChanges').name("Apply Changes");
         gui.add(parameters, 'lod', 0, 8, 0.5).onChange(update);
+        gui.add(parameters, 'lodOn3D', 0, 1, 0.01).onChange(update33);
         gui.add(parameters, 'toggle', 0, 1, 1).onChange(update2);
 
         function displaySample() {
-            if(instancedMesh) instancedMesh.visible =  !parameters.displaySample
+            if(instancedMesh) instancedMesh.visible =  !instancedMesh.visible
         }
         function displayParticel() {
             
-            if(points) points.visible =  !parameters.displayParticel
+            if(points) points.visible =  !points.visible
         }
         gui.add(parameters, 'displaySample').onChange(displaySample);
         gui.add(parameters, 'displayParticel').onChange(displayParticel);
@@ -1028,7 +1134,7 @@
                     vec2 velO = vel * 0.5 + 0.5;
                     vec3  colVel = pal( length(vel) * 10.2, vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,0.5),vec3(0.8,0.90,0.30) );
                   
-                    gl_FragColor = vec4(colVel ,.2);
+                    gl_FragColor = vec4(colVel ,.8);
                 }
             `
 
@@ -1062,8 +1168,8 @@
 
 
         points = new THREE.Points(PointGeo, PointMat);
-
-
+        points.visible = parameters.displayParticel
+        
 
         const groupp = new THREE.Group()
         const mm = new THREE.Mesh(
@@ -1091,6 +1197,7 @@
     // problem here
     // slice need fix to get exacly pos
     function initTexture2DBaseSetter(geo) {
+      //  sceneGenTexture.background = new THREE.Color(0x757575); 
         const vertexShaderSetter = `
                 precision highp float;
                 uniform float time;
@@ -1157,9 +1264,9 @@
                 varying vec2 vUv;
                 void main() {
                     if(vPos.x < 0.01) {
-                      gl_FragColor = vec4( vec3(1.,.2,.2) ,1.);
+                      gl_FragColor = vec4( vec3(0.,.2,.2) ,1.);
                     }else{
-                      gl_FragColor = vec4( vec3(1.) ,1.);
+                      gl_FragColor = vec4( vec3(0.) ,1.);
                     }
                   
                 }
@@ -1255,6 +1362,19 @@
 
     }
 
+    function updateTexture3D() {
+    
+
+        for ( let i = 0; i < sizeVol2D; i ++ ) {
+            
+            // Render volume shader to target3d buffer
+            computeMesh.material.uniforms.uZCoord.value = i / ( sizeVol2D  );
+            Renderer.renderer.setRenderTarget(rendertarget3D, i);
+            Renderer.renderer.render(computeMesh, camera);
+
+        }   
+       
+    }
     Renderer.renderer.setAnimationLoop(animate);
     function animate() {
       
@@ -1267,20 +1387,24 @@
         runGPGPU()
 
 
-
+       if(texture3dSample) updateTexture3D()
+      
         Renderer.renderer.autoClear = true
+        Renderer.renderer.setClearColor(0xffffff, 1); 
         Renderer.renderer.setRenderTarget(renderTarget2DOut);
         Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
         renderTarget2DOut.textures[0].generateMipmaps = true
+        // renderTarget2DOut.textures[0].blending =  THREE.AdditiveBlending
+        // renderTarget2DOut.textures[0].transparent =  true
         if (meshCheck && meshCheck.material && meshCheck.material.uniforms.utex) {
             meshCheck.material.uniforms.utex.value = renderTarget2DOut.textures[0]
         }
-        if (shaderInstancedSample) {
-            //console.log(renderTarget2DOut.textures[0])
-           // shaderInstancedSample.uniforms.uTexture2D.value = renderTarget2DOut.textures[0]
+   
+        if(computeMaterial) {
+            computeMaterial.uniforms.sample2DSetter.value = renderTarget2DOut.textures[0]
         }
         if(chunk) {
-
+            chunk.uniforms.uTexture3DSample.value = rendertarget3D.texture
             chunk.uniforms.uTexture2D.value = renderTarget2DOut.textures[0]
         }
         Renderer.renderer.setRenderTarget(null);
@@ -1290,14 +1414,16 @@
             meshCheck2.material.uniforms.utex.value = renderTarget2DOutOrigin.textures[0]
         }
 
+
+        Renderer.renderer.setClearColor(0x00000, 1); 
         Renderer.renderer.setRenderTarget(null);
         Renderer.renderer.render(scene, camera);
 
      //   Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
         PointMat.uniforms.time.value = Renderer.time
-
-
-
+    
+      
+     
         // PointMat.uniforms.speedmouse.value = simulation.externalForce.speed
         // positionUniforms['forceMouse'] = { value: simulation.externalForce.speed };
 
@@ -1307,7 +1433,7 @@
             //console.timeEnd()
         }
 
-
+    
 
         //   positionUniforms['projectionMatrix'] = { value: controlsMain.object.projectionMatrix };
         //   positionUniforms['viewMatrix'] = { value: controlsMain.object.matrixWorldInverse};
