@@ -6,7 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
 </head>
-
+<style>
+    body{
+        margin:0;
+        padding:0;
+        overflow: hidden;
+    }
+</style>
 <body>
     <canvas></canvas>
 
@@ -187,7 +193,7 @@
 
     void main () {
         vec3 C = texture2D(u_output_texture, vUv).rgb;
-        gl_FragColor = vec4(vec3(1.) - C, 1.);
+        gl_FragColor = vec4( vec3(C.z), 1.);
     }
 </script>
     <script type="module">
