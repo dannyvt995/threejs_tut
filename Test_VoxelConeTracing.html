@@ -333,7 +333,7 @@
     let controlsMain
     //GPGPU
     let gpuCompute
-    let widthTexture = 5
+    let widthTexture = 10
     let velocityVariable, positionVariable, extraVariable
     let positionUniforms, velocityUniforms, extraUniforms
 
@@ -358,6 +358,9 @@
 
     //gui
     let checkRender__GUI = false
+    let viewSetterType = false
+    let isUpdate3D = true
+
     // write 3d
     let computeMaterial, computeMesh, rendertarget3D
     const SIMPLE_VERTEX = `
@@ -390,16 +393,18 @@
 
         // Lấy mẫu từ sample2DSetter
         vec3 textureSample = textureLod(sample2DSetter, sampleUV,uLod).xyz;
-
+      
         gl_FragColor = vec4(textureSample,1.);
     }`;
 
     const sizeDisplayView = 2
     const parameters = {
             pointSize:2,
-            sizeVol: 36, lod: 3,lodOn3D: 0 , uLodOn3D: 0, toggle: false,displaySample:true,displayParticel:false,
+            sizeVol: 36, lod: 0,lodOn3D: 0 ,toggle: false,displaySample:true,displayParticel:true,
             rangeForLight : .95,
             checkRender:checkRender__GUI,
+            viewSetterType:viewSetterType,
+            isUpdate3D:true,
             applyChanges: () => {
                 localStorage.setItem("sizeVol2D", `${parameters.sizeVol}`);
                 window.location.reload(); // Tải lại trang sau khi nhấn nút
@@ -407,7 +412,7 @@
 
         };
 
-    localStorage.setItem("sizeVol2D","36")
+    localStorage.setItem("sizeVol2D","16")
 
     const getLocalPara1 = localStorage.getItem("sizeVol2D")
    
@@ -483,7 +488,7 @@
             const y = Math.random() * 2 - 1;
             const z = Math.random() * 2 - 1;
             let vp = new THREE.Vector3(x, y, z)
-            vp.multiplyScalar(.1)
+            vp.multiplyScalar(.5)
             arrT[k + 0] = vp.x
             arrT[k + 1] = vp.y
             arrT[k + 2] = vp.z
@@ -531,7 +536,7 @@
         velocityUniforms['start'].value = !velocityUniforms['start'].value;
         positionUniforms['start'].value = !positionUniforms['start'].value;
     };
-    initComputeRenderer(Renderer.renderer)
+    
 
     const width = window.innerWidth
     const height = window.innerHeight
@@ -547,9 +552,10 @@
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
    sceneGenTexture.add(axesHelper);
-    const cameraGenTexture = new THREE.OrthographicCamera(- 2, 2, 2 * (height / width), - 2 * (height / width), 0., 1000);
-   
-   
+    let cameraGenTexture = new THREE.OrthographicCamera(- 2, 2, 2 * (height / width), - 2 * (height / width), 0., 1000);
+    cameraGenTexture = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.00001, 1000); // 
+
+    cameraGenTexture.position.z = 2
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.00001, 1000); // 
 
@@ -584,53 +590,81 @@
 
 
     //config shader
-    const rangeX = .1
+    let PointGeo = new THREE.BufferGeometry();
+
+
+    const rangeX = .05
+    const useToggleTypeViewSetter = {
+        vertHead : `
+            uniform bool toggleView;
+        `
+    }
+
+    const useExtraAttribure = {
+        vertHead : `
+            attribute vec3 extra;
+            varying vec3 vExtra;
+        `,
+        vertBody : `
+            vExtra = extra;
+        `,
+        fragHead: `
+            varying vec3 vExtra
+        `,
+        fragBody: ``
+    }
+    const useIdcAttribure = {
+        vertHead : `
+            attribute float idc;
+            varying float vIdc;
+        `,
+        vertBody : `
+            vIdc = idc;
+        `, 
+        fragHead: `
+            varying float vIdc;
+        `,
+    }
+
     const sizePointCommon = `
-        if(extra.x < ${rangeX}) {
-            if(mvPosition.z > 0.) {
-                gl_PointSize = 20. ;
-            }else{
-                gl_PointSize = 20.;
-            }
+        float sizePoint = 10.;
+        if(vIdc < ${rangeX}) {
+            gl_PointSize = sizePoint * 2.;
            
         }else{
-            gl_PointSize = 15. * (1.-distance(posgpu / 2.,vec3(0.)));
-            if(mvPosition.z > 0.) {
-                gl_PointSize = 10.  * ( mvPosition.z);
-            }else{
-                gl_PointSize = 10.;
-            }
+            gl_PointSize =  sizePoint;
         }
     
     `
     const fragmentShaderPoint = `
-                varying vec3 vExtra;
+               varying vec3 vExtra;
+                varying float vIdc;
                 varying vec3 vPos;
                 varying vec2 vFuild;
                 varying vec2 vUv;
        
                 void main() {
                    float dist = length(gl_PointCoord - vec2(0.5));
-                  if (dist > 0.5) discard;
-                   // gl_FragColor = vec4(vec3(1.-dist) * vec3(vUv,1.) * (1.-distance(vPos,vec3(0.))), 1.);
-                   if(vExtra.x < ${rangeX}) {
-                        gl_FragColor = vec4(  vec3(1.-dist) *   vec3(1.,0.,0.)  ,1.);
-                   }else{
-                        gl_FragColor = vec4(vec3(1.-dist) * vec3(.8)  ,1.);
-                   }
-                  
+                   vec3 outDist = vec3(.9-dist) * 1. + 0.;
+                    if (dist > 0.5) discard;
+                    if(vIdc < ${rangeX}) {
+                    
+                            gl_FragColor = vec4( outDist * vec3(1.,0.,0.)  ,1.);
+                    }else{
+                            gl_FragColor = vec4(outDist * vec3(.8)  ,1.);
+                    }
+                     //gl_FragColor = vec4( vec3(vIdc)  ,1.);
                 }
+
+              
             `
 
 
 
-
-
-
-
-
+    initComputeRenderer(Renderer.renderer)
     initData3d()
     initFbo()
+    initPointBuffer()
     initPoint()
     initMeshCheck()
 
@@ -646,7 +680,7 @@
         console.log(rendertarget3D.texture)
         rendertarget3D.texture.generateMipmaps = true
         rendertarget3D.texture.minFilter =  THREE.NearestMipmapLinearFilter,
-        rendertarget3D.texture.magFilter =  THREE.NearestFilter,
+        rendertarget3D.texture.magFilter =  THREE.NearestMipmapLinearFilter,
 
         computeMaterial = new THREE.ShaderMaterial({
       
@@ -678,9 +712,9 @@
         console.log(texture3dSample.source.data.data)
       //  shaderInstancedSample.uniforms.uTexture3DSample.value = texture3dSample
         shaderInstancedSample  = new THREE.MeshPhongMaterial({
-            color:0x22018f,
+            color:'blue',
             transparent:true,
-            
+         //   blending:THREE.MultiplyBlending,
         })
         shaderInstancedSample.onBeforeCompile = (shader) => {
             shader.uniforms.uTexture2D = { value: null };
@@ -774,16 +808,33 @@
                 
                      //  gl_FragColor += vec4(distanceInfo.xyz * .8, 1.);
                     
-                    //   gl_FragColor = vec4(0.);
+                    // gl_FragColor = vec4(vec3(0.),1.);
                         vec3 getValFrom3d = texture(uTexture3DSample,dumOff).rgb;
                         
                        getValFrom3d = textureLod(uTexture3DSample,dumOff ,uLodOn3D).rgb;
+                       
+                                    
+                    vec4 result = vec4(0.0);
 
-                 
+                    for (int i = -1; i < 1; i++) {
+                        for (int j = -1; j < 1; j++) {
+                            for (int k = -1; k < 1; k++) {
+                               //result += texture(uTexture3DSample, vec3(dumOff) + float(vec3(i, j, k)));
+                             result += textureLod(uTexture3DSample, vec3(dumOff) + float(vec3(i, j, k)), uLodOn3D);
+
+                            }
+                        }
+                    }
+
+                    result /= 8.0;
+
+
+
                         if(getValFrom3d.x < rangeForLight) {
-                            gl_FragColor.xy *=vUv * .5;
-                            gl_FragColor.xyz = getValFrom3d;
-                            gl_FragColor.z = 0.9;
+                            //gl_FragColor.xy *= vUv * .5;
+                           //  getValFrom3d /= 2.;
+                            gl_FragColor.xyz += getValFrom3d.xyz;
+                            gl_FragColor.z = 1.;
                          
                         }else{
                             discard;
@@ -893,8 +944,8 @@
 
 
         renderTarget2DOutOrigin = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
-            minFilter: THREE.NearestFilter,
-            magFilter: THREE.NearestFilter,
+            minFilter: THREE.NearestMipmapLinearFilter,
+            magFilter: THREE.NearestMipmapLinearFilter,
             format: THREE.RGBAFormat
         });
     }
@@ -921,8 +972,10 @@
         texture3dSample = new THREE.Data3DTexture(dataArray, sizeVol2D, sizeVol2D, sizeVol2D);
         texture3dSample.format = THREE.RGBAFormat;
         texture3dSample.type = THREE.FloatType;
-        texture3dSample.minFilter = THREE.LinearFilter;
-        texture3dSample.magFilter = THREE.LinearFilter;
+        // texture3dSample.minFilter = THREE.LinearFilter;
+        // texture3dSample.magFilter = THREE.LinearFilter;
+        texture3dSample.minFilter = THREE.NearestMipmapLinearFilter;
+        texture3dSample.magFilter = THREE.NearestMipmapLinearFilter;
         texture3dSample.needsUpdate = true;
        
     }
@@ -970,7 +1023,7 @@
         // Thêm nút `applyChanges` để thực hiện hành động
         gui.add(parameters, 'applyChanges').name("Apply Changes");
         gui.add(parameters, 'lod', 0, 8, 0.5).onChange(update);
-        gui.add(parameters, 'lodOn3D', 0, 1, 0.01).onChange(update33);
+        gui.add(parameters, 'lodOn3D', 0, 4, 0.01).onChange(update33);
         gui.add(parameters, 'toggle', 0, 1, 1).onChange(update2);
 
         function displaySample() {
@@ -997,6 +1050,19 @@
             checkRender__GUI =  !checkRender__GUI
         }
         gui.add(parameters, 'checkRender').onChange(checkRender);
+        function viewSetterType__GUI() {
+            
+            viewSetterType =  !viewSetterType
+        }
+        gui.add(parameters, 'viewSetterType').onChange(viewSetterType__GUI);
+
+        
+        function check_isUpdate3D() {
+            
+            isUpdate3D =  !isUpdate3D
+        }
+        gui.add(parameters, 'isUpdate3D').onChange(check_isUpdate3D);
+
     }
   
     function initMeshCheck() {
@@ -1105,14 +1171,35 @@
         scene.add(groupAll)
     }
 
+    function initPointBuffer() {
+        const numParticles = widthTexture * widthTexture;
+        const idc = new Float32Array(numParticles * 1);
+      
+        // const positions = new Float32Array(numParticles * 3);
+        // const uvs = new Float32Array(numParticles * 2); // Tạo `uv` cho từng hạt
+        // const extra = new Float32Array(numParticles * 3);
+        // 
+        // for (let i = 0; i < numParticles; i++) {
+        //     positions[i * 3 + 0] = Math.random() * 2 - 1;
+        //     positions[i * 3 + 1] = Math.random() * 2 - 1;
+        //     positions[i * 3 + 2] = Math.random() * 2 - 1;
+            
 
-   
-    function initPoint() {
+        //     extra[i * 3 + 0] = Math.random();
+        //     extra[i * 3 + 1] = 0;
+        //     extra[i * 3 + 2] = 0;
+
+
+        //     // Ánh xạ `uv` từ 0 đến 1
+        //     uvs[i * 2 + 0] = Math.random(); // u
+        //     uvs[i * 2 + 1] = Math.random(); // v
+        // }
+
         const gridSize = widthTexture; // Số điểm theo mỗi chiều
         const spacing = 1.0 / (gridSize - 1); // Khoảng cách giữa các điểm
         let a = Math.random()
         // Tạo dữ liệu điểm cho lưới
-        const vertices = [];
+        const positions = [];
         const extra = [];
         const uvs = [];
         const radius = .5;
@@ -1127,19 +1214,19 @@
                 const v = y * spacing;
 
                 //// rando
-                // let posX = u * 2.0 - 1.0;
-                // let posY = v * 2.0 - 1.0;
-                // vertices.push(posX * 2., posY * 2., 0);
+                let posX = u * 2.0 - 1.0;
+                let posY = v * 2.0 - 1.0;
+                // positions.push(posX * 2., posY * 2., 0);
                 //// sphere
 
                 const theta = u * Math.PI * 2; // Góc xoay quanh trục Y (longitude)
                 const phi = v * Math.PI;       // Góc từ trên xuống dưới (latitude)
 
                 // Tính toán tọa độ x, y, z trên bề mặt hình cầu
-                let posX = radius * Math.sin(phi) * Math.cos(theta);
-                let posY = radius * Math.sin(phi) * Math.sin(theta);
-                let posZ = radius * Math.cos(phi);
-                vertices.push(posX, posY, posZ);
+                // let posX = radius * Math.sin(phi) * Math.cos(theta);
+                // let posY = radius * Math.sin(phi) * Math.sin(theta);
+                // let posZ = radius * Math.cos(phi);
+                positions.push(posX, posY, 0);
 
                 let extraX = Math.random()
                 let extraY = Math.random()
@@ -1155,14 +1242,21 @@
                 uvs.push(u, v);
             }
         }
-        const PointGeo = new THREE.BufferGeometry();
-        const positionAttribute = new THREE.BufferAttribute(new Float32Array(vertices), 3);
-        const extraAttribute = new THREE.BufferAttribute(new Float32Array(extra), 3);
-        const uvAttribute = new THREE.BufferAttribute(new Float32Array(uvs), 2);
-        PointGeo.setAttribute('position', positionAttribute);
-        PointGeo.setAttribute('extra', extraAttribute);
-        PointGeo.setAttribute('uv', uvAttribute);
 
+
+        for (let ii = 0; ii < numParticles; ii++) {
+          
+            idc[ii] =  Math.random()
+        }
+        PointGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+        PointGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2)); 
+        PointGeo.setAttribute('extra', new THREE.BufferAttribute(new Float32Array(extra), 3));
+        PointGeo.setAttribute('idc', new THREE.BufferAttribute(new Float32Array(idc), 1));
+    }
+   
+    function initPoint() {
+       
+       
 
         const vertexShader = `
                 precision highp float;
@@ -1174,8 +1268,8 @@
                 uniform float speedmouse;
                 uniform vec2 sizeView;
                 uniform vec2 tSize;
-                attribute vec3 extra;
-                varying vec3 vExtra;
+                ${useExtraAttribure.vertHead}
+                ${useIdcAttribure.vertHead}
                 varying vec2 vUv;
                 varying vec3 vPos;
                 varying vec2 vFuild;
@@ -1186,7 +1280,7 @@
                         floor(float(gl_InstanceID) / tSize.x) / tSize.y  // Tính chỉ số hàng
                     );
                  
-                     vec3 posgpu = texture2D(tPos_gpu,vec2(uv.x,1.-uv.y)).xyz;
+                     vec3 posgpu = texture2D(tPos_gpu,uv).xyz;
                     vec3 pos = posgpu;
                      vec2 uvPos = vec2(
                         pos.x / sizeView.x + 0.5,
@@ -1203,14 +1297,14 @@
                     vUv = uvPos;
                     vPos = posgpu / 2.;
                     vFuild = 1.-velfuild;
-                    vExtra = extra;
-                      vec4 mvPosition = modelViewMatrix * vec4(posgpu / 2., 1.0);
-                      // gl_PointSize = 1.5 * (10.0 / -mvPosition.z);
-                            ${sizePointCommon}
-                        gl_Position = projectionMatrix * mvPosition;
-                        
+                    ${useExtraAttribure.vertBody}
+                    vec4 mvPosition = modelViewMatrix * vec4(posgpu/2., 1.0);
+                     
+                    gl_Position = projectionMatrix * mvPosition;
+                   
           
-
+                     ${useIdcAttribure.vertBody}
+                      ${sizePointCommon}  
                 }
             `;
 
@@ -1224,7 +1318,6 @@
          depthTest: false, 
 
             uniforms: {
-                
                 speedmouse: {
                     value: 0
                 },
@@ -1286,12 +1379,13 @@
                 uniform sampler2D tVel_gpu;
                 uniform vec2 sizeView;
                 uniform vec3 sizeVolume;
-
-                attribute vec3 extra;
+                ${useExtraAttribure.vertHead}
+                   ${useIdcAttribure.vertHead}
+                   ${useToggleTypeViewSetter.vertHead}
                 uniform vec2 tSize;
                 varying vec2 vUv;
                 varying vec3 vPos;
-                varying vec3 vExtra;
+           
                 void main() {
                     vec2 uvT = vec2(
                         mod(float(gl_InstanceID), tSize.x) / tSize.x, // Tính chỉ số cột
@@ -1329,38 +1423,26 @@
                 posgpu.xy -= 1.-(1./sizeVolume.x);
 
                 // resize
-              
-                gl_Position = vec4(posgpu, 1.0);
 
-            
+
+                gl_Position =  vec4(posgpu, 1.0);
+                if(toggleView) {
+                    vec4 mvPosition = modelViewMatrix * vec4(posgpuOri / 2., 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+              
                  
                 vUv = uv;
-                vec4 mvPosition = vec4(0.);
-                   ${sizePointCommon}
+               
+            
             
                 vPos = posgpu;
-                vExtra = extra;
+                ${useExtraAttribure.vertBody}
+                   ${useIdcAttribure.vertBody}
+               
+                          ${sizePointCommon}
                 }
             `;
-
-        // const fragmentShaderSetter = `
-
-        //         varying vec3 vPos;
-        //         varying vec2 vUv;
-        //         void main() {
-
-        //         float dist = length(gl_PointCoord - vec2(0.5));
-        //             if (dist > 0.5) discard;
-        //             gl_FragColor = vec4(vec3(1.-dist) * vec3(vUv,1.) * (1.-distance(vPos,vec3(0.))), 1.0);
-
-        //             // if(vPos.x < 0.01) {
-        //             //   gl_FragColor = vec4( vec3(0.,.2,.2) ,1.);
-        //             // }else{
-        //             //   gl_FragColor = vec4( vec3(0.) ,1.);
-        //             // }
-                  
-        //         }
-        //     `
 
         PointMat2 = new THREE.ShaderMaterial({
             vertexShader: vertexShaderSetter,
@@ -1374,6 +1456,10 @@
 
 
             uniforms: {
+                
+                toggleView:{
+                    value:false
+                },
                 sizeVolume: {
                     value: new THREE.Vector3(Math.sqrt(sizeVol2D), Math.sqrt(sizeVol2D), sizeVol2D)
                 },
@@ -1482,7 +1568,7 @@
         runGPGPU()
 
 
-       if(texture3dSample) updateTexture3D()
+       if(texture3dSample && isUpdate3D) updateTexture3D()
       
         Renderer.renderer.autoClear = true
         Renderer.renderer.setClearColor(0xffffff, 1); 
@@ -1513,8 +1599,13 @@
         Renderer.renderer.setClearColor(0x00000, 1); 
         Renderer.renderer.setRenderTarget(null);
         Renderer.renderer.render(scene, camera);
-        if(checkRender__GUI)   Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
+       if(checkRender__GUI) {
+            Renderer.renderer.render(sceneGenTexture, cameraGenTexture);
+        }
+        if(PointMat2) {
+            PointMat2.uniforms.toggleView.value = viewSetterType
      
+        }
         PointMat.uniforms.time.value = Renderer.time
     
       
