@@ -55,13 +55,16 @@ let textureFbo,dataTexture3D
 let arrBinary,arrModel,Model
 let arr
 const n = 36; // Số lượng voxel trên mỗi chiều
+const countVoxel = n ** 3;
+// arrBinary  = Array.from({ length: countVoxel }, () => checkCondition() ? 0 : 1);
+arrBinary  = Array.from({ length: countVoxel }, () => 0);
 
 
 
-//initVoxel()
 initMain()
 initTexture3D()
 initTexture2D()
+initVoxel()
 function initTexture2D() {
     const sizeAll = n ** 3 
     const ww = Math.sqrt(sizeAll)
@@ -107,33 +110,57 @@ function initTexture3D() {
 }
 
 function  initMain() {
-    // const loader = new GLTFLoader();
-    // loader.load("/models/mei/scene.gltf", (gltf) => {
-    //     gltf.scene.traverse((child) => {
-    //         if (child.isSkinnedMesh) {
-    //             console.log("Found SkinnedMesh:", child.geometry );
-    //             const minBox = child.geometry
-    //             arrModel = child.geometry.attributes.position.array
-    //             for (let i = 0; i < arrModel.length; i+=3) {
-    //                 let xx = new THREE.Vector3(arrModel[i],arrModel[i+1],arrModel[i+2])
-    //                 xx.normalize()
+    const loader = new GLTFLoader();
+    loader.load("/models/mei/scene.gltf", (gltf) => {
+        gltf.scene.traverse((child) => {
+            if (child.isSkinnedMesh) {
+                console.log("Found SkinnedMesh:", child.geometry );
+                const minBox = child.geometry
+                arrModel = child.geometry.attributes.position.array
+                for (let i = 0; i < arrModel.length; i+=3) {
+                    let xx = new THREE.Vector3(arrModel[i],arrModel[i+1],arrModel[i+2])
+                    xx.normalize()
                   
-    //             }s
-    //             console.log(minBox)
-    //         }
-    //     });
-    // }, undefined, (error) => {
-    //     console.error("Error loading model:", error);
-    // });
+                }
+                console.log(minBox)
+            }
+        });
+    }, undefined, (error) => {
+        console.error("Error loading model:", error);
+    });
 
     const meshSample = new THREE.Mesh(
+      //  new THREE.BoxGeometry(1,1,1,16,16,16),
         new THREE.SphereGeometry(1,32,32),
         new THREE.MeshBasicMaterial({color:"blue",wireframe:true})
     )
+
     console.log("vert model", meshSample.geometry.attributes.position.array.length,meshSample.geometry.attributes.position.array)
     arrModel = meshSample.geometry.attributes.position.array
-    scene.add(meshSample)
+    
+    const unitVoxel = 1/n
 
+    for (let i = 0; i < arrModel.length; i+=3) {
+        const vec3 = new THREE.Vector3(arrModel[i],arrModel[i+1],arrModel[i+2])
+        vec3.multiplyScalar(.25) //scaleBase
+        vec3.addScalar(.5) //center
+       
+        //vec3.normalize()
+        
+        const x = Math.floor(vec3.x/unitVoxel)
+        const y = Math.floor(vec3.y/unitVoxel)
+        const z = Math.floor(vec3.z/unitVoxel)
+
+        if (x >= 0 && x < n && y >= 0 && y < n && z >= 0 && z < n) {
+            const index1D = x + y * n + z * n * n; 
+            if(arrBinary[index1D] !== 1) {
+                arrBinary[index1D] = 1;
+            }
+        
+        }
+   
+    }
+    scene.add(meshSample)
  
 }
 function checkCondition() {
@@ -142,9 +169,7 @@ function checkCondition() {
 }
 
 function initVoxel() {
-    const countVoxel = n ** 3;
-    arrBinary  = Array.from({ length: countVoxel }, () => checkCondition() ? 0 : 1);
-
+  
     const size = 0.1; 
     const spacing = 0.105;
     const offset = (n - 1) * spacing / 2;
@@ -169,7 +194,7 @@ function initVoxel() {
                 );
                
                 if (arrBinary[count] === 0) {
-                   // matrix.scale(new THREE.Vector3(0, 0, 0));
+                    matrix.scale(new THREE.Vector3(0, 0, 0));
                 }
 
 
