@@ -8,7 +8,7 @@ uniform float dt;
 varying vec2 uv;
 
 void main(){
-    float step = 1.0;
+    float step = 1.;
 
     float p0 = texture2D(pressure, uv+vec2(px.x * step, 0)).r;
     float p1 = texture2D(pressure, uv-vec2(px.x * step, 0)).r;
@@ -31,10 +31,11 @@ float maxSpeed = 1.2; // Tăng từ 1.0 lên 1.2
 v = clamp(v, -maxSpeed, maxSpeed);
 
 
-  
+  float dtt = dt;
+  dtt *= 1.;
  vec2 v2 = texture2D(velocity, uv).xy;
     vec2 gradP2 = vec2(p0 - p1, p2 - p3) * 0.5;
-    v2 =  v2 - gradP2 * dt;
+    v2 =  v2 - gradP2 * dtt;
     vec4 rls = vec4(v2, 0.0, 1.0);
     float decay = 1.0 + .01 * dt;
         gl_FragColor = rls ;

@@ -54,14 +54,14 @@
 
     const simulation = new Simulation({
         options: {
-            iterations_poisson: 1,
+            iterations_poisson: 2,
             iterations_viscous: 1,
-            mouse_force: 20,
+            mouse_force: 10,
             resolution: 0.4,
-            cursor_size: 42,
+            cursor_size: 30,
             viscous: 30,
             isBounce: false,
-            dt: 0.1,
+            dt: 0.08,
             isViscous: false,
             BFECC: false
         }
@@ -98,22 +98,23 @@
                 }
 
                 void main() {
+                vec3 velOri = texture2D(fuildMap, vUv).xyz;
                      vec2 vel = texture2D(fuildMap, vUv).xy;
-        vec2 press = texture2D(fuildPress, vUv).xy;
-        float len = length(vel);
-        
+        vec3 press = texture2D(fuildPress, vUv).xyz;
+        float len = length(vel*15.5);
+            float cccc = length(vUv);
         // Tăng cường độ của vận tốc để tạo vệt rõ hơn
       //  vel *= 1.5;
         
         // Sử dụng hàm pal() để tạo màu sắc dựa trên vận tốc
         vec3 color = pal(len * 10.0, vec3(0.5,0.5,0.5), vec3(0.5,0.5,0.5), vec3(1.0,1.0,0.5), vec3(0.8,0.90,0.30));
-        
+       // color = vec3(len)*10.;
         // Thêm hiệu ứng phát sáng
         //color += vec3(len * 0.05);
         
         // Áp dụng độ mờ dựa trên vận tốc
-        float alpha = smoothstep(0.0, 0.95, len * .7);
-        vec3 fc = mix(vec3(0.),color * 18.,alpha);
+        float alpha = smoothstep(0.0, 0.9, len * .77 );
+        vec3 fc = mix(vec3(0.),color * 20.,alpha);
 
          // Tính độ sáng của pixel
     float luminance = dot(fc, vec3(0.299, 0.587, 0.114));
@@ -125,11 +126,11 @@
     if (luminance > threshold) {
         fc *= 0.0001;  // giảm cường độ của màu (làm tối)
     }
-       gl_FragColor = vec4(1.-fc ,1.);
+       gl_FragColor = vec4(1.-fc*15. ,1.);
 
 
-
-     gl_FragColor = vec4(color,1.);
+//gl_FragColor = vec4(1.-velOri*15.,1.);
+    // gl_FragColor = vec4(1.-color,1.);
                 }
             `
 

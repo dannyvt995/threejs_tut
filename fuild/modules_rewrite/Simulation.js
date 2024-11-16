@@ -107,7 +107,7 @@ export default class Simulation{
         this.advection = new Advection({
             cellScale: this.cellScale,
             fboSize: this.fboSize,
-            dt: this.options.dt,
+            dt: this.options.dt ,
             src: this.fbos.vel_0,
             dst: this.fbos.vel_1
         });

@@ -62,16 +62,16 @@ export const fragmentFbo = `
         velInv += noise*(lowData.z+lowData.w)*u_curlStrength;
 
 
-        vec4 data = texture2D(tDiffuse, vUv-u_scrollOffset+velInv*u_paintTexelSize);
+        vec4 data = texture2D(tDiffuse, vUv+velInv*u_paintTexelSize);
 
-   //     data.xy -= 0.5;
+    //   data.xy -= 0.5;
    
-        vec4 delta = (u_dissipations.xxyz-1.0)*data;
-        vec2 newVel = u_vel*d;
+    //     vec4 delta = (u_dissipations.xxyz-1.0)*data;
+    //     vec2 newVel = u_vel*d;
     //    delta += vec4(newVel, radiusWeight.yy*d);
-     //   delta.zw = sign(delta.zw)*max(vec2(0.004), abs(delta.zw));
-     //   data += delta;
-     //   data.xy += 0.5;
+    //    delta.zw = sign(delta.zw)*max(vec2(0.004), abs(delta.zw));
+    //    data += delta;
+    //    data.xy += 0.5;
     
          vec4 view = data;
     

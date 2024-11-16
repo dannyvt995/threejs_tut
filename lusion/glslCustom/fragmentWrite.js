@@ -6,6 +6,6 @@ export const fragmentWrite = `
 
       vec3 fuild = texture2D(tFuild,vUv).xyz;
       float vel = length(fuild.xy);
-gl_FragColor = vec4(vec3(vel),1.);
+        gl_FragColor = vec4(vec3(vel),1.);
     }
 `

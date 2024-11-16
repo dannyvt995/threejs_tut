@@ -13,6 +13,6 @@ export const fragmentFbo = `
         vec4 prev = texture2D(tPrev,vUv);
 
  
-        gl_FragColor = color  * .1+ prev * 0.9;
+        gl_FragColor = color  * .7+ prev * 0.9;
     }
 `

@@ -5,3 +5,6 @@
 
 
         https://codepen.io/prisoner849/pen/LYXGzRb  // cái này là cách 1 dường ống di chuyển
+
+        fuild 3js 
+        https://rachelbhadra.github.io/smoke_simulator/smoke_sim/index.html
