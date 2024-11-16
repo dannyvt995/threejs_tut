@@ -17,7 +17,6 @@ void main(){
     
     float newP = (p0 + p1 + p2 + p3)  * .15 - div * 1. ;
 
-
     gl_FragColor = vec4(newP);
 }
 

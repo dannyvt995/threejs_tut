@@ -20,16 +20,16 @@ void main(){
     vec2 vel = texture2D(velocity, uv).xy;
 float rand = random(uv) * 0.006;
 
-        vec2 uv2 = uv + sign(atan(vel.y,vel.x)) * rand * 0. + vel * dt * ratio * 15.   ;
+        vec2 uv2 = uv + sign(atan(vel.y,vel.x)) * rand * 0. + vel * dt * ratio * 300. ;
             
         vec2 newVel = texture2D(velocity, uv2 ).xy;
            vec4 result = vec4(newVel, 0.0, 0.0);
             float decay = 1.0;
-            if(abs(force.x) > 0.) {
-                decay += dt * .1;
-            }else{
-                 decay += dt * .7;
-            }
+            // if(abs(force.x) > 0.) {
+            //     decay += dt * .1;
+            // }else{
+            //      decay += dt * .9;
+            // }
         gl_FragColor = result / decay;
 }
 

@@ -9,6 +9,7 @@ class Mouse{
         this.diff = new THREE.Vector2();
         this.timer = null;
         this.count = 0;
+        this.pointMode2 = new THREE.Vector2()
     }
 
     init(){
@@ -28,6 +29,8 @@ class Mouse{
     }
     onDocumentMouseMove( event ) {
         this.setCoords( event.clientX, event.clientY );
+        this.pointMode2.set(event.clientX,window.innerHeight-event.clientY);
+
     }
     onDocumentTouchStart( event ) {
         if ( event.touches.length === 1 ) {

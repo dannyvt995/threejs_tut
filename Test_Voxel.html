@@ -32,6 +32,28 @@ import * as THREE from 'three';
 import Stats from 'three/addons/stats.module.js';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+
+
+
+
+
+
+
+
+let controlsMain
+let textureFbo,dataTexture3D
+let arrBinary,arrModel,Model
+let arr
+const n = 36; // Số lượng voxel trên mỗi chiều
+const countVoxel = n ** 3;
+// arrBinary  = Array.from({ length: countVoxel }, () => checkCondition() ? 0 : 1);
+arrBinary  = Array.from({ length: countVoxel }, () => 0);
+
+
+
+
+
+
 // Tạo scene, camera và renderer
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -43,7 +65,7 @@ scene.add( light );
 const renderer = new THREE.WebGLRenderer({});
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
-const controls = new OrbitControls(camera, renderer.domElement);
+controlsMain = new OrbitControls(camera, renderer.domElement);
 const stats = new Stats();
 document.body.appendChild(stats.dom);
 
@@ -51,20 +73,46 @@ document.body.appendChild(stats.dom);
 
 
 
-let textureFbo,dataTexture3D
-let arrBinary,arrModel,Model
-let arr
-const n = 36; // Số lượng voxel trên mỗi chiều
-const countVoxel = n ** 3;
-// arrBinary  = Array.from({ length: countVoxel }, () => checkCondition() ? 0 : 1);
-arrBinary  = Array.from({ length: countVoxel }, () => 0);
-
-
 
 initMain()
-initTexture3D()
-initTexture2D()
+// initTexture3D()
+// initTexture2D()
 initVoxel()
+//initPlaneFake()
+function initPlaneFake() {
+    const shaderMaterial = new THREE.ShaderMaterial({
+        vertexShader: `
+            varying vec2 vUv;
+
+            void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec2 vUv;
+            uniform float uTime;
+
+            void main() {
+            // Tạo hiệu ứng gradient động
+            vec3 color = vec3(0.5 + 0.5 * sin(uTime + vUv.x * 3.14),
+                                0.5 + 0.5 * sin(uTime + vUv.y * 3.14),
+                                0.5 + 0.5 * sin(uTime));
+            gl_FragColor = vec4(color, 1.0);
+            }
+        `,
+        uniforms: {
+            uTime: { value: 0.0 },
+        },
+        wireframe:true
+    });
+
+    const planeGeometry = new THREE.PlaneGeometry(10, 10, 10, 10);
+    const plane = new THREE.Mesh(planeGeometry, shaderMaterial);
+    plane.rotation.x = -Math.PI / 3;
+    scene.add(plane);
+}
+
 function initTexture2D() {
     const sizeAll = n ** 3 
     const ww = Math.sqrt(sizeAll)
@@ -130,8 +178,9 @@ function  initMain() {
     });
 
     const meshSample = new THREE.Mesh(
-      //  new THREE.BoxGeometry(1,1,1,16,16,16),
-        new THREE.SphereGeometry(1,32,32),
+        //new THREE.BoxGeometry(1,1,1,16,16,16),
+        new THREE.TorusKnotGeometry( .7, .5, 300, 300 ),
+       // new THREE.SphereGeometry(1,128,128),
         new THREE.MeshBasicMaterial({color:"blue",wireframe:true})
     )
 
@@ -160,7 +209,7 @@ function  initMain() {
         }
    
     }
-    scene.add(meshSample)
+    //scene.add(meshSample)
  
 }
 function checkCondition() {
@@ -171,13 +220,51 @@ function checkCondition() {
 function initVoxel() {
   
     const size = 0.1; 
-    const spacing = 0.105;
+    const spacing = 0.100;
     const offset = (n - 1) * spacing / 2;
    
     const geometry = new THREE.BoxGeometry(size, size, size);
-    const material = new THREE.MeshPhongMaterial({ color: 0x9c551a,side:0 });
+    
+    const material = new THREE.MeshPhongMaterial({ color: 0x9c551a,side:0, transparent:true });
+    material.onBeforeCompile = (shader) => {
+      
+        shader.vertexShader = `
+        attribute float state; 
+        varying float vState; 
+        varying float condition_dis; 
+        ${shader.vertexShader}
+    `.replace(
+        `#include <begin_vertex>`,
+        `
+        #include <begin_vertex>
+        vState = state;
+        `
+    );
 
+    shader.fragmentShader = `
+        varying float vState; 
+        varying float condition_dis; 
+        ${shader.fragmentShader}
+    `.replace(
+        `#include <clipping_planes_fragment>`,
+        `
+        #include <clipping_planes_fragment>
+        if (vState < 0.5) {
+          discard;
+        }
+        `
+    );
+            console.log(  shader.fragmentShader)
+    }
     const instancedMesh = new THREE.InstancedMesh(geometry, material, countVoxel);
+   
+    const states = new Float32Array(arrBinary);
+    instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const stateAttribute = new THREE.InstancedBufferAttribute(states, 1);
+    instancedMesh.geometry.setAttribute('state', stateAttribute);
+
+
+    instancedMesh.frustumCulled = true;
     scene.add(instancedMesh);
 
     let index = 0;
@@ -194,7 +281,7 @@ function initVoxel() {
                 );
                
                 if (arrBinary[count] === 0) {
-                    matrix.scale(new THREE.Vector3(0, 0, 0));
+                //    matrix.scale(new THREE.Vector3(0, 0, 0));
                 }
 
 
@@ -209,6 +296,7 @@ function initVoxel() {
 function animate() {
 
     requestAnimationFrame(animate);
+    if(directionalLight) directionalLight.position.copy(controlsMain.object.position)
     stats.update();
     renderer.render(scene, camera);
 }

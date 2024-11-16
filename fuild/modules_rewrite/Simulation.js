@@ -202,7 +202,7 @@ export default class Simulation{
             mouse_force: this.options.mouse_force,
             cellScale: this.cellScale
         });
-   
+ 
         let vel = this.fbos.vel_1;
         
         this.divergence.update({vel});

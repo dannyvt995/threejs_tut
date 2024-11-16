@@ -19,6 +19,10 @@ export default class ExternalForce extends ShaderPass{
         this.lastMouseCoords = { x: Mouse.coords.x, y: Mouse.coords.y };
         this.speedFactor = 1;
         this.speed = 0.
+        this.force2 = 0 
+        this.pointerCurrent = new THREE.Vector2()
+        this.pointerPrev = new THREE.Vector2()
+
         this.init(simProps);
     }
 
@@ -27,6 +31,9 @@ export default class ExternalForce extends ShaderPass{
         const mouseG = new THREE.PlaneGeometry(
             1, 1
         );
+
+        const width = window.innerWidth
+        const height = window.innerHeight
 
         const mouseM = new THREE.RawShaderMaterial({
             name:"ExternalForce",
@@ -48,7 +55,12 @@ export default class ExternalForce extends ShaderPass{
                 },
                 scale: {
                     value: new THREE.Vector2(simProps.cursor_size, simProps.cursor_size)
-                }
+                },
+
+
+                resolution: { value : new THREE.Vector4(width,height,1,1)},
+                u_drawTo : { value: new THREE.Vector4(0,0,0,1) },
+                u_drawFrom : { value: new THREE.Vector4(0,0,0,1) },
             },
         })
 
@@ -69,6 +81,8 @@ export default class ExternalForce extends ShaderPass{
         const uniforms = this.mouse.material.uniforms;
 
         this.force.set(forceX,forceY)
+        
+       // console.log( this.force.x, this.force.y)
         this.center.set(centerX,centerY)
         uniforms.force.value.set(forceX, forceY);
         uniforms.center.value.set(centerX, centerY);
@@ -87,12 +101,22 @@ export default class ExternalForce extends ShaderPass{
         }else{
             sizeOut = props.cursor_size * speed
         }
-  // uniforms.scale.value.set(sizeOut,sizeOut);
-   uniforms.scale.value.set(props.cursor_size ,props.cursor_size );
+         //uniforms.scale.value.set(sizeOut,sizeOut);
+       uniforms.scale.value.set(props.cursor_size ,props.cursor_size );
         uniforms.time.value = Renderer.time
 
         this.lastMouseCoords = { x: Mouse.coords.x, y: Mouse.coords.y };
         
+
+
+        this.pointerCurrent.set(Mouse.pointMode2.x,Mouse.pointMode2.y);
+        this.pointerPrev.lerp(this.pointerCurrent, 0.036);
+        this.force2 = this.pointerCurrent.distanceTo(this.pointerPrev) * .05;
+
+        uniforms.u_drawTo.value = new THREE.Vector4(this.pointerCurrent.x,this.pointerCurrent.y,0,1)
+        uniforms.u_drawFrom.value = new THREE.Vector4(this.pointerPrev.x,this.pointerPrev.y,0,1)
+ 
+
         super.update();
     }
 

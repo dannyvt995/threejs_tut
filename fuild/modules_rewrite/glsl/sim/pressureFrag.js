@@ -36,9 +36,16 @@ v = clamp(v, -maxSpeed, maxSpeed);
  vec2 v2 = texture2D(velocity, uv).xy;
     vec2 gradP2 = vec2(p0 - p1, p2 - p3) * 0.5;
     v2 =  v2 - gradP2 * dtt;
-    vec4 rls = vec4(v2, 0.0, 1.0);
+
+
+
+    float SOLUTION_TO_FADE = 1.02; /// FROM 1.01 - 1.02
+
+
+
+    vec4 rls = vec4(v2 / SOLUTION_TO_FADE, 0.0, 1.0);
     float decay = 1.0 + .01 * dt;
-        gl_FragColor = rls ;
+        gl_FragColor = rls  ;
    // gl_FragColor = vec4(v2, 0.0, 1.0);
 }
 
