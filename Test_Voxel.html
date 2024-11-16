@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - decal splatter</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	
+	</head>
+    <style>
+        body {
+            margin:0;
+            padding:0;
+        }
+    </style>
+	<body>
+
+		<div id="container"></div>
+
+
+        <script type="importmap">
+            {
+                "imports": {
+                    "three": "./three.module.js",
+                    "three/addons/": "./jsm/"
+                }
+            }
+		</script>
+
+		<script type="module">
+
+import * as THREE from 'three';
+import Stats from 'three/addons/stats.module.js';
+import { OrbitControls } from 'three/addons/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/GLTFLoader.js';
+// Tạo scene, camera và renderer
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.z = 5;
+const directionalLight = new THREE.DirectionalLight( 0xffffff, 5.5 );
+scene.add( directionalLight );
+const light = new THREE.AmbientLight( 0xfffff,2. ); // soft white light
+scene.add( light );
+const renderer = new THREE.WebGLRenderer({});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+const stats = new Stats();
+document.body.appendChild(stats.dom);
+
+
+
+
+
+let textureFbo,dataTexture3D
+let arrBinary,arrModel,Model
+let arr
+const n = 36; // Số lượng voxel trên mỗi chiều
+const countVoxel = n ** 3;
+// arrBinary  = Array.from({ length: countVoxel }, () => checkCondition() ? 0 : 1);
+arrBinary  = Array.from({ length: countVoxel }, () => 0);
+
+
+
+initMain()
+initTexture3D()
+initTexture2D()
+initVoxel()
+function initTexture2D() {
+    const sizeAll = n ** 3 
+    const ww = Math.sqrt(sizeAll)
+
+    const size = ww ** 2;
+    console.log("==>SIZE FBO:",size)
+    const data = new Float32Array( 4 * size );
+
+
+    for ( let i = 0; i < size; i ++ ) {
+        const c = i * 4;
+        data[ c ] = Math.random();
+        data[ c + 1 ] = Math.random();
+        data[ c + 2 ] = Math.random();
+        data[ c + 3 ] = 1;
+    }
+
+    // used the buffer to create a DataTexture
+    textureFbo = new THREE.DataTexture( data, ww, ww );
+    textureFbo.needsUpdate = true;
+}
+
+function initTexture3D() {
+    const sizeVol = n
+    let textureData3dOut = new Int16Array(4 * sizeVol ** 3);
+
+    for (let i = 0; i < textureData3dOut.length; i+=4) {
+   
+        textureData3dOut[i] = 1
+        textureData3dOut[i+1] = 1
+        textureData3dOut[i+2] = 1
+
+    }
+
+    console.log("==>SIZE Vol:",textureData3dOut.length/4)
+    console.log("==>SIZE Instanced:",n**3)
+	dataTexture3D = new THREE.Data3DTexture(textureData3dOut, sizeVol, sizeVol, sizeVol);
+	dataTexture3D.format = THREE.RGBAFormat;
+	dataTexture3D.type = THREE.Int16Array;
+	dataTexture3D.unpackAlignment = 1;
+	dataTexture3D.needsUpdate = true;
+
+}
+
+function  initMain() {
+    const loader = new GLTFLoader();
+    loader.load("/models/mei/scene.gltf", (gltf) => {
+        gltf.scene.traverse((child) => {
+            if (child.isSkinnedMesh) {
+                console.log("Found SkinnedMesh:", child.geometry );
+                const minBox = child.geometry
+                arrModel = child.geometry.attributes.position.array
+                for (let i = 0; i < arrModel.length; i+=3) {
+                    let xx = new THREE.Vector3(arrModel[i],arrModel[i+1],arrModel[i+2])
+                    xx.normalize()
+                  
+                }
+                console.log(minBox)
+            }
+        });
+    }, undefined, (error) => {
+        console.error("Error loading model:", error);
+    });
+
+    const meshSample = new THREE.Mesh(
+      //  new THREE.BoxGeometry(1,1,1,16,16,16),
+        new THREE.SphereGeometry(1,32,32),
+        new THREE.MeshBasicMaterial({color:"blue",wireframe:true})
+    )
+
+    console.log("vert model", meshSample.geometry.attributes.position.array.length,meshSample.geometry.attributes.position.array)
+    arrModel = meshSample.geometry.attributes.position.array
+    
+    const unitVoxel = 1/n
+
+    for (let i = 0; i < arrModel.length; i+=3) {
+        const vec3 = new THREE.Vector3(arrModel[i],arrModel[i+1],arrModel[i+2])
+        vec3.multiplyScalar(.25) //scaleBase
+        vec3.addScalar(.5) //center
+       
+        //vec3.normalize()
+        
+        const x = Math.floor(vec3.x/unitVoxel)
+        const y = Math.floor(vec3.y/unitVoxel)
+        const z = Math.floor(vec3.z/unitVoxel)
+
+        if (x >= 0 && x < n && y >= 0 && y < n && z >= 0 && z < n) {
+            const index1D = x + y * n + z * n * n; 
+            if(arrBinary[index1D] !== 1) {
+                arrBinary[index1D] = 1;
+            }
+        
+        }
+   
+    }
+    scene.add(meshSample)
+ 
+}
+function checkCondition() {
+    let a = Math.random()
+    return a < .95 ? true : false
+}
+
+function initVoxel() {
+  
+    const size = 0.1; 
+    const spacing = 0.105;
+    const offset = (n - 1) * spacing / 2;
+   
+    const geometry = new THREE.BoxGeometry(size, size, size);
+    const material = new THREE.MeshPhongMaterial({ color: 0x9c551a,side:0 });
+
+    const instancedMesh = new THREE.InstancedMesh(geometry, material, countVoxel);
+    scene.add(instancedMesh);
+
+    let index = 0;
+    let count = 0
+    for (let x = 0; x < n; x++) {
+        for (let y = 0; y < n; y++) {
+            for (let z = 0; z < n; z++) {
+                const matrix = new THREE.Matrix4();
+                matrix.setPosition(
+                    x * spacing - offset,
+                    y * spacing - offset, 
+                    z * spacing - offset, 
+                   // arrBinary[count] === 1 ? z * spacing - offset : -5
+                );
+               
+                if (arrBinary[count] === 0) {
+                    matrix.scale(new THREE.Vector3(0, 0, 0));
+                }
+
+
+                instancedMesh.setMatrixAt(index++, matrix);
+                count+=1
+            }
+        }
+    }
+}
+
+// Render loop
+function animate() {
+
+    requestAnimationFrame(animate);
+    stats.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+
+		</script>
+
+	</body>
+</html>
