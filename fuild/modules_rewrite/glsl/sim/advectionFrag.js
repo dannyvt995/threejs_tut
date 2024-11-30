@@ -16,13 +16,13 @@ float random (vec2 st) {
 
 void main(){
     vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;
+    float ran = random(ratio) * .09 * sign(force.x);
+    vec2 vel = texture2D(velocity, uv + ran * 0.).xy;
 
-    vec2 vel = texture2D(velocity, uv).xy;
-float rand = random(uv) * 0.006;
+        vec2 uv2 = uv  + vel * dt * ratio * 420. ;
+    
+        vec2 newVel = texture2D(velocity, uv2  ).xy;
 
-        vec2 uv2 = uv + sign(atan(vel.y,vel.x)) * rand * 0. + vel * dt * ratio * 300. ;
-            
-        vec2 newVel = texture2D(velocity, uv2 ).xy;
            vec4 result = vec4(newVel, 0.0, 0.0);
             float decay = 1.0;
             // if(abs(force.x) > 0.) {

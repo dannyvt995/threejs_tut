@@ -34,23 +34,29 @@ void main(){
 
     vec2 res = sdSegment(gl_FragCoord.xy, u_drawFrom.xy, u_drawTo.xy);
     vec2 radiusWeight = mix(u_drawFrom.zw, u_drawTo.zw, res.y);
-    float d22 = 1.0-smoothstep(-0.01, radiusWeight.x, res.x);
+    float d22 = smoothstep(-0.01, radiusWeight.x, res.x);
 
 
 
 
-      vec2 circle = (vUv  - 0.5) * 2.0 ;
+      vec2 circle = ( vec2(vUv.x,vUv.y)  * vec2(1.,1.)   - 0.5) * 2.0 ;
+        vec2 circle22 = (vUv  - 0.5) * 100. ;
+         float d2 = 1.0-min(length(circle22) , 1.);
+
     float d = 1.0-min(length(circle) , 1.0);
   //  d *= d;
-    d *= d * d ;
+    d *= d * d * d * d * d ;
 
     float dir = -1. ;
-    dir = 1.;
+   //dir = 1.;
 
   vec2 something = vec2(min(0.01,force.x),min(0.01,force.y));
   vec2 something22 = sign(force) * vec2(.05);
-    gl_FragColor = vec4( dir *  (force)   * d  + something22  * 0., 0,  .8);
- //   gl_FragColor = vec4(vec2(d) * sign(force), 0,  1.);
+    gl_FragColor = vec4( dir *  force   * d  + something22  * 0., 0,  1.);
+  
+  
+ //  gl_FragColor = vec4(dir  * vec2(d22 * 0.001) ,0,  1.);
+
 }
 
 `

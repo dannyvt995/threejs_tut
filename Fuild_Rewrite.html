@@ -41,7 +41,7 @@
 
     let matCheck
     const scene = new THREE.Scene();
-
+    const scene2 = new THREE.Scene();
     const light = new THREE.AmbientLight(0x404040); // soft white light
     scene.add(light);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
@@ -54,14 +54,14 @@
 
     const simulation = new Simulation({
         options: {
-            iterations_poisson: 2,
+            iterations_poisson: 1.1,
             iterations_viscous: 1,
-            mouse_force: 2,
-            resolution: 0.3,
-            cursor_size: 15,
+            mouse_force: .1,
+            resolution: 0.2,
+            cursor_size: 20,
             viscous: 30,
             isBounce: false,
-            dt: 0.08,
+            dt: 0.042,
             isViscous: false,
             BFECC: false
         }
@@ -96,18 +96,19 @@
 
                 uniform sampler2D fuildMap;
                 uniform sampler2D fuildPress;
-                    
+                uniform sampler2D fuildForce;
                 vec3 pal( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
                 {
                     return a + b*cos( 6.28318*(c*t+d) );
                 }
 
                 void main() {
+                    vec3 shape = texture2D(fuildForce, vUv).xyz;
                     vec3 velOri = texture2D(fuildMap, vUv).xyz;
                     vec2 vel = texture2D(fuildMap, vUv).xy;
                     vec3 press = texture2D(fuildPress, vUv).xyz;
 
-                    float len = length(vel*200.);
+                    float len = length(vel*720.);
                     float cccc = length(vUv);
     
                     // Sử dụng hàm pal() để tạo màu sắc dựa trên vận tốc
@@ -125,27 +126,27 @@
                     float luminance = dot(fc, vec3(0.299, 0.587, 0.114));
 
                     // Ngưỡng để quyết định xem pixel có sáng hay không
-                    float threshold = 0.05;
+                    float threshold = 0.1;
 
-                    float destinyHOLD = 15.;
+                    float destinyHOLD = 5.;
                     if (luminance > threshold) {
                         fc *= 0.0001;  // giảm cường độ của màu (làm tối)
                       
-                        fc =  vec3(1.,0.90,0.1) / destinyHOLD;
+                     //   fc =  vec3(0.8,0.90,0.30)  / destinyHOLD;
                     }
-                    gl_FragColor = vec4(1.- fc * destinyHOLD,1.);
+                    gl_FragColor = vec4(1.-fc * destinyHOLD,.1);
 
                  //   gl_FragColor = vec4(colorsample,1.);
                     float lele = length(velOri.xy);
                   // gl_FragColor = vec4(vec3(lele) * 500.,1.);
-                    // gl_FragColor = vec4(1.-color,1.);
+                  //  gl_FragColor = vec4(shape  * 1000.,1.);
                 }
             `
 
     const pointMat = new THREE.ShaderMaterial({
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
-
+        transparent:true,
         uniforms: {
             time: {
                 value: 0
@@ -156,6 +157,9 @@
             fuildPress: {
                 value: simulation.fbos.pressure_0.texture
             },
+            fuildForce:{
+                value: simulation.externalForce.props.output.texture 
+            },
             sizeView: {
                 value: new THREE.Vector2(widthFit, heightFit)
             }
@@ -165,35 +169,36 @@
 
     let meshView = new THREE.Mesh(new THREE.PlaneGeometry(widthFit, heightFit), pointMat);
     const vertexShader22 = `
-    varying vec2 vUv;
-    void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-`;
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
 
-const fragmentShader22 = `
-    uniform sampler2D uTex;
-    varying vec2 vUv;
-    void main() {
-        vec4 color = texture2D(uTex, vUv);
-        gl_FragColor = color;
-    }
-`;
+    const fragmentShader22 = `
+        uniform sampler2D uTex;
+        varying vec2 vUv;
+        void main() {
+            vec4 color = texture2D(uTex, vUv);
+            gl_FragColor = vec4(color.xyz,1.);
+        }
+    `;
 
 
     matCheck = new THREE.ShaderMaterial({
         uniforms:{
-            uTex:{value:null}
+            uTex:{value:simulation.fbos.vel_0.texture}
         },
-        vertexShader: vertexShader22,  // Shader vertex
-        fragmentShader: fragmentShader22,  // Shader fragment
-        side: THREE.DoubleSide  // Đảm bảo mặt phẳng được vẽ từ cả hai phía
+        vertexShader: vertexShader22,  
+        fragmentShader: fragmentShader22, 
+        transparent:true,
     })
     let meshView2 = new THREE.Mesh(new THREE.PlaneGeometry(.5, .5), matCheck);
-   
+
     scene.add(meshView)
-    //scene.add(meshView2)
+
+    scene2.add(meshView2)
 
 
     Renderer.renderer.setAnimationLoop(animate);
@@ -203,10 +208,11 @@ const fragmentShader22 = `
         Renderer.update();
        
         simulation.update()
-        if(matCheck) matCheck.uniforms.uTex.value = simulation.fbos.vel_0.textures[0]
+     
+      //  if(matCheck) matCheck.uniforms.uTex.value = simulation.fbos.vel_0.textures[0]
         Renderer.renderer.setRenderTarget(null);
         Renderer.renderer.render(scene, camera);
-    
+        
         
     
         pointMat.uniforms.time.value = Renderer.time

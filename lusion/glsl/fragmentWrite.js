@@ -51,7 +51,8 @@ export const fragmentWrite = `
         vec2 radiusWeight = mix(u_drawFrom.zw, u_drawTo.zw, res.y);
         float d = 1.0-smoothstep(-0.01, radiusWeight.x, res.x);
       
+gl_FragColor = vec4(vec3(step(.1,length(vUv - .5))),1.);
 gl_FragColor = vec4(vec3(d),1.);
-//gl_FragColor = vec4(1.,1.);
+//gl_FragColor = vec4(1.);
     }
 `

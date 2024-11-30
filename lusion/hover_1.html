@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>cover hover lusion</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+</head>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+    }
+</style>
+
+<body>
+
+    <script type="importmap">
+            {
+                "imports": {
+                    "three": "../three.module.js",
+                    "three/addons/": "../jsm/"
+                }
+            }
+		</script>
+
+    <script type="module">
+        import Stats from 'three/addons/stats.module.js';
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { ImprovedNoise } from 'three/addons/ImprovedNoise.js';
+
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import {vertex} from './glsl/vertdf.js'
+        import {fragmentFbo} from './glsl/fragmentFbo.js'
+        import {fragmentBlur} from './glsl/fragmentBlur.js'
+        import {fragmentWrite} from './glsl/fragmentWrite.js'
+
+        
+        let matPLane, gui
+        let time = 0; // Biến lưu trữ thời gian tổng
+        let delta = 0
+        let lastTime = performance.now(); // Lưu thời gian khởi đầu
+
+        let renderer, orbitControl , raycastPlane , dummy ,pointerPos ,planeWrite,planeMatWrite
+        let sceneMain, cameraMain
+        let srcTarget,fboCamera,fboMaterial,fboScene,fboQuad
+        let targetA,targetB
+        let finalScene,finalQuad,finalMat
+
+        const width = window.innerWidth
+        const height = window.innerHeight
+
+        const textureImg = new THREE.TextureLoader().load('../textures/cat.jpg');
+        const ratioView = (16 / 27)
+
+        const raycaster = new THREE.Raycaster();
+        let pointer = new THREE.Vector2();
+        let pointerCurrent = new THREE.Vector2();
+        let pointerPrev = new THREE.Vector2();
+        let force = new THREE.Vector2();
+
+        initRender()
+        function initRender() {
+            renderer = new THREE.WebGLRenderer({
+                alpha:true,
+                antialias:false
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+        }
+
+        initSceneMain()
+        function initSceneMain() {
+            sceneMain = new THREE.Scene();
+            cameraMain = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+            cameraMain.position.z = 2;
+
+            dummy =  new THREE.Mesh(
+                new THREE.SphereGeometry(0.1,20,20),
+                new THREE.MeshBasicMaterial({color: 'blue'})
+            )
+
+            //  sceneMain.add(dummy)
+
+
+            planeMatWrite = new THREE.ShaderMaterial({
+                uniforms:{
+                    tDiffuse: { value: null},
+                    tPrev: { value: null},
+                    resolution: { value : new THREE.Vector4(width,height,1,1)},
+                    u_drawTo : { value: new THREE.Vector4(0,0,0,1) },
+                    u_drawFrom : { value: new THREE.Vector4(0,0,0,1) },
+                    u_vel : { value: new THREE.Vector2(0,0)},
+                },
+                vertexShader:vertex,
+                fragmentShader:fragmentWrite
+            })
+
+            planeWrite = new THREE.Mesh(
+                new THREE.PlaneGeometry(5,5),
+                planeMatWrite,
+               
+            )
+         sceneMain.add(planeWrite)
+        
+        }
+        mouseEvent() 
+        function mouseEvent() {
+            raycastPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(100,100),
+                new THREE.MeshBasicMaterial({color: 0xff0000, side:2})
+            )
+          
+            
+            window.addEventListener('mousemove',(e) => {
+ 
+
+            // Cập nhật vị trí hiện tại
+            pointerCurrent.set(e.clientX,window.innerHeight-e.clientY);
+
+                pointer.x = (e.clientX/width) * 2 - 1
+                pointer.y = -(e.clientY/width) * 2 + 1
+                raycaster.setFromCamera( pointer, cameraMain );
+
+                const intersects = raycaster.intersectObjects( [raycastPlane] );
+                if(intersects.length > 0) {
+                  //  console.log(intersects[0].point)
+                    dummy.position.copy(intersects[0].point)
+                }
+            })
+            
+
+        }
+
+        
+        //initPlane()
+
+        function initPlane() {
+
+            const plane = new THREE.PlaneGeometry(1, 1 * ratioView, 32, 16)
+
+            const vertexShader = /* glsl */`
+                varying vec2 vUv;
+
+
+                void main() {
+                
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+
+                    vUv = uv;
+                }
+                `;
+
+
+            const fragmentShader = /* glsl */`
+                    uniform sampler2D textureImg;
+                    uniform float time;
+                    uniform float delta;
+
+                    varying vec2 vUv;
+
+                    void main() {
+                        
+                        vec4 img =  texture2D(textureImg,vUv);
+                        gl_FragColor = img;
+                    }
+            `;
+            matPLane = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    time: { value: 0 },
+                    delta: { value: 0 },
+                    textureImg: { value: textureImg },
+                 
+                },
+                wireframe: false,
+                side: 2,
+                transparent: true,
+                blending: THREE.NormalBlending,
+            })
+
+            const mesh = new THREE.Mesh(plane, matPLane)
+            
+            sceneMain.add(mesh)
+
+        }
+
+
+        initFbo()
+        function initFbo(){
+            const rtParams = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat };
+            srcTarget = new THREE.WebGLRenderTarget(width,height);
+            targetA = new THREE.WebGLRenderTarget(width,height);
+            targetB = new THREE.WebGLRenderTarget(width,height);
+
+
+            fboScene = new THREE.Scene()
+            fboCamera = new THREE.OrthographicCamera(-1,1,1,-1,0,1)
+            fboMaterial = new THREE.ShaderMaterial({
+                uniforms:{
+                    tDiffuse: { value: null},
+                    tPrev: { value: null},
+                    resolution: { value : new THREE.Vector4(width,height,1,1)},
+                    u_drawTo : { value: new THREE.Vector4(0,0,0,1) },
+                    u_drawFrom : { value: new THREE.Vector4(0,0,0,1) },
+                    
+                    u_vel : { value: new THREE.Vector2(0,0)},
+                    u_scrollOffset: { value: new THREE.Vector2(0,0)},
+                    u_dissipations:{ value: new THREE.Vector3(0.9750, 0.9500, 0.8000)},
+                    u_curlScale: {value: 0.0200},
+                    u_pushStrength: {value:25.},
+                    u_curlStrength: {value:3.},
+                    u_paintTexelSize :{value : new THREE.Vector2(1/width,1/height)}
+
+                },
+                vertexShader:vertex,
+                fragmentShader:fragmentFbo,
+            //    glslVersion: THREE.GLSL3,
+            })
+         
+            fboQuad = new THREE.Mesh(
+                new THREE.PlaneGeometry(2,2),
+                fboMaterial
+            )
+            fboScene.add(fboQuad)
+
+
+
+            finalMat = new THREE.ShaderMaterial({
+                uniforms:{
+                    dt: { value: new THREE.Vector2(0,0)},
+                    u_texture : { value:null},
+                    resolution: { value: new THREE.Vector2(width,height)},
+                },
+                vertexShader:vertex,
+                fragmentShader:fragmentBlur
+            })
+            finalScene = new THREE.Scene()
+            finalQuad = new THREE.Mesh(
+                new THREE.PlaneGeometry(2,2),
+                finalMat
+               /*  new THREE.MeshBasicMaterial({map:targetA.texture}) */
+            )
+            finalScene.add(finalQuad)
+
+
+     
+        }
+
+
+
+       
+        function render() {
+            renderer.clear()
+            renderer.setRenderTarget(srcTarget)
+            renderer.render(sceneMain, cameraMain); 
+
+
+
+            renderer.setRenderTarget(targetA)
+            renderer.render(fboScene, fboCamera); 
+            
+
+
+             fboMaterial.uniforms.tDiffuse.value = srcTarget.texture
+            fboMaterial.uniforms.tPrev.value = targetA.texture
+
+
+            finalMat.uniforms.u_texture.value = targetA.texture
+             finalMat.uniforms.dt.value = new THREE.Vector2(0,delta/10.)
+          
+            renderer.setRenderTarget(null)
+            renderer.render(fboScene, fboCamera); 
+
+         
+
+            let temp = targetA
+            targetA = targetB
+            targetB = temp
+
+                
+            // renderer.setRenderTarget(null)
+            // renderer.render(sceneMain, cameraMain); 
+          
+        }
+        function animate() {
+            const currentTime = performance.now(); // Lấy thời gian hiện tại
+            delta = (currentTime - lastTime) / 1000; // Tính toán delta (thời gian trôi qua giữa các khung hình) tính bằng giây
+
+            lastTime = currentTime; // Cập nhật lastTime cho khung hình tiếp theo
+
+            time += delta; // Cập nhật giá trị time
+            if(matPLane) {
+                matPLane.uniforms.time.value = time; // Cập nhật uniform time
+                matPLane.uniforms.delta.value = delta;
+            }
+            if(fboMaterial.uniforms) {
+                let _v$4 =   new THREE.Vector2(0,0)
+                pointerPrev.lerp(pointerCurrent, 0.036);
+                force = pointerCurrent.distanceTo(pointerPrev) * .05;
+                
+                _v$4.set(pointerCurrent.x - pointerPrev.x, pointerCurrent.y - pointerPrev.y).multiplyScalar(delta * .8)
+
+                planeMatWrite.uniforms.u_drawTo.value = new THREE.Vector4(pointerCurrent.x,pointerCurrent.y,force,1)
+                planeMatWrite.uniforms.u_drawFrom.value = new THREE.Vector4(pointerPrev.x,pointerPrev.y,0,1)
+                planeMatWrite.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
+                
+                fboMaterial.uniforms.u_drawTo.value = new THREE.Vector4(pointerCurrent.x,pointerCurrent.y,force,1)
+                fboMaterial.uniforms.u_drawFrom.value = new THREE.Vector4(pointerPrev.x,pointerPrev.y,0,1)
+                fboMaterial.uniforms.u_vel.value.multiplyScalar(.8).add(_v$4)
+              
+
+       
+            }
+            
+            requestAnimationFrame(animate); // Gọi hàm animate lại
+            render()
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            srcTarget.setSize(window.innerWidth, window.innerHeight);
+            
+            cameraMain.aspect = window.innerWidth / window.innerHeight;
+            cameraMain.updateProjectionMatrix();
+        });
+        initGui()
+
+function initGui() {
+
+    gui = new GUI();
+    const params = {
+        u_curlScale: 0.0100,
+        u_pushStrength: 25.,
+        u_curlStrength: 3.,
+    };
+
+    gui.add(params, 'u_curlScale', 0, 1).name('u_curlScale').onChange(updateUniforms);
+    gui.add(params, 'u_pushStrength', 0, 100).name('u_pushStrength').onChange(updateUniforms);
+    gui.add(params, 'u_curlStrength', 0, 20).name('u_curlStrength').onChange(updateUniforms);
+
+    function updateUniforms() {
+       
+        fboMaterial.uniforms.u_curlScale.value = params.u_curlScale;
+        fboMaterial.uniforms.u_pushStrength.value = params.u_pushStrength;
+        fboMaterial.uniforms.u_curlStrength.value = params.u_curlStrength;
+    }
+
+}
+    </script>
+
+</body>
+
+</html>

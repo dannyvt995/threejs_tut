@@ -15,6 +15,7 @@ export default class ExternalForce extends ShaderPass{
             }
         });
         this.force = new THREE.Vector2()
+        this.forcePrev = new THREE.Vector2()
         this.center = new THREE.Vector2()
         this.lastMouseCoords = { x: Mouse.coords.x, y: Mouse.coords.y };
         this.speedFactor = 1;
@@ -81,10 +82,12 @@ export default class ExternalForce extends ShaderPass{
         const uniforms = this.mouse.material.uniforms;
 
         this.force.set(forceX,forceY)
-        
+
+        this.forcePrev.lerp(this.force , 0.072);
+       // console.log(  this.forcePrev)
        // console.log( this.force.x, this.force.y)
         this.center.set(centerX,centerY)
-        uniforms.force.value.set(forceX, forceY);
+        uniforms.force.value.set(this.forcePrev.x, this.forcePrev.y);
         uniforms.center.value.set(centerX, centerY);
        
       
@@ -95,9 +98,9 @@ export default class ExternalForce extends ShaderPass{
        this.speed = speed
         let sizeOut = 0
         if(props.cursor_size * speed > 70) {
-            sizeOut = 20
+            sizeOut = 50
         }else if(props.cursor_size * speed < 20) {
-            sizeOut = 20
+            sizeOut = 10
         }else{
             sizeOut = props.cursor_size * speed
         }
