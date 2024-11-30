@@ -171,7 +171,7 @@
     document.body.appendChild(stats.dom);
 
     // camera
-    let rat = 0.5
+    let rat = 0.1
     let camera = new THREE.OrthographicCamera(window.innerWidth / - rat, window.innerWidth / rat, window.innerHeight / rat, window.innerHeight / - rat, -100000, 100000);
     camera.position.set(0, 0, 45000);
     camera.quaternion.setFromEuler(new THREE.Euler(0, 0, 0));
