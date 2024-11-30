@@ -37,20 +37,22 @@
     import Stats from 'three/addons/stats.module.js';
     import { GUI } from 'three/addons/lil-gui.module.min.js';
 
-
+    import { DRACOLoader } from 'three/addons/DRACOLoader.js';
     import { ExportTexture } from '/solution_depse/src/ExportTexture.js'
     import { fragRock0, fragRock1, fragRock2 } from '/solution_depse/sample_fragRockList_rock.js'
     import { vertRock0, vertRock1, vertRock2 } from '/solution_depse/sample_vertRockList_rock.js'
     import { sampleU1, sampleU2, sampleU3 } from '/solution_depse/sample_uniforms.js'
     import { propsRock, geoInfo } from '/solution_depse/sampleRockProps.js'
-    console.log(sampleU1)
+
     const textureSample = new THREE.TextureLoader().load('textures/cat.jpg');
     let exporterTexture
     let countst = 0
-    const vertRockList = [vertRock0, vertRock1, vertRock2]
-    const fragRockList = [fragRock0, fragRock1, fragRock2]
-    const uniformsRockList = [sampleU1, sampleU2, sampleU3]
-    let FORMAT_uniformsRockList
+    const VERTLIST_ROCK = [vertRock0, vertRock1, vertRock2]
+    const FRAGLIST_ROCK = [fragRock0, fragRock1, fragRock2]
+    const UNIFORMSTATIC_ROCK = [sampleU1, sampleU2, sampleU3]
+    const PROPSMESH_ROCK = propsRock
+    let format_UNIFORMS_EACH_ROCK
+    let GEOMETRYSTATIC_ROCK
 
     const groupRockFinal = new THREE.Group()
     let posScroll = 0;
@@ -68,6 +70,16 @@
 
 
     const parameters = { rockCustom: true, zoomControl: true };
+
+    const dracoLoader = new DRACOLoader();
+   
+    dracoLoader.setDecoderPath('/jsm/libs/draco/');
+    dracoLoader.preload();
+    dracoLoader.load('/solution_depse/dataConvert/rock_geo.drc', (geometry) => {
+      GEOMETRYSTATIC_ROCK = geometry
+    });
+
+
     initGui()
     function initGui() {
 
@@ -162,17 +174,17 @@
         for (let i = 0; i < listrock.length; i++) {
           let me = listrock[i]
 
-          const geometry2 = new THREE.BufferGeometry();
-          geometry2.setAttribute('position', new THREE.BufferAttribute(me.geometryCreateDeleyed.attributes.position.array, 3));
-          geometry2.setAttribute('normal', new THREE.BufferAttribute(me.geometryCreateDeleyed.attributes.normal.array, 3));
-          geometry2.setAttribute('uv', new THREE.BufferAttribute(me.geometryCreateDeleyed.attributes.uv.array, 2));
-          geometry2.setIndex(new THREE.BufferAttribute(me.geometryCreateDeleyed.index.array, 1));
-          //geometry2.computeVertexNormals();
+          // const geometry2 = new THREE.BufferGeometry();
+          // geometry2.setAttribute('position', new THREE.BufferAttribute(me.geometryCreateDeleyed.attributes.position.array, 3));
+          // geometry2.setAttribute('normal', new THREE.BufferAttribute(me.geometryCreateDeleyed.attributes.normal.array, 3));
+          // geometry2.setAttribute('uv', new THREE.BufferAttribute(me.geometryCreateDeleyed.attributes.uv.array, 2));
+          // geometry2.setIndex(new THREE.BufferAttribute(me.geometryCreateDeleyed.index.array, 1));
+          // //geometry2.computeVertexNormals();
 
-          // geometry2.userData.parameters = me.geometryCreateDeleyed.userData.parameters
-          // geometry2.userData.type = me.geometryCreateDeleyed.userData.type
-          geometry2.groups[0] = me.geometryCreateDeleyed.groups[0]
-          geometry2.boundingBox = me.geometryCreateDeleyed.boundingBox
+          // // geometry2.userData.parameters = me.geometryCreateDeleyed.userData.parameters
+          // // geometry2.userData.type = me.geometryCreateDeleyed.userData.type
+          // geometry2.groups[0] = me.geometryCreateDeleyed.groups[0]
+          // geometry2.boundingBox = me.geometryCreateDeleyed.boundingBox
 
 
 
@@ -183,7 +195,7 @@
           //     quaternion:me.quaternion,
           // }
 
-          getDataNeeded(listrockProps, me)
+          //getDataNeeded(listrockProps, me)
 
           let material2 = me.material[0]
 
@@ -200,18 +212,19 @@
           //   const materialFinal = calcUniform(geometry2,material2,i)
           // }
 
-          /* if(i === choice ) */ calcUniform(me.geometryCreateDeleyed, me.material[0], i)
+          ////////////////////////calcUniform(me.geometryCreateDeleyed,me.material[0], i)
+          /* if(i === choice ) */ calcUniform(null,{uniforms:{}}, i)
 
 
           // console.log("geometry2",geometry2)
           // console.log("me.geometryCreateDeleyed",me.geometryCreateDeleyed)
-          const mesh2 = new THREE.Mesh(geometry2, material2);
+          //const mesh2 = new THREE.Mesh(geometry2, material2);
 
 
           // mesh2.position.copy(me.position)
           //  mesh2.scale.copy(me.scale)
-          mesh2.rotation.set(propsRock[i].rotation._x, propsRock[i].rotation._y, propsRock[i].rotation._z)
-          mesh2.quaternion.set(propsRock[i].quaternion._x, propsRock[i].quaternion._y, propsRock[i].quaternion._z, propsRock[i].quaternion._w);
+          // mesh2.rotation.set(PROPSMESH_ROCK[i].rotation._x, PROPSMESH_ROCK[i].rotation._y, PROPSMESH_ROCK[i].rotation._z)
+          // mesh2.quaternion.set(PROPSMESH_ROCK[i].quaternion._x, PROPSMESH_ROCK[i].quaternion._y, PROPSMESH_ROCK[i].quaternion._z, PROPSMESH_ROCK[i].quaternion._w);
 
 
           if (i === 1) {
@@ -234,14 +247,6 @@
     );
     function calcUniform(geometrySample, materialSample, index) {
       console.log("call for each !!!")
-      const geometry2 = new THREE.BufferGeometry();
-      geometry2.setAttribute('position', new THREE.BufferAttribute(geometrySample.attributes.position.array, 3));
-      geometry2.setAttribute('normal', new THREE.BufferAttribute(geometrySample.attributes.normal.array, 3));
-      geometry2.setAttribute('uv', new THREE.BufferAttribute(geometrySample.attributes.uv.array, 2));
-      geometry2.setIndex(new THREE.BufferAttribute(geometrySample.index.array, 1));
-
-      geometry2.groups[0] = geometrySample.groups[0]
-      geometry2.boundingBox = geometrySample.boundingBox
 
       let inMat = materialSample
       setTimeout(() => {
@@ -268,10 +273,10 @@
        
       
         })
-        FORMAT_uniformsRockList = {}
-        FORMAT_uniformsRockList = uniformsRockList[index]
-        console.log(uniformsRockList,index)
-        formatUniform(uniformsRockList[index])
+        format_UNIFORMS_EACH_ROCK = {}
+        format_UNIFORMS_EACH_ROCK = UNIFORMSTATIC_ROCK[index]
+
+        formatUniform(UNIFORMSTATIC_ROCK[index])
         function formatUniform(obj) {
           Object.keys(obj).forEach(key => {
             if (obj[key].value !== null
@@ -280,13 +285,13 @@
             ) {
               switch (Object.keys(obj[key].value).length) {
                 case 1:
-                  FORMAT_uniformsRockList[key].value = new THREE.Matrix4(obj[key].value.elements)
+                  format_UNIFORMS_EACH_ROCK[key].value = new THREE.Matrix4(obj[key].value.elements)
                   break;
                 case 2:
-                  FORMAT_uniformsRockList[key].value = new THREE.Vector2(obj[key].value.x,obj[key].value.y)
+                  format_UNIFORMS_EACH_ROCK[key].value = new THREE.Vector2(obj[key].value.x,obj[key].value.y)
                   break;
                 case 3:
-                  FORMAT_uniformsRockList[key].value = new THREE.Vector3(obj[key].value.x,obj[key].value.y,obj[key].value.z)
+                  format_UNIFORMS_EACH_ROCK[key].value = new THREE.Vector3(obj[key].value.x,obj[key].value.y,obj[key].value.z)
                   break;
                 default:
                   break;
@@ -295,8 +300,8 @@
             /*   && !Array.isArray(obj[key].value)
               && typeof obj[key].value === 'object'
               && obj[key].value.isTexture === true */ ) {
-              //FORMAT_uniformsRockList[key].value = textureSample
-              FORMAT_uniformsRockList[key].value = null
+              //format_UNIFORMS_EACH_ROCK[key].value = textureSample
+              format_UNIFORMS_EACH_ROCK[key].value = null
             }
      
             if(key === "nodeU15" || key === "nodeU23" || key === "nodeU31" || key === "fogColor") {
@@ -329,37 +334,46 @@
               obj[key].value[0].skyColor = new THREE.Color(obj[key].value[0].skyColor.x, obj[key].value[0].skyColor.y, obj[key].value[0].skyColor.z)
             }
           })
-          // console.log(listrockuniforms[index])
-
 
           console.log("//.//////////////////////")
-          // console.log(FORMAT_uniformsRockList)
+          // console.log(format_UNIFORMS_EACH_ROCK)
           // console.log(listrockuniforms[index])
-          compareObjects(FORMAT_uniformsRockList, listrockuniforms[index])
+          compareObjects(format_UNIFORMS_EACH_ROCK, listrockuniforms[index])
           let outMat = new THREE.ShaderMaterial({
-            uniforms: FORMAT_uniformsRockList,
+            uniforms: format_UNIFORMS_EACH_ROCK,
             //     uniforms: listrockuniforms[index],
-            vertexShader: vertRockList[index],
-            fragmentShader: fragRockList[index],
+            vertexShader: VERTLIST_ROCK[index],
+            fragmentShader: FRAGLIST_ROCK[index],
             side: 0,
             fog: true,
             vertexColors: true
           })
-          console.log(outMat)
-          // console.log( JSON.stringify(outMat.uniforms))
 
 
 
-          const mesh2 = new THREE.Mesh(geometry2, outMat);
+          const meshOut = new THREE.Mesh(GEOMETRYSTATIC_ROCK, outMat);
 
+          const listPropsNeedUpdate = {
+            "position":{type:"v3"},
+            "scale":{type:"v3"},
+            "rotation":{type:"v3"},
+            "quaternion":{type:"v4"},
+          }
+        
+            Object.keys(listPropsNeedUpdate).forEach(key => {
+              if(listPropsNeedUpdate[key].type === "v3") {
+                if(key !== "rotation") {
+                  meshOut[key].set(PROPSMESH_ROCK[index][key].x, PROPSMESH_ROCK[index][key].y, PROPSMESH_ROCK[index][key].z)
+                }else{
+                  meshOut[key].set(PROPSMESH_ROCK[index][key]._x, PROPSMESH_ROCK[index][key]._y, PROPSMESH_ROCK[index][key]._z)
+                }
+              }else{
+                meshOut[key].set(PROPSMESH_ROCK[index][key]._x, PROPSMESH_ROCK[index][key]._y, PROPSMESH_ROCK[index][key]._z, PROPSMESH_ROCK[index][key]._w)
+              }
+          })
+        
 
-          mesh2.position.set(propsRock[index].position.x, propsRock[index].position.y, propsRock[index].position.z)
-          mesh2.scale.set(propsRock[index].scale.x, propsRock[index].scale.y, propsRock[index].scale.z)
-          mesh2.rotation.set(propsRock[index].rotation._x, propsRock[index].rotation._y, propsRock[index].rotation._z)
-          mesh2.quaternion.set(propsRock[index].quaternion._x, propsRock[index].quaternion._y, propsRock[index].quaternion._z, propsRock[index].quaternion._w);
-
-
-          groupRockFinal.add(mesh2)
+          groupRockFinal.add(meshOut)
 
 
         }
@@ -367,7 +381,7 @@
 
 
 
-      }, 3000);
+      }, 100);
 
 
 
@@ -458,8 +472,9 @@
     function animate(time) {
       updateUtils()
       if (!parameters.zoomControl) {
-        groupRockCustomScene.position.y = -posScroll.toFixed(2)
-        groupRockSampleScene.position.y = -posScroll.toFixed(2)
+        // groupRockCustomScene.position.y = -posScroll.toFixed(2)
+        // groupRockSampleScene.position.y = -posScroll.toFixed(2)
+        if(groupRockFinal) groupRockFinal.position.y = -posScroll.toFixed(2)
       }
 
       renderer.render(scene, camera);

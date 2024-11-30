@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>three.js webgl - exporter - draco</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+</head>
+
+<body>
+
+
+    <script type="importmap">
+			{
+				"imports": {
+                    "@splinetool/loader": "https://unpkg.com/@splinetool/loader@0.9.523/build/SplineLoader.js",
+                    "three": "https://unpkg.com/three@0.149.0/build/three.module.js",
+                    "three/": "https://unpkg.com/three@0.149.0/",
+             
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+    <script src="/jsm/libs/draco/draco_encoder.js"></script>
+    <script type="module">
+
+        import * as THREE from 'three';
+        import SplineLoader from '@splinetool/loader';
+        
+        import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { DRACOExporter } from 'three/addons/exporters/DRACOExporter.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+
+        let scene, camera, renderer, exporter, mesh;
+
+        const params = {
+            export: exportFile
+        };
+
+        init();
+
+        function init() {
+            let rat = 1.2
+           camera = new THREE.OrthographicCamera(window.innerWidth / - rat, window.innerWidth / rat, window.innerHeight / rat, window.innerHeight / - rat, -100000, 100000);
+            camera.position.set(0, 0, 45000);
+            camera.quaternion.setFromEuler(new THREE.Euler(0, 0, 0));
+
+            scene = new THREE.Scene();
+
+            exporter = new DRACOExporter();
+
+            //
+
+
+
+            // ground
+
+            const loader = new SplineLoader();
+            loader.load(
+                'https://prod.spline.design/34pyEDwxIhuksuhA/scene.splinecode',
+                (splineScene) => {
+                    mesh = new THREE.Mesh(splineScene.children[0].children[0].geometryCreateDeleyed,new THREE.MeshBasicMaterial)
+                    scene.add(splineScene.children[0])
+                })
+
+            //
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setAnimationLoop(animate);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            //
+
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 1.5, 0);
+            controls.update();
+
+            //
+
+            window.addEventListener('resize', onWindowResize);
+
+            const gui = new GUI();
+
+            gui.add(params, 'export').name('Export DRC');
+            gui.open();
+
+
+        }
+
+        function onWindowResize() {
+
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+        }
+
+        function animate() {
+
+            renderer.render(scene, camera);
+
+        }
+
+        function exportFile() {
+            const options = {
+                decodeSpeed: 5, // Tốc độ giải nén
+                encodeSpeed: 5, // Tốc độ nén
+            };
+            const result = exporter.parse(mesh, options);
+            saveArrayBuffer(result, 'file.drc');
+
+        }
+
+        const link = document.createElement('a');
+        link.style.display = 'none';
+        document.body.appendChild(link);
+
+        function save(blob, filename) {
+
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+
+        }
+
+        function saveArrayBuffer(buffer, filename) {
+
+            save(new Blob([buffer], { type: 'application/octet-stream' }), filename);
+
+        }
+
+    </script>
+
+</body>
+
+</html>
