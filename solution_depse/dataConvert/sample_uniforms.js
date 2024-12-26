@@ -1,4 +1,4 @@
-export const sampleU1 = {
+export const uniformRock1 = {
     "frameIndex": {
         "value": 0
     },
@@ -406,7 +406,7 @@ export const sampleU1 = {
     }
 }
 
-export const sampleU2 = {
+export const uniformRock2 = {
     "frameIndex": {
         "value": 0
     },
@@ -812,7 +812,7 @@ export const sampleU2 = {
         "value": 1
     }
 }
-export const sampleU3 = {
+export const uniformRock3 = {
     "frameIndex": {
         "value": 0
     },

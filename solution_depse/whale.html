@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": ".././three.module.js",
+            "three/addons/": ".././jsm/"
+        }
+    }
+</script>
+
+    <script type="module">
+
+        import * as THREE from 'three';
+
+        import Stats from 'three/addons/stats.module.js';
+        import { GUI } from 'three/addons/lil-gui.module.min.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+      
+        import { WhaleScene } from './component/WhaleScene.js';
+        import { GPUComputationRenderer } from 'three/addons/GPUComputationRenderer.js';
+        import virtualScroll from 'https://cdn.jsdelivr.net/npm/virtual-scroll@2.2.1/+esm'
+        const parameters = { rockCustom: true, zoomControl: true };
+
+        let stats, controls
+        let posScroll = 0;
+        let targetPos = 0;
+        const scroller = new virtualScroll();
+
+        scroller.on((event) => {
+            targetPos = event.y;
+        });
+        stats = new Stats();
+        document.body.appendChild(stats.dom);
+
+
+        function lerp(start, end, t) {
+            return start * (1 - t) + end * t;
+        }
+   
+        const clock = new THREE.Clock()
+        const width = window.innerWidth
+        const height = window.innerHeight
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(width / - 2, width / 2, height / 2, height / - 2, 0.1, 1000);
+        // const camera = new THREE.PerspectiveCamera( 45, width / height, 1, 1000 );
+
+        camera.position.z = 1
+        const renderer = new THREE.WebGLRenderer();
+
+
+   
+        const whaleShader = new WhaleScene({
+            scene: scene,
+            camera: camera,
+            renderer: renderer,
+            count: 2000, 
+            viewport: { width: window.innerWidth, height: window.innerHeight },
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        controls = new OrbitControls(camera, renderer.domElement);
+
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.125;
+
+        function updateUtils() {
+            posScroll = lerp(posScroll, targetPos, 0.075);
+
+            stats.update();
+            controls?.update();
+        }
+        function animate(time) {
+            updateUtils()
+            requestAnimationFrame(animate);
+            whaleShader.render();
+       
+        }
+
+        animate();
+
+    </script>
+</body>
+
+</html>

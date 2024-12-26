@@ -1,0 +1,37 @@
+.styles_container__mm1UY {
+    max-width: 100%
+}
+
+.styles_wrapCursor__97S1P {
+    --size: 4.4rem;
+    pointer-events: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none
+}
+
+.styles_cursor__96qvz {
+    display: none
+}
+
+.styles_cursor_inner__P_bE4 {
+    width: var(--size);
+    height: var(--size);
+    display: block;
+    position: absolute
+}
+
+@media(min-width: 1200px) {
+    .styles_cursor__96qvz {
+        display:block;
+        position: fixed;
+        width: var(--size);
+        will-change: transform;
+        aspect-ratio: 1;
+        pointer-events: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        user-select: none;
+        z-index: 99999999
+    }
+}

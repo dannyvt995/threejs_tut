@@ -1,5 +1,5 @@
 
-const headFrag =  `
+const headFrag = `
 
 // uniform mat4 viewMatrix;
 // uniform vec3 cameraPosition;

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/solution_depse/src/styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 
 <body>
@@ -17,11 +17,11 @@
   <script type="importmap">
       {
           "imports": {
-              "solution_depse" : "./solution_depse/",
+              "solution_depse" : "/",
               "@splinetool/loader": "https://unpkg.com/@splinetool/loader@0.9.523/build/SplineLoader.js",
               "three": "https://unpkg.com/three@0.149.0/build/three.module.js",
               "three/": "https://unpkg.com/three@0.149.0/",
-              "three/addons/": "./jsm/"
+              "three/addons/": ".././jsm/"
           }
       }
 </script>
@@ -38,18 +38,17 @@
     import { GUI } from 'three/addons/lil-gui.module.min.js';
 
     import { DRACOLoader } from 'three/addons/DRACOLoader.js';
-    import { ExportTexture } from '/solution_depse/src/ExportTexture.js'
-    import { fragRock0, fragRock1, fragRock2 } from '/solution_depse/sample_fragRockList_rock.js'
-    import { vertRock0, vertRock1, vertRock2 } from '/solution_depse/sample_vertRockList_rock.js'
-    import { sampleU1, sampleU2, sampleU3 } from '/solution_depse/sample_uniforms.js'
-    import { propsRock, geoInfo } from '/solution_depse/sampleRockProps.js'
+    import { fragRock0, fragRock1, fragRock2 } from '/solution_depse/dataConvert/sample_fragRockList_rock.js'
+    import { vertRock0, vertRock1, vertRock2 } from '/solution_depse/dataConvert/sample_vertRockList_rock.js'
+    import { uniformRock1, uniformRock2, uniformRock3 } from '/solution_depse/dataConvert/sample_uniforms.js'
+    import { propsRock, geoInfo } from '/solution_depse/dataConvert/sampleRockProps.js'
 
     const textureSample = new THREE.TextureLoader().load('textures/cat.jpg');
     let exporterTexture
     let countst = 0
     const VERTLIST_ROCK = [vertRock0, vertRock1, vertRock2]
     const FRAGLIST_ROCK = [fragRock0, fragRock1, fragRock2]
-    const UNIFORMSTATIC_ROCK = [sampleU1, sampleU2, sampleU3]
+    const UNIFORMSTATIC_ROCK = [uniformRock1, uniformRock2, uniformRock3]
     const PROPSMESH_ROCK = propsRock
     let format_UNIFORMS_EACH_ROCK
     let GEOMETRYSTATIC_ROCK

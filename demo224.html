@@ -41,7 +41,7 @@
     import { ExportTexture } from '/threejs_tut/solution_depse/src/ExportTexture.js'
     import { fragRock0, fragRock1, fragRock2 } from '/threejs_tut/solution_depse/sample_fragRockList_rock.js'
     import { vertRock0, vertRock1, vertRock2 } from '/threejs_tut/solution_depse/sample_vertRockList_rock.js'
-    import { sampleU1, sampleU2, sampleU3 } from '/threejs_tut/solution_depse/sample_uniforms.js'
+    import { uniformRock1, uniformRock2, uniformRock3 } from '/threejs_tut/solution_depse/sample_uniforms.js'
     import { propsRock, geoInfo } from '/threejs_tut/solution_depse/sampleRockProps.js'
 
     const textureSample = new THREE.TextureLoader().load('textures/cat.jpg');
@@ -49,7 +49,7 @@
     let countst = 0
     const VERTLIST_ROCK = [vertRock0, vertRock1, vertRock2]
     const FRAGLIST_ROCK = [fragRock0, fragRock1, fragRock2]
-    const UNIFORMSTATIC_ROCK = [sampleU1, sampleU2, sampleU3]
+    const UNIFORMSTATIC_ROCK = [uniformRock1, uniformRock2, uniformRock3]
     const PROPSMESH_ROCK = propsRock
     let format_UNIFORMS_EACH_ROCK
     let GEOMETRYSTATIC_ROCK
