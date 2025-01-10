@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/threejs_tut/styles.css" />
+</head>
+
+<body>
+
+  <!-- Import maps polyfill -->
+  <!-- Remove this when import maps will be widely supported -->
+  <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+
+
+  <script type="importmap">
+      {
+          "imports": {
+              "solution_depse" : "/",
+              "three": "https://unpkg.com/three@0.149.0/build/three.module.js",
+              "three/": "https://unpkg.com/three@0.149.0/",
+              "three/addons/": ".././jsm/"
+          }
+      }
+</script>
+
+
+  <script type="module">
+    import * as THREE from 'three';
+    import virtualScroll from 'https://cdn.jsdelivr.net/npm/virtual-scroll@2.2.1/+esm'
+    import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+    import Stats from 'three/addons/stats.module.js';
+    import { GUI } from 'three/addons/lil-gui.module.min.js';
+
+    import { DRACOLoader } from 'three/addons/DRACOLoader.js';
+    import { fragRock0, fragRock1, fragRock2 } from '/threejs_tut/solution_depse/dataConvert/sample_fragRockList_rock.js'
+    import { vertRock0, vertRock1, vertRock2 } from '/threejs_tut/solution_depse/dataConvert/sample_vertRockList_rock.js'
+    import { uniformRock1, uniformRock2, uniformRock3 } from '/threejs_tut/solution_depse/dataConvert/sample_uniforms.js'
+    import { propsRock, geoInfo } from '/threejs_tut/solution_depse/dataConvert/sampleRockProps.js'
+
+    const textureSample = new THREE.TextureLoader().load('textures/cat.jpg');
+    let exporterTexture
+    let countst = 0
+    const VERTLIST_ROCK = [vertRock0, vertRock1, vertRock2]
+    const FRAGLIST_ROCK = [fragRock0, fragRock1, fragRock2]
+    const UNIFORMSTATIC_ROCK = [uniformRock1, uniformRock2, uniformRock3]
+    const PROPSMESH_ROCK = propsRock
+    let format_UNIFORMS_EACH_ROCK
+    let GEOMETRYSTATIC_ROCK
+    let list_format_UNIFORMS_EACH_ROCK = []
+    const groupRockFinal = new THREE.Group()
+    let posScroll = 0;
+    let targetPos = 0;
+    const lerpSpeed = 0.072;
+    const clock = new THREE.Clock();
+    const scroller = new virtualScroll();
+
+    scroller.on((event) => {
+      targetPos = event.y;
+    });
+    function lerp(start, end, t) {
+      return start * (1 - t) + end * t;
+    }
+
+
+   // const parameters = {"frameIndex":null,"resolution":null,"previousModelViewMatrix":null,"previousProjectionMatrix":null,"fogDensity":null,"fogNear":null,"fogFar":null,"fogColor":null,"ambientLightColor":null,"lightProbe":null,"directionalLights":null,"directionalLightShadows":null,"directionalShadowMap":null,"directionalShadowMatrix":null,"spotLights":null,"spotLightShadows":null,"spotLightMap":null,"spotShadowMap":null,"spotLightMatrix":null,"pointLights":null,"pointLightShadows":null,"pointShadowMap":null,"pointShadowMatrix":null,"hemisphereLights":null,"rectAreaLights":null,"ltc_1":null,"ltc_2":null,"penumbraSize":null,"aoMap":null,"aoEnabled":null,"nodeU0":null,"nodeU1":null,"nodeU2":null,"nodeU3":null,"nodeU4":null,"nodeU5":null,"nodeU6":null,"nodeU7":null,"nodeU8":null,"nodeU9":null,"nodeU10":null,"nodeU11":null,"nodeUA0":null,"nodeUA1":null,"nodeU12":null,"nodeU13":null,"nodeU14":null,"nodeU15":null,"nodeU16":null,"nodeU17":null,"nodeU18":null,"nodeU19":null,"nodeU20":null,"nodeU21":null,"nodeU22":null,"nodeU23":null,"nodeU24":null,"nodeU25":null,"nodeU26":null,"nodeU27":null,"nodeU28":null,"nodeU29":null,"nodeU30":null,"nodeU31":null,"nodeU32":null,"nodeU33":null,"nodeU34":null,"nodeU35":null,"nodeU36":null,"nodeU37":null}
+   const parameters = {
+    zoomControl: true,
+    frameIndex: 0,
+    resolution: null,
+    previousModelViewMatrix: null,
+    previousProjectionMatrix: null,
+    fogDensity: 0.00025,
+    fogNear: 1,
+    fogFar: 2000,
+    fogColor: null,
+    ambientLightColor: null,
+    lightProbe: null,
+    directionalLights: null,
+    directionalLightShadows: null,
+    directionalShadowMap: null,
+    directionalShadowMatrix: null,
+    spotLights: null,
+    spotLightShadows: null,
+    spotLightMap: null,
+    spotShadowMap: null,
+    spotLightMatrix: null,
+    pointLights: null,
+    pointLightShadows: null,
+    pointShadowMap: null,
+    pointShadowMatrix: null,
+    hemisphereLights: null,
+    rectAreaLights: null,
+    ltc_1: null,
+    ltc_2: null,
+    penumbraSize: null,
+    aoMap: null,
+    aoEnabled: null,
+    nodeU0: 0,
+    nodeU1: 0,
+    nodeU2: 0,
+    nodeU3: null,
+    nodeU4: null,
+    nodeU5: null,
+    nodeU6: null,
+    nodeU7: 0,
+    nodeU8: 0,
+    nodeU9: 0,
+    nodeU10: null,
+    nodeU11: null,
+    nodeUA0: null,
+    nodeUA1: null,
+    nodeU12: null,
+    nodeU13: 0,
+    nodeU14: 0,
+    nodeU15: null,
+    nodeU16: 0,
+    nodeU17: 0,
+    nodeU18: 0,
+    nodeU19: 0,
+    nodeU20: null,
+    nodeU21: 0,
+    nodeU22: 0,
+    nodeU23: null,
+    nodeU24: 0,
+    nodeU25: 0,
+    nodeU26: 0,
+    nodeU27: 0,
+    nodeU28: null,
+    nodeU29: 0,
+    nodeU30: 0,
+    nodeU31: null,
+    nodeU32: 0,
+    nodeU33: null,
+    nodeU34: 0,
+    nodeU35: 0,
+    nodeU36: 0,
+    nodeU37: 0
+}
+    const dracoLoader = new DRACOLoader();
+
+    dracoLoader.setDecoderPath('/jsm/libs/draco/');
+    dracoLoader.preload();
+    dracoLoader.load('/solution_depse/dataConvert/rock_geo.drc', (geometry) => {
+      GEOMETRYSTATIC_ROCK = geometry
+    });
+
+
+
+    const gui = new GUI();
+    const listGUIFolder = [
+      gui.addFolder('Rock 1'),
+      gui.addFolder('Rock 2'),
+      gui.addFolder('Rock 3')
+    ]
+    for (let o = 0; o < listGUIFolder.length; o++) {
+      listGUIFolder[o].close()
+      
+    }
+    let renderer, scene, controls, stats
+    let listrockuniforms = [{}, {}, {}]
+    stats = new Stats();
+    document.body.appendChild(stats.dom);
+
+    // camera
+    let rat = 0.5
+    let camera = new THREE.OrthographicCamera(window.innerWidth / - rat, window.innerWidth / rat, window.innerHeight / rat, window.innerHeight / - rat, -100000, 100000);
+    camera.position.set(0, 0, 1);
+    camera.quaternion.setFromEuler(new THREE.Euler(0, 0, 0));
+
+    // scene
+    scene = new THREE.Scene();
+    const groupRockCustomScene = new THREE.Group()
+    const groupRockSampleScene = new THREE.Group()
+    const axesHelper = new THREE.AxesHelper(window.innerHeight);
+    groupRockCustomScene.add(axesHelper);
+
+    const light = new THREE.AmbientLight(new THREE.Color(0.004600455864557417, 0.34689951129071595, 0.662867870145631)); // soft white light
+    // scene.add( light );
+
+
+
+    initRenderer()
+    initMain()
+
+
+    function calcRockMesh(geometrySample, materialSample, index) {
+      console.log("call for each !!!")
+
+      let inMat = materialSample
+      setTimeout(() => {
+
+        format_UNIFORMS_EACH_ROCK = {}
+        format_UNIFORMS_EACH_ROCK = UNIFORMSTATIC_ROCK[index]
+
+        formatUniform(UNIFORMSTATIC_ROCK[index])
+        function formatUniform(obj) {
+          Object.keys(obj).forEach(key => {
+            if (obj[key].value !== null
+              && !Array.isArray(obj[key].value)
+              && typeof obj[key].value === 'object'
+            ) {
+              switch (Object.keys(obj[key].value).length) {
+                case 1:
+                  format_UNIFORMS_EACH_ROCK[key].value = new THREE.Matrix4(obj[key].value.elements)
+                  break;
+                case 2:
+                  format_UNIFORMS_EACH_ROCK[key].value = new THREE.Vector2(obj[key].value.x, obj[key].value.y)
+                  break;
+                case 3:
+                  format_UNIFORMS_EACH_ROCK[key].value = new THREE.Vector3(obj[key].value.x, obj[key].value.y, obj[key].value.z)
+                  break;
+                default:
+                  break;
+              }
+            } else if (obj[key].value === "nullTexture"
+            /*   && !Array.isArray(obj[key].value)
+              && typeof obj[key].value === 'object'
+              && obj[key].value.isTexture === true */ ) {
+              //format_UNIFORMS_EACH_ROCK[key].value = textureSample
+              format_UNIFORMS_EACH_ROCK[key].value = null
+            }
+
+            if (key === "nodeU15" || key === "nodeU23" || key === "nodeU31" || key === "fogColor") {
+              console.log(Object.keys(obj[key].value).length)
+              if (Object.keys(obj[key].value).length > 2) {
+                obj[key].value = new THREE.Color(obj[key].x, obj[key].y, obj[key].z)
+              }
+
+            }
+            if (key === "nodeUA0") {
+              // [Vec4...]
+              let arr = []
+              for (let i = 0; i < obj[key].value.length; i++) {
+                arr.push(new THREE.Vector4(obj[key].value[i].x, obj[key].value[i].y, obj[key].value[i].z, obj[key].value[i].w))
+              }
+              obj[key].value = arr
+            }
+            if (key === "lightProbe") {
+              // [Vec3...]
+              let arr = []
+              for (let i = 0; i < obj[key].value.length; i++) {
+                arr.push(new THREE.Vector3(0, 0, 0))
+              }
+              obj[key].value = arr
+            }
+
+            if (key === "directionalLights") {
+              obj[key].value[0].color = new THREE.Color(obj[key].value[0].color.x, obj[key].value[0].color.y, obj[key].value[0].color.z)
+              obj[key].value[0].direction = new THREE.Vector3(obj[key].value[0].direction.x, obj[key].value[0].direction.y, obj[key].value[0].direction.z)
+            }
+            if (key === "hemisphereLights") {
+              obj[key].value[0].groundColor = new THREE.Color(obj[key].value[0].groundColor.x, obj[key].value[0].groundColor.y, obj[key].value[0].groundColor.z)
+              obj[key].value[0].direction = new THREE.Vector3(obj[key].value[0].direction.x, obj[key].value[0].direction.y, obj[key].value[0].direction.z)
+              obj[key].value[0].skyColor = new THREE.Color(obj[key].value[0].skyColor.x, obj[key].value[0].skyColor.y, obj[key].value[0].skyColor.z)
+            }
+          })
+
+          console.log("//.//////////////////////")
+          console.log(format_UNIFORMS_EACH_ROCK)
+          // console.log(listrockuniforms[index])
+          // compareObjects(format_UNIFORMS_EACH_ROCK, listrockuniforms[index])
+          let outMat = new THREE.ShaderMaterial({
+            uniforms: format_UNIFORMS_EACH_ROCK,
+            //     uniforms: listrockuniforms[index],
+            vertexShader: VERTLIST_ROCK[index],
+            fragmentShader: FRAGLIST_ROCK[index],
+            side: 0,
+            fog: true,
+            vertexColors: true
+          })
+
+
+
+          const meshOut = new THREE.Mesh(GEOMETRYSTATIC_ROCK, outMat);
+
+          const listPropsNeedUpdate = {
+            "position": { type: "v3" },
+            "scale": { type: "v3" },
+            "rotation": { type: "v3" },
+            "quaternion": { type: "v4" },
+          }
+
+          Object.keys(listPropsNeedUpdate).forEach(key => {
+            if (listPropsNeedUpdate[key].type === "v3") {
+              if (key !== "rotation") {
+                meshOut[key].set(PROPSMESH_ROCK[index][key].x, PROPSMESH_ROCK[index][key].y, PROPSMESH_ROCK[index][key].z)
+              } else {
+                meshOut[key].set(PROPSMESH_ROCK[index][key]._x, PROPSMESH_ROCK[index][key]._y, PROPSMESH_ROCK[index][key]._z)
+              }
+            } else {
+              meshOut[key].set(PROPSMESH_ROCK[index][key]._x, PROPSMESH_ROCK[index][key]._y, PROPSMESH_ROCK[index][key]._z, PROPSMESH_ROCK[index][key]._w)
+            }
+          })
+
+          console.log(meshOut)
+          groupRockFinal.add(meshOut)
+          list_format_UNIFORMS_EACH_ROCK.push(format_UNIFORMS_EACH_ROCK)
+       
+          initGui({
+            uniforms:list_format_UNIFORMS_EACH_ROCK
+          })
+        }
+
+
+
+
+      }, 200);
+
+
+    }
+
+    function compareObjects(obj1, obj2) {
+      const differences = {};
+
+      Object.keys(obj1).forEach((key) => {
+        if (obj1[key] !== obj2[key]) {
+          differences[key] = {
+            valueFormat: obj1[key],
+            valueOrigin: obj2[key],
+          };
+        }
+      });
+
+      console.log("Differences:", differences);
+      return differences;
+    }
+
+
+    function initGui({ uniforms }) {
+      if(uniforms.length === VERTLIST_ROCK.length) {
+        console.log("/////////initGui")
+      
+        console.log(uniforms)
+        let uuu = {}
+        for (let u = 0; u < uniforms.length; u++) {
+          Object.keys(uniforms[u]).forEach(key => {
+           // uuu[key] = null
+           
+            if(typeof uniforms[u][key].value == "number") {
+            //  uuu[key] = uniforms[u][key].value
+                console.log(uniforms[u][key].value)
+              listGUIFolder[u].add(parameters,key, 0, 1)
+            }
+          })
+          
+        }
+       
+      }
+  
+    }
+
+
+    function initRenderer() {
+      // renderer
+      renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setAnimationLoop(animate);
+      document.body.appendChild(renderer.domElement);
+
+      // scene settings
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+
+
+
+      scene.background = new THREE.Color(0.07028693084903775, 0.1210830246922387, 0.22267521237864074, 1);
+
+      renderer.setClearAlpha(0);
+    }
+    function initMain() {
+      // orbit controls
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableZoom = parameters.zoomControl
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.125;
+
+      for (let i = 0; i < VERTLIST_ROCK.length; i++) {
+
+        calcRockMesh(null, { uniforms: {} }, i)
+
+
+      }
+      groupRockFinal.rotation.x = 1.5
+      scene.add(groupRockFinal)
+    
+      gui.add(parameters, 'zoomControl').onChange((value) => {
+        if (value) {
+          controls.enableZoom = true
+        } else {
+          controls.enableZoom = false
+        }
+      });
+    
+    }
+
+
+    window.addEventListener('resize', onWindowResize);
+    function onWindowResize() {
+      camera.left = window.innerWidth / - 2;
+      camera.right = window.innerWidth / 2;
+      camera.top = window.innerHeight / 2;
+      camera.bottom = window.innerHeight / - 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    function updateUtils() {
+      posScroll = lerp(posScroll, targetPos, lerpSpeed);
+
+      stats.update();
+      controls?.update();
+    }
+    function animate(time) {
+      updateUtils()
+      if (!parameters.zoomControl) {
+        // groupRockCustomScene.position.y = -posScroll.toFixed(2)
+        // groupRockSampleScene.position.y = -posScroll.toFixed(2)
+        if (groupRockFinal) groupRockFinal.position.y = -posScroll.toFixed(2)
+      }
+
+      renderer.render(scene, camera);
+      //if(exporterTexture) exporterTexture.layerRender()
+    }
+
+  </script>
+</body>
+
+</html>
