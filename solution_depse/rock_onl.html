@@ -20,7 +20,7 @@
               "solution_depse" : "/",
               "three": "https://unpkg.com/three@0.149.0/build/three.module.js",
               "three/": "https://unpkg.com/three@0.149.0/",
-              "three/addons/": ".././jsm/"
+              "three/addons/": ".././threejs_tut/jsm/"
           }
       }
 </script>
@@ -144,7 +144,7 @@
 
     dracoLoader.setDecoderPath('/jsm/libs/draco/');
     dracoLoader.preload();
-    dracoLoader.load('/solution_depse/dataConvert/rock_geo.drc', (geometry) => {
+    dracoLoader.load('/threejs_tut/solution_depse/dataConvert/rock_geo.drc', (geometry) => {
       GEOMETRYSTATIC_ROCK = geometry
     });
 
